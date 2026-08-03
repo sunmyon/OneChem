@@ -138,6 +138,7 @@ else
 OPT1 += -DCHEMISTRY_SC
 CHEMISTRY_DIR  = chemistry_new
 CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/chemistry.o \
+                 $(CHEMISTRY_DIR)/reaction_network.o \
                  $(CHEMISTRY_DIR)/cooling_func.o \
                  $(CHEMISTRY_DIR)/react_rate_FUV.o
 CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h

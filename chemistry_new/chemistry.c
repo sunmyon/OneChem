@@ -12,13 +12,14 @@
 #include "chemistry.h"
 #include "chemistry_internal.h"
 #include "chemistry_types.h"
+#include "reaction_network.h"
 
 #ifdef CHEMISTRY_SC
 #define DEBUG_CHEMISTRY
 
 #ifdef CHEM_HIRANO
 #ifndef O05_CHEM
-#define O05_CHEM 
+#define O05_CHEM
 #endif
 #endif
 
@@ -75,37 +76,7 @@ static int evaluate_timesteps(const ChemEnvironment *environment, const ChemStep
 static ChemSolverPlan select_solvers(double n_nuclei, double time_cooling, double time_chemistry, double time_remaining);
 int chemistry_advance(int mode, const ChemEnvironment *environment, double duration_s, ChemState *state, ChemWorkspace *workspace);
 
-static inline int ReactionRates_nometal(int itr, double nH, double *yi,double *k, double *k_inverse, double *rf_tot);
-
 double get_core_radius(double rho_cgs, double T_gas);
-
-#ifdef CHEM_DIFF_ANALYTIC
-int (*switch_func[256])(double, double *, double *, double *, double *);
-
-static inline int ReactionRates_diff_nometal_fp(int itr, int i_sp_diff, double nH, double *yi, double *k, double *k_inverse, double *rf_tot);
-int ReactionRate_diff_nometal_Elec(double nH,double *ni,double *k,double *k_inverse,double *rf);
-int ReactionRate_diff_nometal_HI(double nH,double *ni,double *k,double *k_inverse,double *rf);
-int ReactionRate_diff_nometal_HII(double nH,double *ni,double *k,double *k_inverse,double *rf);
-#ifdef HELIUM
-int ReactionRate_diff_nometal_HeI(double nH,double *ni,double *k,double *k_inverse,double *rf);
-int ReactionRate_diff_nometal_HeII(double nH,double *ni,double *k,double *k_inverse,double *rf);
-int ReactionRate_diff_nometal_HeIII(double nH,double *ni,double *k,double *k_inverse,double *rf);
-#endif
-int ReactionRate_diff_nometal_H2I(double nH,double *ni,double *k,double *k_inverse,double *rf);
-#ifdef H2_PLUS
-int ReactionRate_diff_nometal_H2II(double nH,double *ni,double *k,double *k_inverse,double *rf);
-#endif
-int ReactionRate_diff_nometal_HM(double nH,double *ni,double *k,double *k_inverse,double *rf);
-#ifdef HD
-int ReactionRate_diff_nometal_DI(double nH,double *ni,double *k,double *k_inverse,double *rf);
-int ReactionRate_diff_nometal_DII(double nH,double *ni,double *k,double *k_inverse,double *rf);
-int ReactionRate_diff_nometal_HDI(double nH,double *ni,double *k,double *k_inverse,double *rf);
-int ReactionRate_diff_nometal_HDII(double nH,double *ni,double *k,double *k_inverse,double *rf);
-int ReactionRate_diff_nometal_DM(double nH,double *ni,double *k,double *k_inverse,double *rf);
-#endif
-int func_other(double nH,double *ni,double *k,double *k_inverse,double *rf);
-static void init_switch_func(void);
-#endif
 
 #if defined(CHEMISTRY_IMPLICIT) && !defined(CHEM_DIFF_ANALYTIC) && !defined(ALLOW_CHEM_DIFF_NUMERIC)
 #error "Finite-difference chemistry Jacobian is deprecated and very slow; define CHEM_DIFF_ANALYTIC or explicitly opt in with ALLOW_CHEM_DIFF_NUMERIC."
@@ -165,7 +136,7 @@ double partition_H2_EBM1989_fitted_by_Matsukoba(double T_K);
 void check_partition_functions_H2(void);
 
 double pf_z_H(double T_K);
-double partition_H(double T_gas); 
+double partition_H(double T_gas);
 
 double (*partition_H2p)(double);
 
@@ -199,7 +170,7 @@ void correct_initial_abundances(double *yi);
 void give_initial_guess(double T_gas, double nH, double dt, double *yi, double *y_init, double *k);
 void bound_ddy(double *yi, double *ddy, double *y_max, int itr, int flag_reset, double *err_max);
 
-#ifdef CONTINUUM_COOLING_MATSUKOBA 
+#ifdef CONTINUUM_COOLING_MATSUKOBA
 double continuum_cooling_rate(double T_gas, double rho_cgs, double l_core);
 double H_criticaldensity(double xnH, double T_K,double xNc_H, double y_H,double y_e);
 #endif
@@ -227,69 +198,6 @@ void make_rate_tables_LW_radiation(void);
 double dust_PEheating(double G0, double nH, double y_e, double T_gas, double metallicity);
 #endif
 #endif
-
-enum REACTIONS{
-	RE1, RE2,
-#ifdef HELIUM
-	RE3, RE4, RE5, RE6,
-#endif
-	RE7, RE8, 
-#ifdef H2_PLUS
-	RE9, RE10, 
-#endif
-	RE11, 
-#ifdef H2_PLUS
-	RE12, 
-#endif
-	RE13, 
-#ifdef HELIUM
-	RE14, RE15,
-#endif
-	RE16, RE17, RE18
-#ifdef H2_PLUS
-	,RE19, RE20, RE21
-#endif
-#ifdef IONIZATION_PHOTON
-	,RE22
-#endif
-
-#ifdef LYMANWERNER
-	,RE25, RE29
-#endif	
-	,RE30
-	
-#ifdef HD
-	,
-	RE31, RE34, 
-	RE32, RE33, RE35,
-	RE37, RE38, RE39
-#ifdef HD_PLUS
-	, RE36, RE40, RE41, RE42
-#endif
-#ifdef DMINUS
-	, RE43, RE44, RE45, RE46, RE47, RE48
-#endif
-#ifdef LYMANWERNER
-	, RE53
-#endif
-#endif
-
-#ifdef H2_FORMATION_ON_DUST
-	, RE51
-#endif
-
-#ifdef THREEBODY
-	,RE55, RE57, RE58
-#endif
-	
-#ifdef INVERSE_REACTIONS
-	,RE1_INV , RE2_INV , RE7_INV , RE8_INV 
-	,RE13_INV, RE16_INV, RE17_INV, RE18_INV
-	,RE30_INV
-#endif
-
-	,REEND
-};
 
 int N_SP, N_RE;
 int count_print;
@@ -328,7 +236,7 @@ double chemistry_temperature(const double *abund, double gamma, double utherm_cg
 double compute_gamma_from_abund(const double *abund, double T_gas)
 {
   double n_H= abund[sHI] + abund[sHII] + abund[sHM] + 2*abund[sH2I];
-  
+
   double y_HI   = abund[sHI]   /n_H;
   double y_HII  = abund[sHII]  /n_H;
   double y_He   = XHe;
@@ -336,7 +244,7 @@ double compute_gamma_from_abund(const double *abund, double T_gas)
   double y_HM   = abund[sHM]   /n_H;
   double y_H2   = abund[sH2I]  /n_H;
   double y_elec = abund[sELEC] /n_H;
-  
+
   double x = 6100.0/T_gas;
 
   double gamma_H2_minus1_inv;
@@ -353,10 +261,10 @@ double compute_gamma_from_abund(const double *abund, double T_gas)
   else
     gamma_H2_minus1_inv = 0.5*(5.0 + 2.0*x*x * exp(x)/(exp(x)-1.0)/(exp(x)-1.0));
 #endif
-  
-  double sum_y= y_HI + y_HII + y_HM + y_He + y_elec + y_H2;  
+
+  double sum_y= y_HI + y_HII + y_HM + y_He + y_elec + y_H2;
   double denominator=1.5*(y_HI + y_HII + y_HM + y_He + y_elec) + gamma_H2_minus1_inv * y_H2;
-  
+
   double gamma = 1.0+sum_y/denominator;
 
   if(gamma > 1.8 || gamma < 1.2){
@@ -364,7 +272,7 @@ double compute_gamma_from_abund(const double *abund, double T_gas)
 	   , ThisTask, gamma, T_gas);
     fflush(stdout);
   }
-    
+
   return gamma;
 }
 
@@ -388,7 +296,7 @@ double chemistry_molecular_weight(const double *abund){
     + XHe
 #endif
     ;
-  
+
   return 1.0 / sum_fraction;
 }
 
@@ -525,7 +433,7 @@ static void evaluate_chemical_energy_timescale(const ChemEnvironment *environmen
 {
   const double nH = XH * environment->rho_cgs / PROTONMASS;
   const double temperature = work->thermodynamics.temperature;
-  
+
   const double *a = state->abund;
   const double n_elec = nH * a[sELEC] / XH;
   const double n_HI = nH * a[sHI] / XH;
@@ -575,103 +483,31 @@ static void evaluate_chemical_energy_timescale(const ChemEnvironment *environmen
   }
 }
 
+static double chemistry_species_timescale(double abundance, double production, double destruction)
+{
+  const double derivative = production - destruction * abundance;
+  if(derivative == 0.0)
+    return MAX_REAL_NUMBER;
+  return fabs(abundance / derivative);
+}
+
 static int evaluate_chemistry_timescale(const ChemEnvironment *environment, const ChemState *state, ChemWorkspace *workspace)
 {
-  const double *a = state->abund;
   const double n_nuclei = environment->rho_cgs / PROTONMASS;
-  
-  double electron_dot = (workspace->rates.forward[1] * a[sHI]
-#ifdef HELIUM
-      + workspace->rates.forward[3] * a[sHeI] + workspace->rates.forward[5] * a[sHeII]
-      - workspace->rates.forward[4] * a[sHeII] - workspace->rates.forward[6] * a[sHeIII]
-#endif
-      - workspace->rates.forward[2] * a[sHII]) * a[sELEC] * n_nuclei * n_nuclei
-      + (workspace->rates.forward[22] * a[sHI]
-#ifdef HELIUM
-         + workspace->rates.forward[23] * a[sHeII] + workspace->rates.forward[24] * a[sHeI]
-#endif
-         + workspace->rates.forward[25] * a[sHM]) * n_nuclei
-      + (workspace->rates.forward[8] * a[sHI] * a[sHM]
-         + workspace->rates.forward[16] * a[sHM] * a[sELEC]
-         + workspace->rates.forward[17] * a[sHI] * a[sHM]
-#ifdef H2_PLUS
-         + workspace->rates.forward[19] * a[sHM] * a[sHII]
-#endif
-#ifdef DMINUS
-         + workspace->rates.forward[48] * a[sDM] * a[sHI]
-#endif
-        ) * n_nuclei * n_nuclei
-      - (workspace->rates.forward[7] * a[sHI]
-#ifdef H2_PLUS
-         + workspace->rates.forward[20] * a[sH2II]
-#endif
-#ifdef HD_PLUS
-         + workspace->rates.forward[42] * a[sHDII]
-#endif
-#ifdef DMINUS
-         + workspace->rates.forward[43] * a[sDI]
-#endif
-        ) * a[sELEC] * n_nuclei * n_nuclei;
+  const double nH = XH * n_nuclei;
+  double abundance[N_SP];
+  double production[N_SP];
+  double destruction[N_SP];
 
-  double HI_dot = (workspace->rates.forward[2] * a[sHII] * a[sELEC]
-      + 2.0 * workspace->rates.forward[11] * a[sH2I] * a[sHI]
-      + workspace->rates.forward[12] * a[sH2I] * a[sHII]
-      + 2.0 * workspace->rates.forward[13] * a[sH2I] * a[sELEC]
-#ifdef HELIUM
-      + workspace->rates.forward[15] * a[sHeI] * a[sHII]
-#endif
-      ) * n_nuclei * n_nuclei
-#ifdef THREEBODY
-      + 2.0 * workspace->rates.forward[58] * a[sH2I] * a[sH2I] * n_nuclei * n_nuclei
-#endif
-      + workspace->rates.forward[25] * a[sHM] * n_nuclei
-#ifdef H2_PLUS
-      + workspace->rates.forward[26] * a[sH2II] * n_nuclei
-#endif
-      + 2.0 * workspace->rates.forward[29] * a[sH2I] * n_nuclei
-      - ((workspace->rates.forward[1] * a[sELEC]
-#ifdef H2_PLUS
-          + workspace->rates.forward[10] * a[sH2II]
-#endif
-#ifdef HELIUM
-          + workspace->rates.forward[14] * a[sHeII]
-#endif
-         ) * n_nuclei
-#ifdef THREEBODY
-         + (2.0 * workspace->rates.forward[55] * a[sHI] + 2.0 * workspace->rates.forward[57] * a[sH2I]) *
-           a[sHI] * n_nuclei * n_nuclei
-#endif
-#ifdef H2_FORMATION_ON_DUST
-         + 2.0 * workspace->rates.forward[51]
-#endif
-         + workspace->rates.forward[22]) * a[sHI] * n_nuclei;
+  for(int species = 0; species < N_SP; species++)
+    abundance[species] = state->abund[species] / XH;
 
-  double H2_dot = (workspace->rates.forward[8] * a[sHM] * a[sHI]
-#ifdef H2_PLUS
-      + workspace->rates.forward[10] * a[sH2II] * a[sHI]
-      + workspace->rates.forward[21] * a[sH2II] * a[sHM]
-#endif
-      ) * n_nuclei * n_nuclei
-#ifdef H2_FORMATION_ON_DUST
-      + workspace->rates.forward[51] * a[sHI] * n_nuclei
-#endif
-#ifdef THREEBODY
-      + (workspace->rates.forward[55] * a[sHI] * a[sHI] * a[sHI] * n_nuclei
-         + workspace->rates.forward[57] * a[sHI] * a[sHI] * a[sH2I] * n_nuclei) *
-        n_nuclei * n_nuclei
-#endif
-      - (workspace->rates.forward[11] * a[sHI] * n_nuclei
-         + workspace->rates.forward[12] * a[sHII] * n_nuclei
-         + workspace->rates.forward[13] * a[sELEC] * n_nuclei
-#ifdef THREEBODY
-         + workspace->rates.forward[58] * a[sH2I] * n_nuclei
-#endif
-         + workspace->rates.forward[27] + workspace->rates.forward[29]) * a[sH2I] * n_nuclei;
+  chemistry_network_production_destruction(nH, abundance, workspace->rates.forward, workspace->rates.inverse, production, destruction);
 
-  double timescale = dmin(fabs(a[sELEC] * n_nuclei / electron_dot),
-                          fabs(a[sHI] * n_nuclei / HI_dot));
+  double timescale = dmin(chemistry_species_timescale(abundance[sELEC], production[sELEC], destruction[sELEC]),
+                          chemistry_species_timescale(abundance[sHI], production[sHI], destruction[sHI]));
   if(n_nuclei > 1.0 || n_nuclei > N_THREEBODY)
-    timescale = dmin(timescale, fabs(a[sH2I] * n_nuclei / H2_dot));
+    timescale = dmin(timescale, chemistry_species_timescale(abundance[sH2I], production[sH2I], destruction[sH2I]));
 
   workspace->evaluation.t_chem = timescale;
   evaluate_chemical_energy_timescale(environment, state, workspace);
@@ -742,9 +578,9 @@ int compute_abundances_d(int mode, const chemdata_in *input, chemdata_out *outpu
   ChemEnvironment environment = {0};
   ChemState state;
   ChemWorkspace workspace = {0};
-  
+
   FlagPrint = input->flag_print;
-    
+
   import_environment(input, &environment);
   import_state(output, &state);
 
@@ -753,7 +589,7 @@ int compute_abundances_d(int mode, const chemdata_in *input, chemdata_out *outpu
 
   export_state(&state, output);
   export_workspace(&workspace, output);
-    
+
   return status;
 }
 
@@ -820,7 +656,7 @@ int chemistry_advance(int mode, const ChemEnvironment *environment, double durat
     status = evolve_high_temperature(environment, &step, state, &dtime, workspace);
     if(status != 0 || dtime <= 0.0)
       return status;
-    
+
     update_thermodynamic_state(state, &workspace->thermodynamics);
     T_gas = workspace->thermodynamics.temperature;
   }
@@ -831,14 +667,14 @@ int chemistry_advance(int mode, const ChemEnvironment *environment, double durat
   status |= evaluate_timesteps(environment, &step, state, workspace);
   if(mode==0 || mode ==2)
     return status;
-  
-  if(FlagPrint) 
+
+  if(FlagPrint)
     printf("[Task%d] line=%d n=%g T_gas=%g yi=%g %g %g %g %g dt=%g\n"
 	   , ThisTask, __LINE__, n_nuclei, T_gas
 	   , state->abund[sELEC], state->abund[sHI], state->abund[sHII], state->abund[sH2I], state->abund[sHM], dtime);
 
   double t_now = 0.;    /*    set current time (redshift) */
-    
+
   for(int iter=0;iter<MAX_ITERATION;iter++){
     /*---------  Set the internal time step for subcycling */
     double time1 = All.Epsilon * dmin(fabs(workspace->evaluation.t_cool_rad),
@@ -850,27 +686,27 @@ int chemistry_advance(int mode, const ChemEnvironment *environment, double durat
     if(time3 <= 0.)
       goto LOOP_OUT;
 
-    /* take the minimum */ 
+    /* take the minimum */
     double dt = dmin(time1, dmin(time2,time3));
 
     if(iter >= MAX_ITERATION - 10){
       printf("[iter%d]time=%g %g %g => dt=%g\n",iter, time1, time2, time3, dt);
       printf("t_now=%g,dtime=%g\n",t_now, dtime);
       printf("n_nuclei=%g,Tgas=%g\n", n_nuclei, T_gas);
-    }            
+    }
 
     ChemSolverPlan solvers = select_solvers(n_nuclei, time1, time2, time3);
     dt = solvers.timestep;
 
     workspace->evaluation.flag_implicit = solvers.energy == ENERGY_SOLVER_IMPLICIT ? 1 :
                                           solvers.chemistry != CHEMISTRY_SOLVER_EXPLICIT ? 2 : 0;
-    
+
     if(FlagPrint)
       printf("[Task%d] line=%d iter=%d energy_solver=%d chemistry_solver=%d\n",
              ThisTask, __LINE__, iter, solvers.energy, solvers.chemistry);
 
     double T_gas_in = T_gas;
-    
+
 #if defined(ENERGY_IMPLICIT)
     if(solvers.energy == ENERGY_SOLVER_IMPLICIT){
       workspace->evaluation.flag_convergence = chemistry_noneq_energy_implicit(environment, &step, state, workspace, solvers.chemistry, dt);
@@ -905,20 +741,20 @@ int chemistry_advance(int mode, const ChemEnvironment *environment, double durat
 	  }
 
 	state->gamma = compute_gamma_from_abund(state->abund, T_gas_in);
-	
-	/* Update temperature */ 
+
+	/* Update temperature */
 	int cooling_status = evaluate_radiative_cooling(environment, &step, state, workspace);
 	if(cooling_status)
 	  status = 1;
-	
+
 	double t_cool = dmin(fabs(workspace->evaluation.t_cool_rad), fabs(workspace->evaluation.t_cool_chem));
-		
-	double del_rhoU_rad  = workspace->evaluation.rhoU_dot_rad * dt; 		
+
+	double del_rhoU_rad  = workspace->evaluation.rhoU_dot_rad * dt;
 	double del_rhoU_chem = workspace->evaluation.rhoU_dot_chem * dt; /* erg/cm3 */
-	double del_rhoU_tot  = del_rhoU_rad + del_rhoU_chem;		
-	double del_U_tot     = del_rhoU_tot / rho_cgs; /* delta U in erg/gram */		
-	
-	state->utherm_cgs += del_U_tot;		
+	double del_rhoU_tot  = del_rhoU_rad + del_rhoU_chem;
+	double del_U_tot     = del_rhoU_tot / rho_cgs; /* delta U in erg/gram */
+
+	state->utherm_cgs += del_U_tot;
 	if(FlagPrint)
 	  printf("(line%d) t_cool=%g t_chem=%g\n", __LINE__, t_cool, workspace->evaluation.t_chem);
 
@@ -941,11 +777,11 @@ int chemistry_advance(int mode, const ChemEnvironment *environment, double durat
 #endif
       }
 
-    t_now += dt;      
-            
+    t_now += dt;
+
     update_thermodynamic_state(state, &workspace->thermodynamics);
     T_gas = workspace->thermodynamics.temperature;
-           
+
 #ifdef SET_TMAX
     if(T_gas > SET_TMAX)
       state->utherm_cgs *= SET_TMAX / T_gas;
@@ -959,22 +795,22 @@ int chemistry_advance(int mode, const ChemEnvironment *environment, double durat
 
     /* stop if time = a_end */
     if(dtime - t_now < dtime/MAX_ITERATION)
-      goto LOOP_OUT;      
+      goto LOOP_OUT;
   }  /* iter */
-  
+
  LOOP_OUT:;
 
-  if(FlagPrint) 
+  if(FlagPrint)
     printf("[Task%d] line=%d n=%g T_gas=%g yi=%g %g %g %g %g dt=%g\n"
 	   , ThisTask, __LINE__, n_nuclei, T_gas
 	   , state->abund[sELEC], state->abund[sHI], state->abund[sHII], state->abund[sH2I], state->abund[sHM], dtime);
-  
+
 #ifdef CHEMISTRY_IMPLICIT
   workspace->evaluation.t_chem = MAX_REAL_NUMBER;
 #else
   workspace->evaluation.t_chem = fabs(workspace->evaluation.t_chem);
 #endif
-  
+
 #ifdef ENERGY_IMPLICIT
   workspace->evaluation.t_cool_rad = MAX_REAL_NUMBER;
   workspace->evaluation.t_cool_chem = MAX_REAL_NUMBER;
@@ -1017,10 +853,10 @@ static int evaluate_timesteps(const ChemEnvironment *environment, const ChemStep
 /* ----- Compute cooling time of gas and
    ----- solve for thermal energy.  */
 int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemStepData *step, const ChemState *state, ChemWorkspace *work)
-{  
+{
   const double T_gas = work->thermodynamics.temperature;
   const double rho_gas = environment->rho_cgs;
-  const double n_nuclei = rho_gas/PROTONMASS;  
+  const double n_nuclei = rho_gas/PROTONMASS;
 #ifdef METALLICITY
   const double metallicity = environment->metallicity;
 #endif
@@ -1028,28 +864,28 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   const double tau_cont = work->continuum.tau;
   const double continuum_reduction_factor = work->continuum.reduction_factor;
 #endif
-  
+
   const double ln_T0 = log(T_start);
   const double ln_T9 = log(T_end);
-  
+
   /* --------- Compute temperature index.  */
   double ln_T = log(T_gas);
   if (ln_T < ln_T0) ln_T = ln_T0;
   if (ln_T > ln_T9) ln_T = ln_T9;
-  
+
   volatile int i_T = (int)( (ln_T-ln_T0)/dln_T ) ;
-  
-  if (i_T > N_T-2) i_T = N_T - 2;     /* [i_T+1] appears below */  
+
+  if (i_T > N_T-2) i_T = N_T - 2;     /* [i_T+1] appears below */
   if (i_T < 0    ) i_T = 0;
-  
+
   const double c_T = (T_gas - T_table[i_T])/(T_table[i_T+1]-T_table[i_T]);
-  
+
   /* --------- Interpolate temperature dependent coefficients. */
 #ifdef HLINE_COOLING_THIN
-  double ceHI  = ceHIa[i_T]   + c_T*(ceHIa[i_T+1] -ceHIa[i_T]);  
+  double ceHI  = ceHIa[i_T]   + c_T*(ceHIa[i_T+1] -ceHIa[i_T]);
 #endif
 
-#ifndef CONTINUUM_COOLING_MATSUKOBA  
+#ifndef CONTINUUM_COOLING_MATSUKOBA
   double reHII = reHIIa[i_T]  + c_T*(reHIIa[i_T+1]-reHIIa[i_T]);
   double brem  = brema[i_T]   + c_T*(brema[i_T+1] -brema[i_T]);
   double cie   = H2_CIE[i_T]  + c_T*(H2_CIE[i_T+1]-H2_CIE[i_T]);
@@ -1067,23 +903,23 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   double reHeII1= reHeII1a[i_T] + c_T*(reHeII1a[i_T+1]-reHeII1a[i_T]);
   double reHeII2= reHeII2a[i_T] + c_T*(reHeII2a[i_T+1]-reHeII2a[i_T]);
   double reHeIII= reHeIIIa[i_T] + c_T*(reHeIIIa[i_T+1]-reHeIIIa[i_T]);
-#endif 
-#endif 
-  
-  /* ========= Compton heating =========================================================*/  
-  double comp1 = 5.65e-36*pow(environment->scale_factor,-4);    
+#endif
+#endif
+
+  /* ========= Compton heating =========================================================*/
+  double comp1 = 5.65e-36*pow(environment->scale_factor,-4);
   double edot_comp = -comp1*(T_gas-environment->cmb_temperature)*state->abund[sELEC]*n_nuclei;
-  
-  /**********************************************************************************************/ 
-  /************************ line cooling by H, He, H2, HD, CI, OII ******************************/ 
-  /**********************************************************************************************/ 
+
+  /**********************************************************************************************/
+  /************************ line cooling by H, He, H2, HD, CI, OII ******************************/
+  /**********************************************************************************************/
 
 #ifdef UPDATE_L_CORE_IN_SOLVER
   const double l_core = get_core_radius(rho_gas, T_gas);
 #else
   const double l_core = step->jeans_length;
 #endif
-  
+
   /******************************* Hydrogen lines ***********************************************/
   double edot_ceHI = 0.;
 #ifdef HLINE_COOLING_THIN
@@ -1093,7 +929,7 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
     double edot_Lya, edot_2ph;
     double v_thermal = sqrt(BOLTZMANN * T_gas/PROTONMASS);
     double fesc = fesc_Lya(n_nuclei, T_gas, state->abund[sHI], state->abund[sELEC], l_core, v_thermal, &edot_Lya, &edot_2ph);
-    
+
     edot_ceHI = edot_Lya;
   }
 #endif
@@ -1110,7 +946,7 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   double denom = work->rates.forward[4]*work->rates.forward[6] + work->rates.forward[3]*work->rates.forward[6] + work->rates.forward[3]*work->rates.forward[5];
   if(denom < 1.e-100)
     denom = 1.e-100;
-  
+
   double fHeI_eq   = XHe * work->rates.forward[4]*work->rates.forward[6] / denom;
   double fHeII_eq  = XHe * work->rates.forward[3]*work->rates.forward[6] / denom;
   double fHeIII_eq = XHe * work->rates.forward[3]*work->rates.forward[5] / denom;
@@ -1118,17 +954,17 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
 
   double edot_ceHeI  = -ceHeI * fHeI_eq  * felec_new * n_nuclei * n_nuclei;
   double edot_ceHeII = -ceHeII* fHeII_eq * felec_new * n_nuclei * n_nuclei;
-#endif      
+#endif
 
 
-  /******************************* H2 & HD lines ***********************************************/  
+  /******************************* H2 & HD lines ***********************************************/
   double nH  = n_nuclei * XH;
   double yHI = state->abund[sHI]    / XH;
   double yHII = state->abund[sHII]  / XH;
   double yH2I = state->abund[sH2I]  / XH;
-  double y_e  = state->abund[sELEC] / XH;  
+  double y_e  = state->abund[sELEC] / XH;
 #ifdef HELIUM
-  double yHeI = state->abund[sHeI]  / XH;  
+  double yHeI = state->abund[sHeI]  / XH;
 #else
   double yHeI = XHe / XH;
 #endif
@@ -1137,25 +973,25 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
 #endif
 
   double edot_H2 = H2_cooling(nH, T_gas, yHI, yH2I, yHeI, yHII, y_e);
-#ifdef HD  
+#ifdef HD
   double edot_HD = HD_cooling(nH, T_gas, yHI, yHDI);
 #endif
 
 
-#ifdef H2_OPACITY  /* accounting for the local optical depth to H2 lines   */ 
+#ifdef H2_OPACITY  /* accounting for the local optical depth to H2 lines   */
   if(n_nuclei > 1.0e4){
     double N_H2 = l_core * n_nuclei * state->abund[sH2I];
     double f_reduce_H2 = H2_line_escape_fraction(T_gas, N_H2);
     work->diagnostics.H2_escape_fraction = f_reduce_H2;
-    
+
     if(n_nuclei >= N_EQCHEM) f_reduce_H2 = 0.;
     if(f_reduce_H2 > 1.) f_reduce_H2 = 1.;
-    
+
     if(f_reduce_H2 < 0){ /* something wrong */
       fflush(stdout);
       endrun();
     }
-    
+
     edot_H2 *= f_reduce_H2;
 
     if(FlagPrint)
@@ -1165,28 +1001,28 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
     double N_HD = l_core * n_nuclei * state->abund[sHDI];
     double f_reduce_HD = HD_line_escape_fraction(T_gas, N_HD);
     work->diagnostics.HD_escape_fraction = f_reduce_HD;
-    
+
     if(n_nuclei >= N_EQCHEM) f_reduce_HD = 0.;
     if(f_reduce_HD > 1.) f_reduce_HD = 1.;
-    
+
     if(f_reduce_HD < 0){ /* something wrong */
       fflush(stdout);
       endrun();
     }
-    
+
     edot_HD *= f_reduce_HD;
 #endif
-  } 
+  }
 #endif
 
-  /******************************* CII & OI lines ***********************************************/  
+  /******************************* CII & OI lines ***********************************************/
 #ifdef METALLICITY
   if(FlagPrint)
     printf("f_metal=%g\n", metallicity);
-  
-  double nOI  = n_nuclei * XH * Y_O_sun * metallicity;  
-  double nCI  = n_nuclei * XH * Y_C_sun * metallicity;  
-  double nCII = n_nuclei * XH * Y_C_sun * metallicity;  
+
+  double nOI  = n_nuclei * XH * Y_O_sun * metallicity;
+  double nCI  = n_nuclei * XH * Y_C_sun * metallicity;
+  double nCII = n_nuclei * XH * Y_C_sun * metallicity;
   double ne   = state->abund[sELEC] * n_nuclei;
 
   double cool_rate_OI  = OxygenI_cooling(nOI, ne, nH, T_gas);
@@ -1196,13 +1032,13 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   double edot_OI  = -1.0 * cool_rate_OI;
   double edot_CI  = -1.0 * cool_rate_CI;
   double edot_CII = -1.0 * cool_rate_CII;
-#endif  
+#endif
 
-  /******************************************************************************************/ 
-  /********************** continuu cooling (brems, H-fb, CIE, etc) **************************/ 
-  /******************************************************************************************/ 
+  /******************************************************************************************/
+  /********************** continuu cooling (brems, H-fb, CIE, etc) **************************/
+  /******************************************************************************************/
 
-#ifdef CONTINUUM_COOLING_MATSUKOBA  
+#ifdef CONTINUUM_COOLING_MATSUKOBA
   double edot_cont = -continuum_cooling_rate_thin(T_gas, rho_gas, state->abund);
 #else
     /* --------- Cooling by CIE  */
@@ -1211,14 +1047,14 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   double edot_reHI    = -reHII*  state->abund[sHII] * state->abund[sELEC] * n_nuclei*n_nuclei;
   double edot_CIE     = -cie  *  state->abund[sH2I] * state->abund[sH2I]  * n_nuclei*n_nuclei;
   double edot_brem    = -brem * state->abund[sHII]  *  state->abund[sELEC]*n_nuclei*n_nuclei;
-  
+
 #ifdef HELIUM
   edot_brem    -= brem*(state->abund[sHeII]+4.0*state->abund[sHeIII]) * state->abund[sELEC]*n_nuclei*n_nuclei;
   double edot_reHeII1 = -reHeII1*state->abund[sHeII] *state->abund[sELEC]*n_nuclei*n_nuclei;
   double edot_reHeII2 = -reHeII2*state->abund[sHeII] *state->abund[sELEC]*n_nuclei*n_nuclei;
   double edot_reHeIII = -reHeIII*state->abund[sHeIII]*state->abund[sELEC]*n_nuclei*n_nuclei;
-#endif  
-#endif  
+#endif
+#endif
 
   /********************** opacity for the continuum process *******************************/
 
@@ -1235,12 +1071,12 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
       printf("edot_dust=%g cont=%g T_dust=%g\n", edot_dust, edot_cont, work->continuum.dust_temperature);
   }
 #endif
-  
+
 #ifdef METAL_LINE_COOLING_SD93
   double edot_metal_SD93 = -1. * get_cooling_rate_SD93(T_gas) * metallicity * n_nuclei * n_nuclei;
 #endif
 
-#ifdef CONT_OPACITY  
+#ifdef CONT_OPACITY
   edot_ceHI *= exp(-tau_cont);
 #if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
   edot_ceHeI *= exp(-tau_cont);
@@ -1260,11 +1096,11 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
 #ifdef METAL_LINE_COOLING_SD93
   edot_metal_SD93 *= exp(-tau_cont);
 #endif
-  
-  edot_cont *= continuum_reduction_factor;
-#endif  
 
-	       
+  edot_cont *= continuum_reduction_factor;
+#endif
+
+
   /* ========= Heating functions ============================================================== */
   /* --------- Photoinization heating */
   double edot_radHI   = step->piHI  *state->abund[sHI]  *n_nuclei;
@@ -1272,11 +1108,11 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   double edot_radHeI  = step->piHeI *state->abund[sHeI] *n_nuclei;
   double edot_radHeII = step->piHeII*state->abund[sHeII]*n_nuclei;
 #endif
-    
+
   /* ========= net cooling rate in erg/sec/cm3 ================================================= */
-  double edot = edot_ceHI + edot_comp + edot_H2     
+  double edot = edot_ceHI + edot_comp + edot_H2
 #if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
-    + edot_ceHeI + edot_ceHeII 
+    + edot_ceHeI + edot_ceHeII
 #ifdef HELIUM
     + edot_ciHeI + edot_ciHeII + edot_ciHeIS
     + edot_reHeII1 + edot_reHeII2 + edot_reHeIII
@@ -1333,9 +1169,9 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
 	   work->continuum.dust_temperature, pow(environment->stellar_rad_flux / STEFAN / 4., 0.25));
 #endif
 #endif
-  
+
 #if defined(DEBUG_CHEMISTRY_SC)
-  work->diagnostics.edot_ceHI = edot_ceHI;	       
+  work->diagnostics.edot_ceHI = edot_ceHI;
   work->diagnostics.edot_comp = edot_comp;
   work->diagnostics.edot_H2 = edot_H2;
 
@@ -1358,7 +1194,7 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   work->diagnostics.edot_brem = edot_brem;
   work->diagnostics.edot_CIE = edot_CIE;
 #endif
-  
+
 #ifdef HD
   work->diagnostics.edot_HD = edot_HD;
 #endif
@@ -1371,15 +1207,15 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   work->diagnostics.edot_dust = edot_dust;
 #ifdef LYMANWERNER
   work->diagnostics.edot_PE = edot_PE;
-#endif		
-#endif		
-#endif		
-    
+#endif
+#endif
+#endif
+
   work->evaluation.rhoU_dot_rad = edot;
-  
+
   double rhoU = state->utherm_cgs * rho_gas; //modified[0814] SphP[ithis].Entropy is not updated.
-  
-  work->evaluation.t_cool_rad = (rhoU/edot); /* in seconds */  
+
+  work->evaluation.t_cool_rad = (rhoU/edot); /* in seconds */
   if(fabs(edot) < 1.0e-40)
     work->evaluation.t_cool_rad = MAX_REAL_NUMBER;
 
@@ -1388,7 +1224,7 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
 
 
 int radiative_cooling_high_T(const ChemEnvironment *environment, const ChemStepData *step, const ChemState *state, ChemWorkspace *work)
-{    
+{
   const double rho_gas = environment->rho_cgs;
   const double n_nuclei  = rho_gas/PROTONMASS;
   const double T_gas = work->thermodynamics.temperature;
@@ -1397,14 +1233,14 @@ int radiative_cooling_high_T(const ChemEnvironment *environment, const ChemStepD
 #else
   const double l_core = step->jeans_length;
 #endif
-  
-  /******************************************************************************************/ 
-  /********************** continuu cooling (brems, H-fb, CIE, etc) **************************/ 
-  /******************************************************************************************/ 
 
-#ifdef CONTINUUM_COOLING_MATSUKOBA  
+  /******************************************************************************************/
+  /********************** continuu cooling (brems, H-fb, CIE, etc) **************************/
+  /******************************************************************************************/
+
+#ifdef CONTINUUM_COOLING_MATSUKOBA
   double edot_cont = -continuum_cooling_rate_thin(T_gas, rho_gas, state->abund);
-#endif  
+#endif
   double edot_reHI = -8.418e-26*pow(T_gas,0.11) * n_nuclei*n_nuclei;
   double edot_brem = -1.43e-27*sqrt(T_gas) * (1. + 4.*XHe/XH) * n_nuclei * n_nuclei;
 
@@ -1420,21 +1256,21 @@ int radiative_cooling_high_T(const ChemEnvironment *environment, const ChemStepD
   /* ========= Heating functions ============================================================== */
   /* --------- Photoinization heating */
   double edot_radHI   = step->piHI  *state->abund[sHI] *n_nuclei;
-    
+
   /* ========= net cooling rate in erg/sec/cm3 ================================================= */
-  double edot = edot_reHI + edot_brem 
+  double edot = edot_reHI + edot_brem
 #ifdef METAL_LINE_COOLING_SD93
     + edot_metal_SD93
 #endif
-#ifdef CONTINUUM_COOLING_MATSUKOBA  
+#ifdef CONTINUUM_COOLING_MATSUKOBA
     + edot_cont
 #endif
     + edot_radHI;
-  
+
   work->evaluation.rhoU_dot_rad = edot;
-  
+
   double rhoU = state->utherm_cgs * rho_gas; //modified[0814] SphP[ithis].Entropy is not updated.
-  
+
   work->evaluation.t_cool_rad = (rhoU/edot); /* in seconds */
 
   if(FlagPrint){
@@ -1446,7 +1282,7 @@ int radiative_cooling_high_T(const ChemEnvironment *environment, const ChemStepD
 	   , edot, edot_reHI, edot_brem, T_gas, rhoU, work->evaluation.t_cool_rad);
 #endif
   }
-  
+
   if(fabs(edot) < 1.0e-40)
     work->evaluation.t_cool_rad = MAX_REAL_NUMBER;
 
@@ -1457,14 +1293,14 @@ int chemical_cooling(const ChemEnvironment *environment, const ChemState *state,
   const double T_gas = work->thermodynamics.temperature;
   const double rho_gas = environment->rho_cgs;
   const double n_nuclei = rho_gas / PROTONMASS;
-  
+
   double edot_H2form,edot_H2form_3body;
   double edot_ciHI, edot_ciHeI, edot_ciHeII;
   double edot_HMform;
 
   enum SPECIES species;
   double d_abundance[N_SP];
-  
+
   /* calculate chemical heating/cooling */
   double n_elec = n_nuclei * state->abund[sELEC];
   double n_HI   = n_nuclei * state->abund[sHI];
@@ -1485,8 +1321,8 @@ int chemical_cooling(const ChemEnvironment *environment, const ChemState *state,
 
   for(int j=0;j<N_SP;j++)
     d_abundance[j] = state->abund[j] - abund_old[j];
-  
-  double n_crit = (1.e6 / sqrt(T_gas)) 
+
+  double n_crit = (1.e6 / sqrt(T_gas))
     / (1.6 * state->abund[sHI] * exp(-(400.0/T_gas)*(400.0/T_gas)) + 1.4 * state->abund[sH2I] * exp(-12000.0/(T_gas + 1200.0)));
 
   /********** Mode 0 is just for evaluating the timescale chemical heating / cooling ********************/
@@ -1497,24 +1333,24 @@ int chemical_cooling(const ChemEnvironment *environment, const ChemState *state,
   if(dt == 0.){
     edot_H2form_HM = eV_to_erg * ( work->rates.forward[8] * n_HM * n_HI * 3.73/ (1. + n_crit/n_HI)
 #ifdef H2_PLUS
-				   + work->rates.forward[10] * n_H2II * n_HI * (1.83 / (1. + n_crit/n_HI)) 
+				   + work->rates.forward[10] * n_H2II * n_HI * (1.83 / (1. + n_crit/n_HI))
 #endif
 				   ); //1.38?? modified to 1.83
 
-    
+
     edot_H2form_dust = 0.;
 #ifdef H2_FORMATION_ON_DUST
     edot_H2form_dust = eV_to_erg * work->rates.forward[51] * n_HI * (0.2 + 4.28/ (1. + n_crit/n_HI));
 #endif
-    
+
     edot_H2form_3body = 0.;
 #ifdef THREEBODY
     edot_H2form_3body = 4.48 * eV_to_erg * ( ( work->rates.forward[55]*n_HI + work->rates.forward[57]*n_H2I ) * n_HI * n_HI
 					     - ( work->rates.forward[11]*n_HI + work->rates.forward[58]*n_H2I) * n_H2I );
-#endif    
+#endif
     edot_H2form = edot_H2form_HM + edot_H2form_3body + edot_H2form_dust;
 
-    edot_ciHI   = -13.598 * eV_to_erg * work->rates.forward[1] * n_HI * n_elec; 
+    edot_ciHI   = -13.598 * eV_to_erg * work->rates.forward[1] * n_HI * n_elec;
 #ifdef HELIUM
     edot_ciHeI  = -24.587 * eV_to_erg * work->rates.forward[3] * n_HeI  * n_elec;
     edot_ciHeII = -54.416 * eV_to_erg * work->rates.forward[5] * n_HeII * n_elec;
@@ -1528,33 +1364,33 @@ int chemical_cooling(const ChemEnvironment *environment, const ChemState *state,
 					  + work->rates.forward[10] * n_H2II * n_HI * 1.83 / (1. + n_nuclei/n_crit)
 #endif
 					  );
- 
+
       edot_H2form_dust_loss = 0.;
 #ifdef H2_FORMATION_ON_DUST
       edot_H2form_dust_loss = eV_to_erg * work->rates.forward[51] * n_HI * 4.28 / (1. + n_nuclei/n_crit);
 #endif
       edot_H2diss_FUV = eV_to_erg * work->rates.forward[29] * n_H2I * 4.48;
-        
+
       edot_H2form_3body = 4.48 * eV_to_erg * d_abundance[sH2I] * n_nuclei / dt;
       edot_H2form_3body_loss = 4.48 * eV_to_erg * ( ( work->rates.forward[55]*n_HI + work->rates.forward[57]*n_H2I ) * n_HI * n_HI ) / (1. + n_nuclei/n_crit);
 
 
-      edot_H2form = edot_H2form_3body - edot_H2form_HM_loss - edot_H2form_dust_loss + edot_H2diss_FUV;    
+      edot_H2form = edot_H2form_3body - edot_H2form_HM_loss - edot_H2form_dust_loss + edot_H2diss_FUV;
 
       edot_H2form_HM = eV_to_erg * ( work->rates.forward[8] * n_HM * n_HI * 3.73/ (1. + n_crit/n_nuclei)
 #ifdef H2_PLUS
-				   + work->rates.forward[10] * n_H2II * n_HI * (1.83 / (1. + n_crit/n_nuclei)) 
+				   + work->rates.forward[10] * n_H2II * n_HI * (1.83 / (1. + n_crit/n_nuclei))
 #endif
 				   ); //1.38?? modified to 1.83
       edot_H2form_dust = eV_to_erg * work->rates.forward[51] * n_HI * (0.2 + 4.28/ (1. + n_crit/n_nuclei));
       edot_H2form_3body = 4.48 * eV_to_erg * ( ( work->rates.forward[55]*n_HI + work->rates.forward[57]*n_H2I ) * n_HI * n_HI
-					       - ( work->rates.forward[11]*n_HI + work->rates.forward[58]*n_H2I) * n_H2I );      
+					       - ( work->rates.forward[11]*n_HI + work->rates.forward[58]*n_H2I) * n_H2I );
       edot_HMform = 0.78 * eV_to_erg * d_abundance[sHM]  * n_nuclei / dt;
     }else{
       edot_H2form = edot_H2form_3body = 4.48 * eV_to_erg * d_abundance[sH2I] * n_nuclei / dt;
       edot_HMform = 0.78 * eV_to_erg * d_abundance[sHM]  * n_nuclei / dt;
     }
-  
+
     edot_ciHI   = -13.598 * eV_to_erg * d_abundance[sHII]    * n_nuclei / dt;
 #ifdef IONIZATION_PHOTON
     edot_ciHI_EUV = 13.598 * eV_to_erg * work->rates.forward[22] * n_HI;
@@ -1572,14 +1408,14 @@ int chemical_cooling(const ChemEnvironment *environment, const ChemState *state,
 	   , n_nuclei, edot_H2form, edot_H2form_3body, edot_H2form_3body_loss, edot_H2form_HM_loss, edot_H2form_dust_loss, edot_H2diss_FUV
 	   , edot_ciHI, edot_ciHI_EUV, edot_HMform, n_crit, d_abundance[sH2I]);
   }
-  
-  work->evaluation.rhoU_dot_chem = edot_H2form + edot_ciHI + edot_HMform;  
+
+  work->evaluation.rhoU_dot_chem = edot_H2form + edot_ciHI + edot_HMform;
   if(dt < 1.e-30){
     work->evaluation.rhoU_dot_chem = 0.;
     edot_H2form = edot_ciHI = edot_HMform = 0.;
   }
 
-  double rhoU = state->utherm_cgs * environment->rho_cgs; 
+  double rhoU = state->utherm_cgs * environment->rho_cgs;
   //modified[0814] in case for SphP[ithis].Entropy is not updated.
 
   work->evaluation.t_cool_chem = (rhoU/work->evaluation.rhoU_dot_chem); /* in seconds */
@@ -1595,7 +1431,7 @@ int chemical_cooling(const ChemEnvironment *environment, const ChemState *state,
 int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, ChemistrySolver chemistry_solver, double dt){
   const double rho_gas = environment->rho_cgs;
   const double T_gas = work->thermodynamics.temperature;
-  
+
   int iter = 0, ITER_reset = 30;
   double denom=0., err, err_chem;
   double e_new;
@@ -1603,13 +1439,13 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
   const double T_max=3.e6, T_min=0.1;
   double T_large, T_small;
   double g = 0., g0, array[1000];
-  
+
   ChemWorkspace work_old = *work;
   ChemState state_old = *state;
   T_gas_init =  T_gas;
 
   T_large = 5000, T_small = 1.5;
-  
+
   T_old = T_gas_init, dT = 1.0e-3 * T_old;
   T_new = T_old;
 
@@ -1641,38 +1477,38 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 
   if(T_temp > 2.e5)
     T_temp = 2.e5;
-  
+
   if(FlagPrint)
     printf("[2]piHI = %g, %g T_temp=%g k22=%g x_neut_eq=%g dt=%g\n", step->piHI, step->piHI, T_temp, step->k22,x_neut_eq, dt);
-  
+
   if(T_temp > T_gas){
     T_old = T_temp;
     dT = 0.1 * T_temp;
     T_new = T_old;
   }
 #endif
-  
+
   /***************************************************************/
-  
+
   while(1){
     err_chem = give_g(environment, step, state, work, chemistry_solver, dt, T_new, &e_new, &g0);
-    
+
     if(err_chem < 1.e-2)
       break;
-    
+
     if(isnan(dT) || isinf(dT)){
       dT = 0.1 * T_new;
       printf("(LINE=%d) dT=nan -> %g g=%g g0=%g denom=%g\n",
 	     __LINE__, dT, g, g0, denom);
     }
-    
+
     if(T_new + dT > T_max)
       T_new = dmax(T_large,T_min) , T_large /= 1.1;
     /*  else if(T_new + dT > 30000) T_new /= 1.1;*/
     else if(T_new + dT < 1.5)
       T_new = dmin(T_small,T_max), T_small *= 1.1;
     else T_new += dT, T_new *=1.001 ;
-    
+
     *work = work_old;
     *state = state_old;
 
@@ -1683,15 +1519,15 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 	     __LINE__, T_gas_init, T_new, T_large, T_small, dT);
       fflush(stdout);
     }
-    
+
     if(iter++ > 20){
       printf("didn't converged chem_loop\n"), err = 1.0;
       goto END;
     }
   }
-	
-	
-#ifdef FLAG_BRENT			
+
+
+#ifdef FLAG_BRENT
   double g_plus = 1.0e30, g_minus = -1.0e30;
   double T_plus, T_minus;
   int flag_brent = 0, sign;
@@ -1699,7 +1535,7 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
   if(g0 > 0) g_plus = g0, T_plus = T_new, sign = 1;
   else g_minus = g0, T_minus = T_new, sign = -1;
 #endif
-  
+
   *work = work_old;
   *state = state_old;
 
@@ -1707,7 +1543,7 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
   T_new = T_old + dT;
 
   int flag_converged = 0;
-	
+
   int j;
   for(j=iter;j<MAX_ITER;j++){
 #ifdef FLAG_BRENT
@@ -1722,7 +1558,7 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
       break;
     }
 
-    if(j==ITER_reset) break;    
+    if(j==ITER_reset) break;
 #endif
 
 
@@ -1742,23 +1578,23 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 	else
 	  denom = -0.01;
       }
-      
+
       dT = BETA_ENERGY*g*(T_old - T_new)/denom;
-      
+
 #ifdef ID_CHEM_DEBUG
       if(FlagPrint)
 	printf("[%d] T=%g dT=%g err_chem=%g\n", j, T_new, dT, err_chem);
 #endif
 
       if(err_chem < 1e-4)
-	break;      
-      
+	break;
+
       if(isnan(dT) || isinf(dT)){
 	dT = 0.1 * T_new;
 	printf("(LINE=%d) dT=nan -> %g g=%g g0=%g denom=%g\n",
 	       __LINE__, dT, g, g0, denom);
       }
-      
+
       T_new_temp = T_new;
 
       if(T_new + dT > T_max)
@@ -1772,31 +1608,31 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
       }else{
 	T_new = T_new_temp + dT;
       }
-      
+
       if(j++ > MAX_ITER){
 	printf("didn't converged T_new=%g dT=%g.\n"
 	       , T_new, dT), err = 1.0;
 	goto END;
       }
-      
+
       *work = work_old;
       *state = state_old;
     }
     /************************************************************/
     /************************************************************/
-    /************************************************************/ 
+    /************************************************************/
 
-#ifdef FLAG_BRENT			
+#ifdef FLAG_BRENT
     if(g > 0){
       if(g < g_plus) g_plus = g, T_plus = T_new;
     }else{
       if(g > g_minus) g_minus = g, T_minus = T_new;
     }
-    
-    if( g*sign < 0 && j>10)  flag_brent = 1;
-#endif    
 
-   
+    if( g*sign < 0 && j>10)  flag_brent = 1;
+#endif
+
+
     array[j] = g, g0 = g;
     T_old = T_new;
 
@@ -1811,7 +1647,7 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
       T_new += dT;
     }
 
-  
+
     if(err < 1.0e-8 || (err < 1.0e-5 && j > 20)){
       flag_converged = 1;
       break;
@@ -1822,14 +1658,14 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
   }
 
 
-#ifdef FLAG_BRENT			
+#ifdef FLAG_BRENT
   if(flag_converged == 0){
     T_new = T_gas_init;
-		
+
     for(;j<MAX_ITER;j++){
       *work = work_old;
       *state = state_old;
-	
+
       d_T = dmax(0.2 * T_new, 2000);
       if(sign > 0)
 	T_new = dmax(T_new-d_T,T_new/10.);
@@ -1837,7 +1673,7 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 	T_new = dmin(T_new + d_T,T_new * 10.);
 
       err_chem = give_g(environment, step, state, work, chemistry_solver, dt, T_new, &e_new, &g);
-	
+
       if(err_chem < 1.e-4 && sign * g < 0.){
 	if(sign > 0)
 	  g_minus = g, T_minus = T_new;
@@ -1847,21 +1683,21 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 	flag_brent = 1;
 	break;
       }
-	
+
       if(isnan(T_new)){
 	printf("[task%03d](iter=%d) T_gas is nan! Ent=%g, elec=%g, HI=%g, HII=%g, H2I=%g\n",
 	       ThisTask, j, state->utherm_cgs,  state->abund[sELEC], state->abund[sHI], state->abund[sHII], state->abund[sH2I]);
 	printf("(LINE%d)T_gas=%g T_new=%g T_l=%g T_s=%g dT=%g\n"
 	       , __LINE__, T_gas_init, T_new, T_large, T_small, dT);
 	fflush(stdout);
-      }			
+      }
 
       if(T_new < T_min || T_new > T_max){
 	printf("didn't converged or T_new(%g) is too low.\n", T_new);
 	err = 1., flag_converged = 0;
 
 	break;
-      }	   
+      }
     }
 
     if(flag_brent == 1){
@@ -1869,7 +1705,7 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
       *state = state_old;
       err = solve_bisection(environment, step, state, work, chemistry_solver, dt, T_minus, g_minus, T_plus, g_plus, &T_new, &e_new, MAX_ITER + 20 - j);
 
-      if(err < 1.e-5) flag_converged = 1;	       	
+      if(err < 1.e-5) flag_converged = 1;
     }
   }
 #endif
@@ -1885,10 +1721,10 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
     printf("not converged(in energy). err=%g id=%d T_old=%g T_new=%g Task=%d\n"
 	   "All.ComovingIntegrationOn=%d, All.Time=%g, dt=%g, n_nuclei=%g, T_gas=%g, gamma=%g;\n"
 	   "yi[0]=%g, yi[1]=%g, yi[2]=%g;\n"
-	   "yi[%d]=%g, yi[%d]=%g;\n",	   
+	   "yi[%d]=%g, yi[%d]=%g;\n",
 	   err, environment->ID, T_gas_init, T_new, ThisTask,
 	   All.ComovingIntegrationOn, All.Time, dt, rho_gas/PROTONMASS, T_gas_init, state_old.gamma,
-	   state_old.abund[sELEC], state_old.abund[sHI], state_old.abund[sHII], 
+	   state_old.abund[sELEC], state_old.abund[sHI], state_old.abund[sHII],
 	   sH2I, state_old.abund[sH2I], sHM, state_old.abund[sHM]);
 #ifdef H2_PLUS
     printf("yi[%d]=%g;\n", sH2II, state_old.abund[sH2II]);
@@ -1899,8 +1735,8 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 #endif
 #ifdef HD
     printf("yi[%d]=%g, yi[%d]=%g, yi[%d]=%g;\n",
-	   sDI,   state_old.abund[sDI], 
-	   sDII,  state_old.abund[sDII], 
+	   sDI,   state_old.abund[sDI],
+	   sDII,  state_old.abund[sDII],
 	   sHDI,  state_old.abund[sHDI]);
 #endif
 
@@ -1918,8 +1754,8 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 #ifdef METALLICITY
     printf("All.G0=%g;\n", All.G0);
 #endif
-#endif    
-#endif        
+#endif
+#endif
 
 #ifdef IONIZATION_PHOTON
     printf("step->k22=%g, step->piHI=%g;\n"
@@ -1939,7 +1775,7 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
     *state = state_old;
     return 1;
   }
-  
+
 
   return 0;
 }
@@ -1951,7 +1787,7 @@ static double evaluate_g(const ChemEnvironment *environment, const ChemStepData 
   ChemWorkspace work_trial = *work;
   ChemState state_trial = *state;
   double e_old = state_trial.utherm_cgs;
-  
+
   work_trial.thermodynamics.temperature = T_gas_new;
 #ifdef SAHA
   if(chemistry_solver == CHEMISTRY_SOLVER_SAHA)
@@ -1960,10 +1796,10 @@ static double evaluate_g(const ChemEnvironment *environment, const ChemStepData 
 #endif
     chemistry_noneq_chem_implicit(environment, step, &state_trial, &work_trial, dt);
   evaluate_radiative_cooling(environment, step, &state_trial, &work_trial);
-  
+
   double T_gamma = chemistry_temperature(state_trial.abund, state_trial.gamma, state_trial.utherm_cgs);
   state_trial.gamma = compute_gamma_from_abund(state_trial.abund, T_gamma);
-  
+
   double gamma_new = state_trial.gamma;
   double xmu_new = chemistry_molecular_weight(state_trial.abund);
 
@@ -1982,12 +1818,12 @@ static double evaluate_g(const ChemEnvironment *environment, const ChemStepData 
   if(FlagPrint)
     printf("resid(e_new-e_old-de)=%g e_new=%g old=%g de=%g Tgas=%g rhoU_dot_chem=%g cool=%g rho_gas=%g dt=%g xmu=%g gamma=%g\n"
 	   , *g, *e_new, e_old, de, T_gas_new, work_trial.evaluation.rhoU_dot_chem, work_trial.evaluation.rhoU_dot_rad, environment->rho_cgs, dt, xmu_new, gamma_new);
-  
+
   if(commit){
     *state = state_trial;
     *work = work_trial;
   }
-  
+
   return work_trial.evaluation.err_chem;
 }
 
@@ -2008,624 +1844,183 @@ double solve_bisection(const ChemEnvironment *environment, const ChemStepData *s
   double val_a, val_b;
   double val_new;
   double e_new;
-  
+
   if(g_min * g_max > 0){
     printf("something wrong in solve_bisection."
 	   " g_min and g_max must have opposite sign.\n");
     return 1.e30;
   }
-  
+
   T_a = T_min, val_a = g_min;
   T_b = T_max, val_b = g_max;
   T_cand = 0.5 * (T_a + T_b);
   e_new = *e_new0;
-  
+
   iter = 0;
   while(iter < max_iter && err > 1.0e-6){
     T_cand = 0.5 * (T_a + T_b);
-    
+
     err = give_g(environment, step, state, work, chemistry_solver, dt, T_cand, &e_new, &val_new);
 
     if(val_a * val_new < 0) T_b = T_cand, val_b = val_new;
     else T_a = T_cand, val_a = val_new;
-      
+
     err = fabs( (T_a - T_b)/T_b );
-    
+
     if( err < 1.0e-5) break;
 
     iter++;
   }
-	
+
   *T_new0 = T_cand;
   *e_new0 = e_new;
-	
+
   return err;
 }
 #endif
 
 
-int chemistry_noneq_exp_nometal(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, double dt)
+static void chemistry_explicit_update_species(enum SPECIES species, double nH, double dt, const double *initial_abundance, double *abundance, const ChemRates *rates)
 {
-  enum SPECIES species;
+  double production[N_SP];
+  double destruction[N_SP];
+  chemistry_network_production_destruction(nH, abundance, rates->forward, rates->inverse, production, destruction);
+  abundance[species] = (initial_abundance[species] + production[species] * dt) /
+                       (1.0 + destruction[species] * dt);
+  if(abundance[species] < 0.0)
+    abundance[species] = 0.0;
+}
 
-  double Ccoef,Dcoef,correction;
-  double HIp,HIIp,elecp;
-  double H2Ip,HMp;
-	
-  double t_min, elec_dot, HI_dot, H2I_dot;	
-
-#ifdef HD
-  double DIp, DIIp, HDIp, HDIIp, DMp;
-#endif
-
-  const double rho_gas = environment->rho_cgs;
-  const double n_nuclei = rho_gas/PROTONMASS;
-  const double T_gas = work->thermodynamics.temperature;
-  
-  evaluate_reaction_rates(environment, step, state, work);
-  
-  double abund_old[N_SP];
-  for(int j=0;j<N_SP;j++)
-    abund_old[j]  = state->abund[j];
-
-  /* ----------- HI */  
-  //added reaction 16,17,18,20,21[chon140112]
-
-  Ccoef = (work->rates.forward[2]  * state->abund[sHII]  * state->abund[sELEC] 
-	   + work->rates.forward[11] * state->abund[sH2I]  * state->abund[sHI]   *2.
-	   + work->rates.forward[12] * state->abund[sH2I]  * state->abund[sHII]  
-	   + work->rates.forward[13] * state->abund[sH2I]  * state->abund[sELEC] *2.
-#ifdef HELIUM
-	   + work->rates.forward[15] * state->abund[sHeI]  * state->abund[sHII]
-#endif
-	   + work->rates.forward[16] * state->abund[sHM] * state->abund[sELEC]
-	   + work->rates.forward[17] * state->abund[sHM] * state->abund[sHI]
-	   + 2 * work->rates.forward[18] * state->abund[sHM] * state->abund[sHII]
+static void chemistry_explicit_enforce_constraints(ChemState *state)
+{
+  double correction = H_number_fraction /
+      (state->abund[sHI] + state->abund[sHII] + state->abund[sHM] + 2.0 * state->abund[sH2I]
 #ifdef H2_PLUS
-	   + work->rates.forward[20] * state->abund[sH2II] * state->abund[sELEC] *2.
-	   + work->rates.forward[21] * state->abund[sH2II] * state->abund[sHM] 
+       + 2.0 * state->abund[sH2II]
 #endif
 #ifdef HD
-	   + work->rates.forward[32] * state->abund[sDI] * state->abund[sHII] 
-#endif
-	   )*n_nuclei*n_nuclei
-#ifdef THREEBODY
-    + work->rates.forward[58] * state->abund[sH2I]  * state->abund[sH2I]  * n_nuclei*n_nuclei *2.
-#endif
-    + work->rates.forward[25] * state->abund[sHM]   * n_nuclei
-#ifdef H2_PLUS
-    + work->rates.forward[26] * state->abund[sH2II] * n_nuclei
-#endif
-    + work->rates.forward[29] * state->abund[sH2I]  * n_nuclei * 2.
-    ;
-
-    
-  Dcoef = (  work->rates.forward[1]  * state->abund[sELEC]
-#ifdef H2_PLUS
-	     + work->rates.forward[10] * state->abund[sH2II]
-#endif
-#ifdef HELIUM
-	     + work->rates.forward[14] * state->abund[sHeII] 
-#endif
-#ifdef HD
-	     + work->rates.forward[33] * state->abund[sDII]
-	     + work->rates.forward[38] * state->abund[sHDI]
-#endif
-	     ) * n_nuclei
-#ifdef THREEBODY
-    + (work->rates.forward[55] * state->abund[sHI]  * 2.
-       +  work->rates.forward[57] * state->abund[sH2I] * 2. )* state->abund[sHI] * n_nuclei*n_nuclei
-#endif
-#ifdef H2_FORMATION_ON_DUST
-    + 2. * work->rates.forward[51]
-#endif
-    + work->rates.forward[22];
-
-
-  HI_dot = fabs(Ccoef - Dcoef);  
-  HIp   = (Ccoef*dt + state->abund[sHI]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-
-
-  /* ----------- HII */
-  Ccoef = work->rates.forward[1]  * HIp * state->abund[sELEC] * n_nuclei*n_nuclei
-#ifdef H2_PLUS
-    + work->rates.forward[10] * HIp * state->abund[sH2II] * n_nuclei*n_nuclei 
-#endif
-#ifdef HELIUM
-    + work->rates.forward[14] * HIp * state->abund[sHeII] * n_nuclei*n_nuclei
-#endif
-    + work->rates.forward[22] * HIp * n_nuclei
-#ifdef H2_PLUS
-    + work->rates.forward[26] * state->abund[sH2II] * n_nuclei
-    + work->rates.forward[28] * state->abund[sH2II] * n_nuclei * 2
-#endif
-    /*added by chon[131221] */
-#ifdef HD
-    + work->rates.forward[33] * HIp * state->abund[sDII] * n_nuclei * n_nuclei
-    + work->rates.forward[37] * state->abund[sH2I] * state->abund[sDII] * n_nuclei * n_nuclei
+       + state->abund[sHDI]
 #ifdef HD_PLUS
-    + work->rates.forward[36] * HIp * state->abund[sHDII] * n_nuclei * n_nuclei
-    + work->rates.forward[52] * state->abund[sHDII] * n_nuclei
+       + state->abund[sHDII]
 #endif
 #endif
-    /*[131221]*/
-    ;
+      );
 
-  Dcoef = (work->rates.forward[2]  * state->abund[sELEC]
-#ifdef H2_PLUS
-	   + work->rates.forward[9]  * HIp             
-	   + work->rates.forward[12] * state->abund[sH2I]
-#endif
-#ifdef HELIUM 
-	   + work->rates.forward[15] * state->abund[sHeI]
-#endif
-	   )* n_nuclei
-    /*added by chon[131221] */
-    + work->rates.forward[18] * state->abund[sHM] * n_nuclei
-#ifdef H2_PLUS
-    + work->rates.forward[19] * state->abund[sHM] * n_nuclei
-#endif
-#ifdef HD
-    + (work->rates.forward[32] * state->abund[sDI] 
-       + work->rates.forward[39] * state->abund[sHDI]
-#ifdef HD_PLUS
-       + work->rates.forward[40] * state->abund[sDI]
-#endif
-#ifdef DMINUS
-       + work->rates.forward[45] * state->abund[sDM] 
-#endif
-       ) *n_nuclei /* modified state->abund[sHDI] -> state->abund[sDM] [0926]*/ 
-#endif
-    /*[131221]*/
-    ;
-
-    
-  HIIp  = (Ccoef*dt + state->abund[sHII]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-    
-#ifdef HELIUM
-  /* ----------- HeI */
-  Ccoef = (work->rates.forward[4]  * state->abund[sHeII] * state->abund[sELEC]
-	   + work->rates.forward[14] * HIp              * state->abund[sHeII])*n_nuclei*n_nuclei;
-  
-  Dcoef = work->rates.forward[3]  * state->abund[sELEC] * n_nuclei 
-    + work->rates.forward[15] * HIIp             * n_nuclei
-    + work->rates.forward[24];
-  
-  double HeIp  = (Ccoef*dt + state->abund[sHeI]*n_nuclei) / ( 1. + Dcoef*dt ) / n_nuclei;
-
-
-  /* ----------- HeII */
-  Ccoef = work->rates.forward[3]  * HeIp              * state->abund[sELEC] * n_nuclei*n_nuclei
-    + work->rates.forward[6]  * state->abund[sHeIII] * state->abund[sELEC] * n_nuclei*n_nuclei
-    + work->rates.forward[15] * HeIp              * HIIp             * n_nuclei*n_nuclei
-    + work->rates.forward[24] * HeIp*n_nuclei;
-
-  Dcoef = work->rates.forward[4]  * state->abund[sELEC] * n_nuclei
-    + work->rates.forward[5]  * state->abund[sELEC] * n_nuclei
-    + work->rates.forward[14] * HIp              * n_nuclei
-    + work->rates.forward[23]; 
-
-  double HeIIp  = (Ccoef*dt + state->abund[sHeII]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-
-      
-  /* ----------- HeIII */
-  Ccoef = work->rates.forward[5]  * HeIIp * state->abund[sELEC] * n_nuclei*n_nuclei
-    + work->rates.forward[23] * HeIIp * n_nuclei;
-      
-  Dcoef = work->rates.forward[6] * state->abund[sELEC] * n_nuclei;
-    
-  double HeIIIp = (Ccoef*dt + state->abund[sHeIII]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-
-
-  if(HeIp   < 0) HeIp   = 0.;
-  if(HeIIp  < 0) HeIIp  = 0.;
-  if(HeIIIp < 0) HeIIIp = 0.;
-
-  state->abund[sHeI]   = HeIp;
-  state->abund[sHeII]  = HeIIp;
-  state->abund[sHeIII] = HeIIIp;
-#endif
-  
-  /* --------- elec */
-  Ccoef = (work->rates.forward[22] *HIp  
-#ifdef HELIUM	
-	   + work->rates.forward[23] *HeIIp
-	   + work->rates.forward[24] *HeIp 
-#endif
-	   )*n_nuclei;
-  
-  Dcoef = - (work->rates.forward[1]*HIp   - work->rates.forward[2]*HIIp
-#ifdef HELIUM	
-	     + work->rates.forward[3]*HeIp  - work->rates.forward[6]*HeIIIp
-	     + work->rates.forward[5]*HeIIp - work->rates.forward[4]*HeIIp
-#endif
-	     )*n_nuclei;
-
-  elec_dot = fabs(Ccoef - Dcoef);  
-  elecp = (Ccoef*dt + state->abund[sELEC]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-
-
-  if(HIp   < 0) HIp   = 0;
-  if(HIIp  < 0) HIIp  = 0;
-  if(elecp < 0) elecp = 0;
-    
-
-  state->abund[sHI]   = HIp;
-  state->abund[sHII]  = HIIp;    
-  state->abund[sELEC] = elecp;
-
-
-  /* --------- H2 */
-  /* [SH131015 : crazyyyyyyy] */
-  
-  /* HM fast reactions */
-  /*
-    denom = (work->rates.forward[8] + work->rates.forward[17]) * state->abund[sHI] 
-    + (work->rates.forward[18]+ work->rates.forward[19]) * state->abund[sHII] 
-    +  work->rates.forward[16]         * state->abund[sELEC] 
-    +  work->rates.forward[25]/n_nuclei;
-  
-    state->abund[sHM] = (work->rates.forward[7]*state->abund[sHI]*state->abund[sELEC]) / denom;
-  */
-  Ccoef = work->rates.forward[7]*state->abund[sHI]*state->abund[sELEC] * n_nuclei*n_nuclei
-#ifdef HD
-#ifdef DMINUS
-    + work->rates.forward[47] * HIp * state->abund[sDM] *n_nuclei*n_nuclei
-#endif
-#endif
-    ;
-
-  Dcoef = ((work->rates.forward[8] + work->rates.forward[17]) * state->abund[sHI] 
-	   + work->rates.forward[18] * state->abund[sHII] 
-#ifdef H2_PLUS
-	   + work->rates.forward[19] * state->abund[sHII] 
-#endif
-	   + work->rates.forward[16] * state->abund[sELEC]  
-	   ) * n_nuclei
-    +  work->rates.forward[25]
-#ifdef HD	       
-#ifdef DMINUS
-    +  work->rates.forward[46] * state->abund[sDI] *n_nuclei
-#endif
-#endif
-    ;
-  
-  HMp = (Ccoef*dt + state->abund[sHM]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-
-
-  /* H2II fast reactions */
-  /*  denom = work->rates.forward[10]*state->abund[sHI] 
-      + work->rates.forward[20]*state->abund[sELEC] 
-      + work->rates.forward[21]*state->abund[sHM] 
-      +(work->rates.forward[26]+work->rates.forward[28])/n_nuclei;
-    
-      state->abund[sH2II] = (  work->rates.forward[9] * state->abund[sHI]  * state->abund[sHII]
-      + work->rates.forward[12] * state->abund[sH2I] * state->abund[sHII]
-      + work->rates.forward[19] * state->abund[sHM]  * state->abund[sHII]
-      + work->rates.forward[27] * state->abund[sH2I]/n_nuclei         )/ denom; */
-
-  /* noneq H2II added by chon.[131228]*/
-
-#ifdef H2_PLUS
-  Ccoef = ( work->rates.forward[9] * state->abund[sHI]  * state->abund[sHII]
-	    +work->rates.forward[12] * state->abund[sH2I] * state->abund[sHII] 
-	    +work->rates.forward[19] * HMp  * state->abund[sHII] )*n_nuclei *n_nuclei
-    + work->rates.forward[27]* state->abund[sH2I]*n_nuclei;
-
-  Dcoef = (   work->rates.forward[10]*state->abund[sHI] 
-	      + work->rates.forward[20]*state->abund[sELEC]
-	      + work->rates.forward[21]*HMp ) *n_nuclei
-    +work->rates.forward[26] + work->rates.forward[28];
-
-  double H2IIp = (Ccoef*dt + state->abund[sH2II]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-#endif
-
-
-  Ccoef = ( work->rates.forward[8]  * HMp   * state->abund[sHI]
-#ifdef H2_PLUS
-	    + work->rates.forward[10] * H2IIp * state->abund[sHI]
-	    + work->rates.forward[21] * H2IIp * HMp
-#endif
-#ifdef HD
-	    + work->rates.forward[38] * HIp * state->abund[sHDI] 
-	    + work->rates.forward[39] * HIIp * state->abund[sHDI]
-#endif
-	    ) *n_nuclei*n_nuclei
-#ifdef THREEBODY
-    +( work->rates.forward[55] * state->abund[sHI]   * state->abund[sHI] * state->abund[sHI]
-       + work->rates.forward[57] * state->abund[sHI]   * state->abund[sHI] * state->abund[sH2I] )*n_nuclei*n_nuclei*n_nuclei
-#endif
-#ifdef H2_FORMATION_ON_DUST
-    + work->rates.forward[51] * state->abund[sHI]*n_nuclei
-#endif
-    ;
-    
-  Dcoef = (work->rates.forward[11] * state->abund[sHI] 
-#ifdef H2_PLUS
-	   + work->rates.forward[12] * HIIp 
-#endif
-	   + work->rates.forward[13] * state->abund[sELEC]
-#ifdef HD
-	   + work->rates.forward[35] * state->abund[sDI]  
-	   + work->rates.forward[37] * state->abund[sDII]  
-#endif
-	   )*n_nuclei
-#ifdef THREEBODY
-    + work->rates.forward[58] * state->abund[sH2I] * n_nuclei
-#endif
-    + work->rates.forward[27] 
-    + work->rates.forward[29];
-
-  H2I_dot = fabs(Ccoef - Dcoef);  
-  H2Ip = (Ccoef*dt + state->abund[sH2I]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-
-  if(HMp < 0) HMp = 0;
-#ifdef H2_PLUS
-  if(H2IIp < 0) H2IIp = 0;
-#endif
-  if(H2Ip < 0) H2Ip = 0;
-
-  state->abund[sHM] = HMp;
-#ifdef H2_PLUS
-  state->abund[sH2II] = H2IIp;
-#endif
-  state->abund[sH2I] = H2Ip;
-  
-  
-#ifdef HD
-
-  DIp=DIIp=HDIp=HDIIp=DMp=0;
-
-  /* ----------- DI */
-  Ccoef  = //work->rates.forward[31] * state->abund[sDII] * state->abund[sELEC] * n_nuclei*n_nuclei
-    work->rates.forward[33] * state->abund[sDII] * HIp   * n_nuclei*n_nuclei
-    + work->rates.forward[38] * state->abund[sHDI] * HIp   * n_nuclei*n_nuclei
-#ifdef HD_PLUS
-    + work->rates.forward[42] * state->abund[sHDII]* state->abund[sELEC] * n_nuclei*n_nuclei
-    + work->rates.forward[52] * state->abund[sHDII]* n_nuclei
-#endif
-#ifdef DMINUS
-    + work->rates.forward[44] * state->abund[sDII] * state->abund[sDM]   * n_nuclei*n_nuclei * 2.0 
-    + work->rates.forward[45] * HIIp * state->abund[sDM]   * n_nuclei*n_nuclei
-    + work->rates.forward[47] * HIp  * state->abund[sDM]   * n_nuclei*n_nuclei
-#endif
-    + work->rates.forward[53] * state->abund[sHDI] * n_nuclei;
-	     
-  Dcoef = ( work->rates.forward[32] * HIIp
-	    //+ work->rates.forward[34] * state->abund[sHI] 
-	    + work->rates.forward[35] * H2Ip
-#ifdef HD_PLUS
-	    + work->rates.forward[40] * HIIp
-#endif
-#ifdef DMINUS
-	    + work->rates.forward[43] * state->abund[sELEC]
-#endif
-	    )* n_nuclei
-    + work->rates.forward[50];
-
-  DIp   = (Ccoef*dt + state->abund[sDI]*n_nuclei)  / (1. + Dcoef*dt) / n_nuclei;
-  
-  
-  /* ----------- DII */
-  Ccoef = work->rates.forward[32] * DIp                 * HIIp * n_nuclei*n_nuclei
-    + work->rates.forward[39] * state->abund[sHDI] * HIIp * n_nuclei*n_nuclei
-    + work->rates.forward[50] * DIp                 * n_nuclei
-#ifdef HD_PLUS
-    + work->rates.forward[51] * state->abund[sHDII]* n_nuclei
-#endif
-    ;
-
-  Dcoef = ( //work->rates.forward[31] * state->abund[sELEC]
-	    work->rates.forward[33] * HIp
-	    + work->rates.forward[37] * H2Ip
-#ifdef DMINUS
-	    + work->rates.forward[41] * HIp
-	    + work->rates.forward[44] * state->abund[sDM]  
-#endif
-	    ) * n_nuclei;
-	    
-  DIIp  = (Ccoef*dt + state->abund[sDII]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-
-
-  /* ----------- HDI */
-  Ccoef = ( //work->rates.forward[34] * DIp            * state->abund[sHI]  
-	    work->rates.forward[35] * DIp            * H2Ip
-	    + work->rates.forward[37] * DIIp           * H2Ip
-#ifdef HD_PLUS
-	    + work->rates.forward[36] * HIp * state->abund[sHDII]
-#endif	      
-#ifdef DMINUS
-	    + work->rates.forward[48] * HIp * state->abund[sDM]  
-#endif
-	    )* n_nuclei*n_nuclei;
-
-  Dcoef = work->rates.forward[38] * HIp * n_nuclei
-    + work->rates.forward[39] * HIIp * n_nuclei
-    + work->rates.forward[53];
-
-  HDIp  = (Ccoef * dt + state->abund[sHDI] * n_nuclei) / (1. +  Dcoef * dt) / n_nuclei;
-    
-#ifdef HD_PLUS
-  /* ----------- HDII */
-  Ccoef = ( work->rates.forward[40] * DIp  * state->abund[sHII]
-	    + work->rates.forward[41] * DIIp * state->abund[sHI] ) * n_nuclei*n_nuclei;
-      
-  Dcoef = work->rates.forward[36] * state->abund[sHI]   * n_nuclei
-    + work->rates.forward[42] * state->abund[sELEC] * n_nuclei
-    + work->rates.forward[51]
-    + work->rates.forward[52];
-
-  HDIIp = (Ccoef*dt + state->abund[sHDII]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-#endif
-    
-#ifdef DMINUS    
-  /* ----------- DM */
-  Ccoef = ( work->rates.forward[43] * DIp  * state->abund[sELEC]
-	    + work->rates.forward[46] * DIp  * state->abund[sHM]  ) * n_nuclei*n_nuclei;
-      
-  Dcoef = ( work->rates.forward[44] * DIIp           
-	    + work->rates.forward[45] * state->abund[sHII]
-	    + work->rates.forward[47] * state->abund[sHI] 
-	    + work->rates.forward[48] * state->abund[sHI]  ) * n_nuclei;
-    
-  DMp   = (Ccoef*dt + state->abund[sDM]*n_nuclei) / (1. + Dcoef*dt) / n_nuclei;
-#endif
-      
-  if(DIp    < 0) DIp   =0;
-  if(DIIp   < 0) DIIp  =0;
-  if(HDIp   < 0) HDIp  =0;
-  state->abund[sDI]    = DIp;
-  state->abund[sDII]   = DIIp;
-  state->abund[sHDI]   = HDIp;   
-
-#ifdef HD_PLUS
-  if(HDIIp  < 0) HDIIp =0;
-  state->abund[sHDII]  = HDIIp;
-#endif
-#ifdef DMINUS
-  if(DMp    < 0) DMp   =0;
-  state->abund[sDM]    = DMp;    
-#endif  
-#endif       
-    
-  /* --------- Undertake mass conservation corrections. */
-  
-  //state->abund[sELEC] = 0.0;
-  
-  correction = H_number_fraction / (state->abund[sHI] 
-				    +   state->abund[sHII] 
-				    +   state->abund[sHM] 
-				    + 2*state->abund[sH2I]
-#ifdef H2_PLUS
-				    + 2*state->abund[sH2II]
-#endif
-#ifdef HD
-				    +   state->abund[sHDI] 
-#ifdef HD_PLUS
-				    +   state->abund[sHDII]
-#endif
-#endif
-				    );
-  
-  if(0)
-    if(correction > 2.0 || correction < 0.5){
-      printf("H! ThisTask %d correction=%g\n"
-	     , ThisTask, correction);
-      fflush(stdout);
-      endrun();
-    }
-
-  
-  state->abund[sHI]  *= correction;
+  state->abund[sHI] *= correction;
   state->abund[sHII] *= correction;
-  //state->abund[sELEC]+= state->abund[sHII];
-    
-  state->abund[sHM]   *= correction;
-  state->abund[sH2I]  *= correction;
+  state->abund[sHM] *= correction;
+  state->abund[sH2I] *= correction;
 #ifdef H2_PLUS
   state->abund[sH2II] *= correction;
 #endif
-  //state->abund[sELEC]  = state->abund[sELEC] - state->abund[sHM] + state->abund[sH2II];
-  
 
 #ifdef HD
-  correction = D_number_fraction / (state->abund[sDI] 
-				    + state->abund[sDII]
-				    + state->abund[sHDI]
+  correction = D_number_fraction /
+      (state->abund[sDI] + state->abund[sDII] + state->abund[sHDI]
 #ifdef HD_PLUS
-				    + state->abund[sHDII]
+       + state->abund[sHDII]
 #endif
 #ifdef DMINUS
-				    + state->abund[sDM]
+       + state->abund[sDM]
 #endif
-				    );
-
-  if(0)
-    if(correction > 2.0 || correction < 0.5){
-      printf("D! ThisTask %d correction=%g\n"
-	     , ThisTask, correction);
-      fflush(stdout);
-      endrun();
-    } 
-
-  state->abund[sDI]   *= correction;
-  state->abund[sDII]  *= correction;
-  state->abund[sHDI]  *= correction;
+      );
+  state->abund[sDI] *= correction;
+  state->abund[sDII] *= correction;
+  state->abund[sHDI] *= correction;
 #ifdef HD_PLUS
   state->abund[sHDII] *= correction;
 #endif
 #ifdef DMINUS
-  state->abund[sDM]   *= correction;
+  state->abund[sDM] *= correction;
 #endif
-  //state->abund[sELEC]  = state->abund[sELEC] + state->abund[sDII] +  state->abund[sHDII] - state->abund[sDM];
-#endif 
-  
-  
+#endif
+
 #ifdef HELIUM
-  correction = He_number_fraction / (state->abund[sHeI] 
-				     + state->abund[sHeII] 
-				     + state->abund[sHeIII]);
-
-  if(0)
-    if(correction > 1.1 || correction < 0.9){
-      printf("He! ThisTask %d correction=%g %g %g %g\n"
-	     , ThisTask, correction, state->abund[sHeI], state->abund[sHeII], state->abund[sHeIII]);
-      fflush(stdout);
-      endrun();
-    }
-  
-  state->abund[sHeI]   *= correction;
-  state->abund[sHeII]  *= correction;
+  correction = He_number_fraction /
+      (state->abund[sHeI] + state->abund[sHeII] + state->abund[sHeIII]);
+  state->abund[sHeI] *= correction;
+  state->abund[sHeII] *= correction;
   state->abund[sHeIII] *= correction;
-  //state->abund[sELEC]  = state->abund[sELEC] + state->abund[sHeII] + 2.*state->abund[sHeIII];
 #endif
 
-  /*[SH130423: elec calculation]*/
-
-  state->abund[sELEC] = 0.0;
-
-  state->abund[sELEC] += state->abund[sHII];
-
-  state->abund[sELEC]  = state->abund[sELEC] - state->abund[sHM];
-
+  state->abund[sELEC] = state->abund[sHII] - state->abund[sHM];
 #ifdef H2_PLUS
   state->abund[sELEC] += state->abund[sH2II];
 #endif
-
 #ifdef HD
-  state->abund[sELEC]  += state->abund[sDII]; 
+  state->abund[sELEC] += state->abund[sDII];
 #ifdef HD_PLUS
-  state->abund[sELEC]  += state->abund[sHDII];
+  state->abund[sELEC] += state->abund[sHDII];
 #endif
 #ifdef DMINUS
-  state->abund[sELEC]  -= state->abund[sDM];
+  state->abund[sELEC] -= state->abund[sDM];
 #endif
 #endif
-
 #ifdef HELIUM
-  state->abund[sELEC]  = state->abund[sELEC] + state->abund[sHeII] + 2.*state->abund[sHeIII];
+  state->abund[sELEC] += state->abund[sHeII] + 2.0 * state->abund[sHeIII];
 #endif
-
-  if(isnan(state->abund[sHI])){
-    printf("[task%03d]HI is nan (ID=%d, dt=%g, rho_gas=%g, T_gas=%g)\n", ThisTask, environment->ID, dt, rho_gas, T_gas);
-    return 2;
-  }
-  if(isnan(T_gas)){
-    printf("[task%03d]line=%d T_gas is nan (dt=%g, rho_gas=%g, T_gas=%g)\n", ThisTask, __LINE__, dt, rho_gas, T_gas);
-    return 2;
-  }
-
-  /* added[0813] */
-  t_min = dmin(fabs(state->abund[sELEC] * n_nuclei/elec_dot), fabs(state->abund[sHI] * n_nuclei/HI_dot));
-  t_min = dmin(t_min, fabs(state->abund[sH2I] * n_nuclei/H2I_dot));
-
-  work->evaluation.t_chem = t_min;
-
-  chemical_cooling(environment, state, work, dt, abund_old);  
-
-  return 1; 
 }
 
+int chemistry_noneq_exp_nometal(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, double dt)
+{
+  const double nH = XH * environment->rho_cgs / PROTONMASS;
+  const double temperature = work->thermodynamics.temperature;
+  double abund_old[N_SP];
+  double initial_abundance[N_SP];
+  double abundance[N_SP];
+
+  evaluate_reaction_rates(environment, step, state, work);
+
+  for(int species = 0; species < N_SP; species++) {
+    abund_old[species] = state->abund[species];
+    initial_abundance[species] = state->abund[species] / XH;
+    abundance[species] = initial_abundance[species];
+  }
+
+  chemistry_explicit_update_species(sHI, nH, dt, initial_abundance, abundance, &work->rates);
+  chemistry_explicit_update_species(sHII, nH, dt, initial_abundance, abundance, &work->rates);
+#ifdef HELIUM
+  chemistry_explicit_update_species(sHeI, nH, dt, initial_abundance, abundance, &work->rates);
+  chemistry_explicit_update_species(sHeII, nH, dt, initial_abundance, abundance, &work->rates);
+  chemistry_explicit_update_species(sHeIII, nH, dt, initial_abundance, abundance, &work->rates);
+#endif
+  chemistry_explicit_update_species(sELEC, nH, dt, initial_abundance, abundance, &work->rates);
+  chemistry_explicit_update_species(sHM, nH, dt, initial_abundance, abundance, &work->rates);
+#ifdef H2_PLUS
+  chemistry_explicit_update_species(sH2II, nH, dt, initial_abundance, abundance, &work->rates);
+#endif
+  chemistry_explicit_update_species(sH2I, nH, dt, initial_abundance, abundance, &work->rates);
+#ifdef HD
+  chemistry_explicit_update_species(sDI, nH, dt, initial_abundance, abundance, &work->rates);
+  chemistry_explicit_update_species(sDII, nH, dt, initial_abundance, abundance, &work->rates);
+  chemistry_explicit_update_species(sHDI, nH, dt, initial_abundance, abundance, &work->rates);
+#ifdef HD_PLUS
+  chemistry_explicit_update_species(sHDII, nH, dt, initial_abundance, abundance, &work->rates);
+#endif
+#ifdef DMINUS
+  chemistry_explicit_update_species(sDM, nH, dt, initial_abundance, abundance, &work->rates);
+#endif
+#endif
+
+  for(int species = 0; species < N_SP; species++)
+    state->abund[species] = abundance[species] * XH;
+  chemistry_explicit_enforce_constraints(state);
+
+  if(isnan(state->abund[sHI])) {
+    printf("[task%03d]HI is nan (ID=%d, dt=%g, rho_gas=%g, T_gas=%g)\n",
+           ThisTask, environment->ID, dt, environment->rho_cgs, temperature);
+    return 2;
+  }
+  if(isnan(temperature)) {
+    printf("[task%03d]line=%d T_gas is nan (dt=%g, rho_gas=%g, T_gas=%g)\n",
+           ThisTask, __LINE__, dt, environment->rho_cgs, temperature);
+    return 2;
+  }
+
+  evaluate_chemistry_timescale(environment, state, work);
+  chemical_cooling(environment, state, work, dt, abund_old);
+  return 1;
+}
 
 #define MAX_ITER_CHEM 1000
 #define ITER_RESET 40
@@ -2679,10 +2074,10 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 {
   int n_sp;
   int inc, info;
-	
+
   enum SPECIES species;
   const ChemState state_old = *state;
-  
+
   n_sp = N_SP;
   inc  = 1   ;
 
@@ -2690,11 +2085,11 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   const double n_nuclei  = rho_gas/PROTONMASS;
   const double nH = XH * n_nuclei;
   const double T_gas = work->thermodynamics.temperature;
-  
+
   evaluate_reaction_rates(environment, step, state, work);
-  
+
   double yi[n_sp];
-       
+
   yi[sELEC]  = state->abund[sELEC]/XH;
   yi[sHI]    = state->abund[sHI]/XH;
   yi[sHII]   = state->abund[sHII]/XH;
@@ -2703,7 +2098,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   yi[sHeII]  = state->abund[sHeII]/XH;
   yi[sHeIII] = state->abund[sHeIII]/XH;
 #endif
-  
+
   yi[sH2I]   = state->abund[sH2I]/XH;
 #ifdef H2_PLUS
   yi[sH2II]  = state->abund[sH2II]/XH;
@@ -2720,8 +2115,8 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   yi[sDM]    = state->abund[sDM]/XH;
 #endif
 #endif
-		
-  int i_sp,j_sp,itr,ifunc;
+
+  int i_sp,j_sp,itr;
   int err_flag = 0, ipiv[n_sp];
   double drfdy[n_sp][n_sp],dy[n_sp];
   double y_init[n_sp], abund_init[n_sp];
@@ -2732,7 +2127,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   double err,err_max,t_chem1,t_chem2;
 
   y_min[sELEC] = 1.e-80,  y_mean[sELEC]  = 1.e-15   ,  y_max[sELEC]  = 2.0;
-  
+
   if(yi[sELEC] > y_min[sELEC])
     yi_ion = yi[sELEC]/y_mean[sELEC];
   else
@@ -2752,7 +2147,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 #endif
 #ifdef HD
   y_min[sDI]   = 1.e-25,  y_mean[sDI]    = 4.e-05        ,  y_max[sDI]    = D_number_fraction/XH * 1.001;
-  y_min[sDII]  = 1.e-30,  y_mean[sDII]   = 6.e-09 *yi_ion,  y_max[sDII]   = D_number_fraction/XH * 1.001; 
+  y_min[sDII]  = 1.e-30,  y_mean[sDII]   = 6.e-09 *yi_ion,  y_max[sDII]   = D_number_fraction/XH * 1.001;
   y_min[sHDI]  = 1.e-30,  y_mean[sHDI]   = 1.e-08        ,  y_max[sHDI]   = D_number_fraction/XH * 1.001;
 #ifdef HD_PLUS
   y_min[sHDII] = 1.e-30,  y_mean[sHDII]  = 2.e-18 *yi_ion,  y_max[sHDII]  = 0.5*D_number_fraction/XH;
@@ -2763,9 +2158,9 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 #endif
 
   for(i_sp=0;i_sp<n_sp;i_sp++) {
-    y_mean[i_sp] /= XH;    
+    y_mean[i_sp] /= XH;
     y_init[i_sp] = yi[i_sp];
-    
+
     if(yi[i_sp] < y_min[i_sp]/* || yi[i_sp] > y_max[i_sp]*/){
       y_init[i_sp] = y_mean[i_sp];
       yi[i_sp]     = y_mean[i_sp];
@@ -2817,7 +2212,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
     if(flag_reset >= 4){
     }
-    
+
     for(i_sp=0;i_sp<n_sp;i_sp++){
       dy[i_sp] = yi[i_sp] - y_init[i_sp];
     }
@@ -2828,19 +2223,19 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
   if(FlagPrint)
     printf("T_gas=%g y=%g %g %g %g %g\n", T_gas, yi[sELEC], yi[sHI], yi[sHII], yi[sH2I], yi[sHM]);
-  
+
   while(itr<=MAX_ITER_CHEM && flag_conv < 2) {  // iteration
 #ifdef HMINUS_EQ
     yi[sHM] =
       (work->rates.forward[7]*yi[sHI]*yi[sELEC]+k_inverse[8]*yi[sH2I]*yi[sELEC]+k_inverse[18]*yi[sHI]*yi[sHI])
       /(k_inverse[7]+work->rates.forward[8]*yi[sHI]+work->rates.forward[18]*yi[sHII]+work->rates.forward[25]);
 #endif
-    
-    ifunc=ReactionRates_nometal(itr,nH,yi,work->rates.forward,work->rates.inverse,rf_tot);
-    
+
+    chemistry_network_rhs(nH, yi, work->rates.forward, work->rates.inverse, rf_tot);
+
     if(FlagPrint){
       printf("[%d] T_gas=%g err=%g flag=%d y=%g %g %g %g %g rf_tot=%g %g %g %g %g dt=%g\n"
-	     , itr, T_gas, err_max, err_flag, yi[sELEC], yi[sHI], yi[sHII], yi[sH2I], yi[sHM], rf_tot[sELEC], rf_tot[sHI], rf_tot[sHII], rf_tot[sH2I], rf_tot[sHM], dt);    
+	     , itr, T_gas, err_max, err_flag, yi[sELEC], yi[sHI], yi[sHII], yi[sH2I], yi[sHM], rf_tot[sELEC], rf_tot[sHI], rf_tot[sHII], rf_tot[sH2I], rf_tot[sHM], dt);
       printf("[%d] T_gas=%g y_H2=%g dy=%g resid=%g\n", itr, T_gas, yi[sH2I], yi[sH2I]-y_init[sH2I], rf_tot[sH2I]*dt);
     }
 #ifdef ID_CHEM_DEBUG
@@ -2857,9 +2252,9 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
     for(j_sp=0;j_sp<n_sp;j_sp++) {
 #ifdef CHEM_DIFF_ANALYTIC
-      ifunc=ReactionRates_diff_nometal_fp(itr, j_sp, nH, yi, work->rates.forward, work->rates.inverse, drfdy[j_sp]);
+      chemistry_network_jacobian_column(j_sp, nH, yi, work->rates.forward, work->rates.inverse, drfdy[j_sp]);
 #else
-      double Dyi, epsilon_y = 1.0e-10, epsilon = 1.0e-4;      
+      double Dyi, epsilon_y = 1.0e-10, epsilon = 1.0e-4;
       if(fabs(yi[j_sp])<1.0e-100) Dyi = epsilon_y;
       else                       Dyi = epsilon*yi[j_sp];
 
@@ -2870,11 +2265,11 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
       }
 
       double rf_f[n_sp],rf_b[n_sp];
-      ifunc=ReactionRates_nometal(itr,nH,y_tmp,work->rates.forward,work->rates.inverse,rf_f);
-      
+      chemistry_network_rhs(nH, y_tmp, work->rates.forward, work->rates.inverse, rf_f);
+
       y_tmp[j_sp]=yi[j_sp]-0.5*Dyi;
-      ifunc=ReactionRates_nometal(itr,nH,y_tmp,work->rates.forward,work->rates.inverse,rf_b);
-      
+      chemistry_network_rhs(nH, y_tmp, work->rates.forward, work->rates.inverse, rf_b);
+
       for(i_sp=0;i_sp<n_sp;i_sp++) {
 	double drf, rf_big;
 	drfdy[j_sp][i_sp]=(rf_f[i_sp]-rf_b[i_sp])/Dyi;
@@ -2891,27 +2286,27 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
 #ifdef ID_CHEM_DEBUG
     if(FlagPrint){
-      for(j_sp=0;j_sp<n_sp;j_sp++) 
+      for(j_sp=0;j_sp<n_sp;j_sp++)
 	printf("[%d] drfdy[%d]=%g %g %g %g %g %g %g %g\n"
-	       , itr, j_sp, drfdy[j_sp][0], drfdy[j_sp][1], drfdy[j_sp][2], drfdy[j_sp][3], drfdy[j_sp][4], drfdy[j_sp][5], drfdy[j_sp][6], drfdy[j_sp][7]);      
-      
+	       , itr, j_sp, drfdy[j_sp][0], drfdy[j_sp][1], drfdy[j_sp][2], drfdy[j_sp][3], drfdy[j_sp][4], drfdy[j_sp][5], drfdy[j_sp][6], drfdy[j_sp][7]);
+
     }
 #endif
-		
+
     for(j_sp=0;j_sp<n_sp;j_sp++) {
       for(i_sp=0;i_sp<n_sp;i_sp++) {
 	if(i_sp!=j_sp) AA[j_sp * n_sp + i_sp] =    -dt*drfdy[j_sp][i_sp];
 	else           AA[j_sp * n_sp + i_sp] = 1.0-dt*drfdy[j_sp][i_sp];
       }
     }
-    
+
     for(i_sp=0;i_sp<n_sp;i_sp++) {
       ddy[i_sp]=rf_tot[i_sp]*dt - dy[i_sp];
     }
-		    
+
     dgesv_(&n_sp, &inc, AA, &n_sp, ipiv, ddy, &n_sp, &info);    //compile with -llapack -lblas
 
-    /****************************************/  
+    /****************************************/
     for(i_sp=0;i_sp<n_sp;i_sp++) {
       ddy[i_sp] *= BETA;
     }
@@ -2921,22 +2316,22 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
     for(i_sp=0;i_sp<n_sp;i_sp++) {
       dy[i_sp] += ddy[i_sp]; //dy[] is recalculated at the end of the loop
-      yi[i_sp] += ddy[i_sp];      
+      yi[i_sp] += ddy[i_sp];
     }
-    
+
     for(i_sp=0;i_sp<n_sp;i_sp++) {
 #ifdef HMINUS_EQ
-      if(i_sp == sHM) continue;	
+      if(i_sp == sHM) continue;
 #endif
-      
+
       if(yi[i_sp]!=0.0) err=fabs(ddy[i_sp]/yi[i_sp]);
       else              err=0.0;
       if(err>err_max && yi[i_sp] > 1.0e-10) err_max=err, err_flag = i_sp;
     }
-    
+
     for(i_sp=0;i_sp<n_sp;i_sp++)
       dy[i_sp] = yi[i_sp] - y_init[i_sp];
-    
+
     if(itr >= 20) ErrMaxCrit = 1.e-4;
     if(err_max < ErrMaxCrit) flag_conv++;
     else flag_conv = 0;
@@ -2948,7 +2343,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
     itr++;
   }   // iteration
- 
+
   if(err_max<1.0e-6) {
     t_chem1 = 1.0e20;
     for(i_sp=0;i_sp<n_sp;i_sp++) {
@@ -2956,7 +2351,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 	t_chem2 = fabs((yi[i_sp]+y_init[i_sp])/2.0 / (yi[i_sp]-y_init[i_sp])) * dt;
 	if(t_chem2<t_chem1) t_chem1 = t_chem2;
       }
-			
+
       work->evaluation.t_chem = t_chem1;
     }
   }else{
@@ -2964,7 +2359,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
       printf("iteration is not converged err=%le(in %d),itr=%d,"
 	     " id=%d.\n dt=%g, rho=%g, T_gas=%g, n_nuclei=%g;\n"
 	     "y[%d]=%g, y[%d]=%g, y[%d]=%g, ",
-	     err_max, err_flag, itr, 
+	     err_max, err_flag, itr,
 	     environment->ID, dt, rho_gas, T_gas, n_nuclei,
 	     sELEC, yi[sELEC], sHI, yi[sHI], sHII, yi[sHII]);
 
@@ -2978,14 +2373,14 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
       printf("y[%d]=%g\n", sHM, yi[sHM]);
 
 #ifdef HD
-      printf("y[%d]=%g, y[%d]=%g y[%d]=%g", sDI, yi[sDI], sDII, yi[sDII], sHDI, yi[sHDI]);	     	     
+      printf("y[%d]=%g, y[%d]=%g y[%d]=%g", sDI, yi[sDI], sDII, yi[sDII], sHDI, yi[sHDI]);
 #ifdef HD_PLUS
-      printf(" y[%d]=%g", sHDII, yi[sHDII]);      
+      printf(" y[%d]=%g", sHDII, yi[sHDII]);
 #endif
 #ifdef HD_MINUS
-      printf(" y[%d]=%g", sDM, yi[sDM]);      
+      printf(" y[%d]=%g", sDM, yi[sDM]);
 #endif
-      printf("\n");      
+      printf("\n");
 #endif
 
       printf("yi[%d]=%g, yi[%d]=%g, yi[%d]=%g, ",
@@ -3000,14 +2395,14 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
       printf("yi[%d]=%g\n", sHM, y_init[sHM]);
 
 #ifdef HD
-      printf("yi[%d]=%g, yi[%d]=%g yi[%d]=%g", sDI, y_init[sDI], sDII, y_init[sDII], sHDI, y_init[sHDI]);	     	     
+      printf("yi[%d]=%g, yi[%d]=%g yi[%d]=%g", sDI, y_init[sDI], sDII, y_init[sDII], sHDI, y_init[sHDI]);
 #ifdef HD_PLUS
-      printf(" yi[%d]=%g", sHDII, y_init[sHDII]);      
+      printf(" yi[%d]=%g", sHDII, y_init[sHDII]);
 #endif
 #ifdef HD_MINUS
-      printf(" yi[%d]=%g", sDM, y_init[sDM]);      
+      printf(" yi[%d]=%g", sDM, y_init[sDM]);
 #endif
-      printf("\n");      
+      printf("\n");
 #endif
 
       work->evaluation.err_chem = err_max;
@@ -3020,12 +2415,12 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 	  t_chem2 = fabs((yi[i_sp]+y_init[i_sp])/2.0 / (yi[i_sp]-y_init[i_sp])) * dt;
 	  if(t_chem2<t_chem1) t_chem1 = t_chem2;
 	}
-			
+
 	work->evaluation.t_chem = t_chem1;
       }
     }
   }
-  
+
   work->evaluation.err_chem = err_max;
 
   state->abund[sELEC] =yi[sELEC] *XH;
@@ -3036,13 +2431,13 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   state->abund[sHeII] =yi[sHeII] *XH;
   state->abund[sHeIII]=yi[sHeIII]*XH;
 #endif
-  
+
   state->abund[sH2I]  =yi[sH2I]  *XH;
 #ifdef H2_PLUS
   state->abund[sH2II] =yi[sH2II] *XH;
 #endif
   state->abund[sHM]   =yi[sHM]   *XH;
-#ifdef HD    
+#ifdef HD
   state->abund[sDI]   =yi[sDI]   *XH;
   state->abund[sDII]  =yi[sDII]  *XH;
   state->abund[sHDI]  =yi[sHDI]  *XH;
@@ -3054,7 +2449,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 #endif
 #endif
 
-  /* The legacy solver evaluates chemical heating/cooling from the converged,
+  /* The Newton solver evaluates chemical heating/cooling from the converged,
      unclamped Newton solution.  Keep that ordering while making state carry
      the new abundances consumed by chemical_cooling(). */
   chemical_cooling(environment, state, work, dt, abund_init);
@@ -3077,7 +2472,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 #else
   double l_core = step->jeans_length;
 #endif
-  double t_ff =  compute_freefall_time(rho_gas); 
+  double t_ff =  compute_freefall_time(rho_gas);
   solve_level_population_H_new(T_gas, ni, l_core, t_ff);
 #endif
 
@@ -3087,1222 +2482,6 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
 #pragma optimize("", on)
 #undef MAX_ITER_CHEM
-
-static inline int ReactionRates_nometal(int itr, double nH, double *yi, double *k, double *k_inverse, double *rf_tot)
-{
-  int i_sp, n_sp = N_SP;
-  int i_re, n_re = N_RE;
-  double rate;
-  double rf[n_re][n_sp],ni[n_sp];
-	
-  enum REACTIONS reactions;
-  enum SPECIES species;
-
-  for(i_sp=0;i_sp<n_sp;i_sp++) {
-    ni[i_sp]=yi[i_sp]*nH;
-  }
-  
-  for(i_re=0;i_re<n_re;i_re++)
-    for(i_sp=0;i_sp<n_sp;i_sp++) 
-      rf[i_re][i_sp]=0.0;
-	
-  rate = k[1]*ni[sHI]*ni[sELEC];
-  rf[RE1][sELEC] =  rate;
-  rf[RE1][sHI] = -rate;
-  rf[RE1][sHII] =  rate;
-
-  rate = k[2]*ni[sHII]*ni[sELEC];
-  rf[RE2][sELEC]  = -rate;
-  rf[RE2][sHI]  =  rate;
-  rf[RE2][sHII]  = -rate;
-  
-  rate = k[30]*ni[sHI]*ni[sHI];
-  rf[RE30][sELEC] = rate;
-  rf[RE30][sHI] = -rate;
-  rf[RE30][sHII] =  rate;
-
-#ifdef HELIUM
-  rate = k[3]*ni[sHeI]*ni[sELEC];
-  rf[RE3][sELEC]  =  rate;
-  rf[RE3][sHeI]  = -rate;
-  rf[RE3][sHeII]  =  rate;
-  
-  rate = k[4]*ni[sHeII]*ni[sELEC];
-  rf[RE4][sELEC] = -rate;
-  rf[RE4][sHeI] =  rate;
-  rf[RE4][sHeII] = -rate;
-  
-  rate = k[5]*ni[sHeII]*ni[sELEC];
-  rf[RE5][sELEC] =  rate;
-  rf[RE5][sHeII] = -rate;
-  rf[RE5][sHeIII] =  rate;
-  
-  rate = k[6]*ni[sHeIII]*ni[sELEC];
-  rf[RE6][sELEC] = -rate;
-  rf[RE6][sHeII] =  rate;
-  rf[RE6][sHeIII] = -rate;
-#endif  
-
-  rate = k[7]*ni[sHI]*ni[sELEC];
-  rf[RE7][sELEC] = -rate;
-  rf[RE7][sHI] = -rate;
-  rf[RE7][sHM] = rate;
-  
-  if(FlagPrint)
-    printf("rf[%d]=%g k=%g ni[HI]=%g ni[sELEC]=%g ni[sHM]=%g\n", RE7, rf[RE7][sH2I], k[7], ni[sHI], ni[sELEC], ni[sHM]);     
-
-  rate = k[8]*ni[sHM]*ni[sHI];
-  rf[RE8][sHM] = -rate;
-  rf[RE8][sHI] = -rate;
-  rf[RE8][sH2I] =  rate;
-  rf[RE8][sELEC] =  rate;
-
-  if(FlagPrint)
-    printf("rf[%d]=%g k=%g ni[H2I]=%g ni[sHI]=%g ni[sHM]=%g\n", RE8, rf[RE8][sH2I], k[8], ni[sH2I], ni[sHI], ni[sHM]);     
-
-
-#ifdef H2_PLUS
-  rate = k[9]*ni[sHI]*ni[sHII];
-  rf[RE9][sHI] = -rate;
-  rf[RE9][sHII] = -rate;
-  rf[RE9][sH2II] =  rate;
-  
-  rate = k[10]*ni[sHI]*ni[sH2II];
-  rf[RE10][sHI] = -rate;
-  rf[RE10][sH2II] = -rate;
-  rf[RE10][sH2I] =  rate;
-  rf[RE10][sHII] =  rate;
-#endif
-  
-  rate = k[11]*ni[sH2I]*ni[sHI];
-  rf[RE11][sH2I] = -rate;
-  rf[RE11][sHI] = 2.0*rate;
-
-  if(FlagPrint)
-    printf("rf[%d]=%g k=%g ni[H2I]=%g ni[sHI]=%g\n", RE11, rf[RE11][sH2I], k[11], ni[sH2I], ni[sHI]);     
-  
-#ifdef H2_PLUS  
-  rate = k[12]*ni[sH2I]*ni[sHII];
-  rf[RE12][sH2I] = -rate;
-  rf[RE12][sHII] = -rate;
-  rf[RE12][sH2II] =  rate;
-  rf[RE12][sHI] =  rate;
-#endif  
-
-  rate = k[13]*ni[sH2I]*ni[sELEC];
-  rf[RE13][sH2I] = -rate;
-  rf[RE13][sHI] = 2.0*rate;
-
-  if(FlagPrint)
-    printf("rf[%d]=%g k=%g ni[H2I]=%g ni[sELEC]=%g\n", RE13, rf[RE13][sH2I], k[13], ni[sH2I], ni[sELEC]);     
-  
-#ifdef HELIUM
-  rate = k[14]*ni[sHeII]*ni[sHI];
-  rf[RE14][sHeII] = -rate;
-  rf[RE14][sHI] = -rate;
-  rf[RE14][sHeI] =  rate;
-  rf[RE14][sHII] =  rate;
-	
-  rate = k[15]*ni[sHeI]*ni[sHII];
-  rf[RE15][sHeI] = -rate;
-  rf[RE15][sHII] = -rate;
-  rf[RE15][sHeII] =  rate;
-  rf[RE15][sHI] =  rate;
-#endif	
-
-  rate = k[16]*ni[sHM]*ni[sELEC];
-  rf[RE16][sHM] = -rate;
-  rf[RE16][sELEC] =  rate;
-  rf[RE16][sHI] =  rate;
-	
-  rate = k[17]*ni[sHM]*ni[sHI];
-  rf[RE17][sHM] = -rate;
-  rf[RE17][sHI] =  rate;
-  rf[RE17][sELEC] =  rate;
-	
-  rate = k[18]*ni[sHM]*ni[sHII];
-  rf[RE18][sHM] = -rate;
-  rf[RE18][sHII] = -rate;
-  rf[RE18][sHI] = 2.0*rate;
-
-#ifdef H2_PLUS	
-  rate = k[19]*ni[sHM]*ni[sHII];
-  rf[RE19][sHM] = -rate;
-  rf[RE19][sHII] = -rate;
-  rf[RE19][sH2II] =  rate;
-  rf[RE19][sELEC] =  rate;
-	
-  rate = k[20]*ni[sH2II]*ni[sELEC];
-  rf[RE20][sH2II] = -rate;
-  rf[RE20][sELEC] = -rate;
-  rf[RE20][sHI] = 2.0*rate;
-	
-  rate = k[21]*ni[sH2II]*ni[sHM];
-  rf[RE21][sH2II] = -rate;
-  rf[RE21][sHM] = -rate;
-  rf[RE21][sHI] =  rate;
-  rf[RE21][sH2I] =  rate;
-#endif
-
-#ifdef IONIZATION_PHOTON
-  rate = k[22] * ni[sHI];
-  rf[RE22][sHI]   = -rate;
-  rf[RE22][sHII]  = rate;
-  rf[RE22][sELEC] = rate;
-#endif
-
-#ifdef LYMANWERNER
-  rate = k[25]*ni[sHM];
-  rf[RE25][sHM] = -rate;
-  rf[RE25][sHI] = rate;
-  rf[RE25][sELEC] = rate;
-	
-  rate = k[29]*ni[sH2I];
-  rf[RE29][sH2I] = -rate;
-  rf[RE29][sHI]  = 2*rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k=%g ni[H2I]=%g\n", RE29, rf[RE29][sH2I], k[29], ni[sH2I]);     
-#endif
-	
-#ifdef HD
-
-  /*rate = k[31]*ni[sDII]*ni[sELEC];
-  rf[RE31][sDII] = -rate;
-  rf[RE31][sELEC] = -rate;
-  rf[RE31][sDI] =  rate;
-	
-  rate = k[34]*ni[sDI]*ni[sHI];
-  rf[RE34][sDI] = -rate;
-  rf[RE34][sHI] = -rate;
-  rf[RE34][sHDI] =  rate;
-  */
-
-  rate = k[32]*ni[sDI]*ni[sHII];
-  rf[RE32][sDI] = -rate;
-  rf[RE32][sHII] = -rate;
-  rf[RE32][sDII] =  rate;
-  rf[RE32][sHI] =  rate;
-	
-  rate = k[33]*ni[sDII]*ni[sHI];
-  rf[RE33][sDII] = -rate;
-  rf[RE33][sHI] = -rate;
-  rf[RE33][sDI] =  rate;
-  rf[RE33][sHII] =  rate;
-	
-  rate = k[35]*ni[sDI]*ni[sH2I];
-  rf[RE35][sDI] = -rate;
-  rf[RE35][sH2I] = -rate;
-  rf[RE35][sHI] =  rate;
-  rf[RE35][sHDI] =  rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k=%g ni[H2I]=%g ni[sDI]=%g\n", RE35, rf[RE35][sH2I], k[35], ni[sH2I], ni[sDI]);     
-  
-  rate = k[37]*ni[sDII]*ni[sH2I];
-  rf[RE37][sDII] = -rate;
-  rf[RE37][sH2I] = -rate;
-  rf[RE37][sHII] =  rate;
-  rf[RE37][sHDI] =  rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k=%g ni[H2I]=%g ni[sDII]=%g\n", RE37, rf[RE37][sH2I], k[37], ni[sH2I], ni[sDII]);     
-  
-  rate = k[38]*ni[sHDI]*ni[sHI];
-  rf[RE38][sHDI] = -rate;
-  rf[RE38][sHI] = -rate;
-  rf[RE38][sH2I] =  rate;
-  rf[RE38][sDI] =  rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k=%g ni[HDI]=%g ni[sHI]=%g\n", RE38, rf[RE38][sH2I], k[38], ni[sHDI], ni[sHI]);     
-  
-  rate = k[39]*ni[sHDI]*ni[sHII];
-  rf[RE39][sHDI] = -rate;
-  rf[RE39][sHII] = -rate;
-  rf[RE39][sH2I] =  rate;
-  rf[RE39][sDII] =  rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k=%g ni[HDI]=%g ni[sHII]=%g\n", RE39, rf[RE39][sH2I], k[39], ni[sHDI], ni[sHII]);     
-  
-#ifdef HD_PLUS
-  rate = k[36]*ni[sHDII]*ni[sHI];
-  rf[RE36][sHDII] = -rate;
-  rf[RE36][sHI] = -rate;
-  rf[RE36][sHII] =  rate;
-  rf[RE36][sHDI] =  rate;
-	
-  rate = k[40]*ni[sDI]*ni[sHII];
-  rf[RE40][sDI] = -rate;
-  rf[RE40][sHII] = -rate;
-  rf[RE40][sHDII] =  rate;
-  
-  rate = k[41]*ni[sDII]*ni[sHI];
-  rf[RE41][sDII] = -rate;
-  rf[RE41][sHI] = -rate;
-  rf[RE41][sHDII] =  rate;
-  
-  rate = k[42]*ni[sHDII]*ni[sELEC];
-  rf[RE42][sHDII] = -rate;
-  rf[RE42][sELEC] = -rate;
-  rf[RE42][sHI] =  rate;
-  rf[RE42][sDI] =  rate;
-#endif  
-
-#ifdef DMINUS
-  rate = k[43]*ni[sDI]*ni[sELEC];
-  rf[RE43][sDI] = -rate;
-  rf[RE43][sELEC] = -rate;
-  rf[RE43][sDM] =  rate;
-  
-  rate = k[44]*ni[sDII]*ni[sDM];
-  rf[RE44][sDII] = -rate;
-  rf[RE44][sDM] = -rate;
-  rf[RE44][sDI] =  2.0*rate;
-	
-  rate = k[45]*ni[sHII]*ni[sDM];
-  rf[RE45][sHII] = -rate;
-  rf[RE45][sDM] = -rate;
-  rf[RE45][sHI] =  rate;
-  rf[RE45][sDI] =  rate;
-  
-  rate = k[46]*ni[sHM]*ni[sDI];
-  rf[RE46][sHM] = -rate;
-  rf[RE46][sDI] = -rate;
-  rf[RE46][sHI] =  rate;
-  rf[RE46][sDM] =  rate;
-  
-  rate = k[47]*ni[sDM]*ni[sHI];
-  rf[RE47][sDM] = -rate;
-  rf[RE47][sHI] = -rate;
-  rf[RE47][sHM] =  rate;
-  rf[RE47][sDI] =  rate;
-  
-  rate = k[48]*ni[sDM]*ni[sHI];
-  rf[RE48][sDM] = -rate;
-  rf[RE48][sHI] = -rate;
-  rf[RE48][sHDI] =  rate;
-  rf[RE48][sELEC] =  rate;
-#endif
-	
-#ifdef LYMANWERNER
-  rate = k[53]*ni[sHDI];
-  rf[RE53][sHDI] = -rate;
-  rf[RE53][sHI] = rate;
-  rf[RE53][sDI] = rate;
-#endif
-#endif
-	
-#ifdef THREEBODY
-  rate = k[55]*ni[sHI]*ni[sHI]*ni[sHI];
-  rf[RE55][sHI] = -2.0*rate;
-  rf[RE55][sH2I] =  rate;
-
-  if(FlagPrint)
-    printf("rf[%d]=%g k=%g ni[HI]=%g\n", RE55, rf[RE55][sH2I], k[55], ni[sHI]);     
-  
-  rate = k[57]*ni[sHI]*ni[sHI]*ni[sH2I];
-  rf[RE57][sHI] = -2.0*rate;
-  rf[RE57][sH2I] =  rate;
-
-  if(FlagPrint)
-    printf("rf[%d]=%g k=%g ni[H2I]=%g ni[sHI]=%g\n", RE57, rf[RE57][sH2I], k[57], ni[sHI], ni[sH2I]);     
-  
-  rate = k[58]*ni[sH2I]*ni[sH2I];
-  rf[RE58][sH2I] = -rate;
-  rf[RE58][sHI] = 2.0*rate;
-
-  if(FlagPrint)
-    printf("rf[%d]=%g k=%g ni[H2I]=%g\n", RE58, rf[RE58][sH2I], k[58], ni[sH2I]);     
-#endif
-
-#ifdef H2_FORMATION_ON_DUST
-  rate = k[51]*ni[sHI];
-  rf[RE51][sHI] = -2.0*rate;
-  rf[RE51][sH2I] =  rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k=%g ni[sHI]=%g\n", RE51, rf[RE51][sH2I], k[51], ni[sHI]);     
-#endif
-
-#ifdef INVERSE_REACTIONS
-  rate = k_inverse[1]*ni[sHII]*ni[sELEC]*ni[sELEC];
-  rf[RE1_INV][sHII] = -rate;
-  rf[RE1_INV][sELEC] = -rate;
-  rf[RE1_INV][sHI] = rate;
-
-  //  if(FlagPrint)
-  //printf("rf[%d]=%g k_inv=%g ni[H2I]=%g ni[sELEC]=%g\n", RE1_INV, rf[RE1_INV][sH2I], k_inverse[1], ni[sH2I], ni[sELEC]);     
-
-  rate = k_inverse[2]*ni[sHI];
-  rf[RE2_INV][sHI] = -rate;
-  rf[RE2_INV][sHII] = rate;
-  rf[RE2_INV][sELEC] = rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k_inv=%g ni[H2I]=%g ni[sELEC]=%g\n", RE2_INV, rf[RE2_INV][sH2I], k_inverse[2], ni[sH2I], ni[sELEC]);     
-
-  rate = k_inverse[7]*ni[sHM];
-  rf[RE7_INV][sHM] = -rate;
-  rf[RE7_INV][sHI] = rate;
-  rf[RE7_INV][sELEC] = rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k_inv=%g ni[H2I]=%g ni[sELEC]=%g\n", RE7_INV, rf[RE7_INV][sH2I], k_inverse[7], ni[sH2I], ni[sELEC]);     
-
-  rate = k_inverse[8]*ni[sH2I]*ni[sELEC];
-  rf[RE8_INV][sH2I] = -rate;
-  rf[RE8_INV][sELEC] = -rate;
-  rf[RE8_INV][sHI] = rate;
-  rf[RE8_INV][sHM] = rate;
-
-  //if(FlagPrint)
-  //printf("rf[%d]=%g k_inv=%g ni[H2I]=%g ni[sELEC]=%g\n", RE8_INV, rf[RE8_INV][sH2I], k_inverse[8], ni[sH2I], ni[sELEC]);     
-  
-  rate = k_inverse[13]*ni[sHI]*ni[sHI]*ni[sELEC];
-  rf[RE13_INV][sHI] = -2*rate;
-  rf[RE13_INV][sH2I] = rate;
-
-  //  if(FlagPrint)
-  //printf("rf[%d]=%g k_inv=%g ni[HI]=%g ni[sELEC]=%g\n", RE13_INV, rf[RE13_INV][sH2I], k_inverse[13], ni[sHI], ni[sELEC]);     
-
-  rate = k_inverse[16]*ni[sHI]*ni[sELEC]*ni[sELEC];
-  rf[RE16_INV][sHI] = -rate;
-  rf[RE16_INV][sELEC] = -rate;
-  rf[RE16_INV][sHM] = rate;
-
-  rate = k_inverse[17]*ni[sHI]*ni[sHI]*ni[sELEC];
-  rf[RE17_INV][sHI] = -rate;
-  rf[RE17_INV][sELEC] = -rate;
-  rf[RE17_INV][sHM] = rate;
-
-  rate = k_inverse[18]*ni[sHI]*ni[sHI];
-  rf[RE18_INV][sHI] = -2.*rate;
-  rf[RE18_INV][sHII] = rate;
-  rf[RE18_INV][sHM] = rate;
-
-  rate = k_inverse[30]*ni[sHI]*ni[sHII]*ni[sELEC];
-  rf[RE30_INV][sHII] = -rate;
-  rf[RE30_INV][sELEC] = -rate;
-  rf[RE30_INV][sHI] = rate;
-#endif
-	
-  for(i_sp=0;i_sp<n_sp;i_sp++) {
-    rf_tot[i_sp]=0.0;
-  }
-  
-  for(i_re=0;i_re<n_re;i_re++)
-    for(i_sp=0;i_sp<n_sp;i_sp++){
-      rf_tot[i_sp] += rf[i_re][i_sp];
-
-      if(FlagPrint && i_sp == sH2I && fabs(rf[i_re][i_sp]) > 1.e-100)
-	printf("rf[%d]=%g tot=%g tot/nH=%g\n", i_re, rf[i_re][i_sp], rf_tot[i_sp], rf_tot[i_sp]/nH);
-    }
-  
-	
-  for(i_sp=0;i_sp<n_sp;i_sp++) {
-    rf_tot[i_sp] /= nH;
-  }
-  // rf_tot in unit of dy/dt [/sec]
-  
-  return 1;
-}
-
-
-
-#ifdef CHEM_DIFF_ANALYTIC
-static inline int ReactionRates_diff_nometal_fp(int itr, int i_sp_diff, double nH, double *yi, double *k, double *k_inverse, double *rf_tot)
-{
-  int i_sp, n_sp = N_SP, ifunc;
-  double ni[n_sp];
-	
-  for(i_sp=0;i_sp<n_sp;i_sp++) {
-    ni[i_sp]=yi[i_sp]*nH;
-  }
-  	
-  for(i_sp=0;i_sp<n_sp;i_sp++) 
-    rf_tot[i_sp]=0.0;
-  
-  ifunc = switch_func[i_sp_diff](nH, ni, k, k_inverse, rf_tot);
-
-  return 1;
-}
-
-int ReactionRate_diff_nometal_Elec(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[1]*ni[sHI];
-  rf[sELEC] +=  rate;
-  rf[sHI]   += -rate;
-  rf[sHII]  +=  rate;
-
-  rate = k[2]*ni[sHII];
-  rf[sELEC] += -rate;
-  rf[sHI]   +=  rate;
-  rf[sHII]  += -rate;
-
-#ifdef HELIUM
-  rate = k[3]*ni[sHeI];
-  rf[sELEC] +=  rate;
-  rf[sHeI]  += -rate;
-  rf[sHeII] +=  rate;
-  
-  rate = k[4]*ni[sHeII];
-  rf[sELEC] += -rate;
-  rf[sHeI]  +=  rate;
-  rf[sHeII] += -rate;
-    
-  rate = k[5]*ni[sHeII];
-  rf[sELEC]  +=  rate;
-  rf[sHeII]  += -rate;
-  rf[sHeIII] +=  rate;
-  
-  rate = k[6]*ni[sHeIII];
-  rf[sELEC]  += -rate;
-  rf[sHeII]  +=  rate;
-  rf[sHeIII] += -rate;
-#endif  
-
-  rate = k[7]*ni[sHI];
-  rf[sELEC] += -rate;
-  rf[sHI]   += -rate;
-  rf[sHM]   += rate;
-
-  rate = k[13]*ni[sH2I];
-  rf[sH2I] += -rate;
-  rf[sHI]  += 2.0*rate;
-
-  rate = k[16]*ni[sHM];
-  rf[sHM]   += -rate;
-  rf[sELEC] +=  rate;
-  rf[sHI]   +=  rate;
-
-#ifdef H2_PLUS
-  rate = k[20]*ni[sH2II];
-  rf[sH2II] += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += 2.0*rate;
-#endif
-
-#ifdef HD
-  /*rate = k[31]*ni[sDII];
-  rf[sDII]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sDI]   +=  rate;*/
-
-#ifdef HD_PLUS
-  rate = k[42]*ni[sHDII];
-  rf[sHDII] += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   +=  rate;
-  rf[sDI]   +=  rate;
-#endif
-  
-#ifdef DMINUS
-  rate = k[43]*ni[sDI];
-  rf[sDI]   += -rate;
-  rf[sELEC] += -rate;
-  rf[sDM]   +=  rate;
-#endif
-#endif
-
-
-#ifdef INVERSE_REACTIONS
-  rate = 2*k_inverse[1]*ni[sHII]*ni[sELEC];
-  rf[sHII]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += rate;
-
-  rate = k_inverse[8]*ni[sH2I];
-  rf[sH2I]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += rate;
-  rf[sHM]   += rate;
-
-  rate = k_inverse[13]*ni[sHI]*ni[sHI];
-  rf[sHI]   += -2*rate;
-  rf[sH2I]  += rate;
-
-  rate = 2*k_inverse[16]*ni[sHI]*ni[sELEC];
-  rf[sHI]   += -rate;
-  rf[sELEC] += -rate;
-  rf[sHM]   += rate;
-
-  rate = k_inverse[17]*ni[sHI]*ni[sHI];
-  rf[sHI]   += -rate;
-  rf[sELEC] += -rate;
-  rf[sHM]   += rate;
-
-  rate = k_inverse[30]*ni[sHI]*ni[sHII];
-  rf[sHII]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += rate;
-#endif
-	
-
-  return 0;
-}
-
-int ReactionRate_diff_nometal_HI(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[1]*ni[sELEC];
-  rf[sELEC] +=  rate;
-  rf[sHI]   += -rate;
-  rf[sHII]  +=  rate;
-
-  rate = k[7]*ni[sELEC];
-  rf[sELEC] += -rate;
-  rf[sHI]   += -rate;
-  rf[sHM]   += rate;
-  
-  rate = k[8]*ni[sHM];
-  rf[sHM]   += -rate;
-  rf[sHI]   += -rate;
-  rf[sH2I]  +=  rate;
-  rf[sELEC] +=  rate;
-  
-  rate = 2*k[30]*ni[sHI];
-  rf[sELEC] += rate;
-  rf[sHI]   += -rate;
-  rf[sHII]  +=  rate;
-
-
-#ifdef H2_PLUS
-  rate = k[9]*ni[sHII];
-  rf[sHI]   += -rate;
-  rf[sHII]  += -rate;
-  rf[sH2II] +=  rate;
-  
-  rate = k[10]*ni[sH2II];
-  rf[sHI]   += -rate;
-  rf[sH2II] += -rate;
-  rf[sH2I]  +=  rate;
-  rf[sHII]  +=  rate;
-#endif
-  
-  rate = k[11]*ni[sH2I];
-  rf[sH2I] += -rate;
-  rf[sHI]  += 2.0*rate;
-
-#ifdef HELIUM
-  rate = k[14]*ni[sHeII];
-  rf[sHeII] += -rate;
-  rf[sHI]   += -rate;
-  rf[sHeI]  +=  rate;
-  rf[sHII]  +=  rate;
-#endif
-    
-  rate = k[17]*ni[sHM];
-  rf[sHM]   += -rate;
-  rf[sHI]   +=  rate;
-  rf[sELEC] +=  rate;
-
-#ifdef IONIZATION_PHOTON
-  rate = k[22];
-  rf[sHI]   += -rate;
-  rf[sHII]  += rate;
-  rf[sELEC] += rate;
-#endif
-
-#ifdef HD
-  rate = k[33]*ni[sDII];
-  rf[sDII] += -rate;
-  rf[sHI]  += -rate;
-  rf[sDI]  +=  rate;
-  rf[sHII] +=  rate;
-	
-  /*rate = k[34]*ni[sDI];
-  rf[sDI]  += -rate;
-  rf[sHI]  += -rate;
-  rf[sHDI] +=  rate;*/
-  
-  rate = k[38]*ni[sHDI];
-  rf[sHDI] += -rate;
-  rf[sHI]  += -rate;
-  rf[sH2I] +=  rate;
-  rf[sDI]  +=  rate;
-
-#ifdef HD_PLUS
-  rate = k[36]*ni[sHDII];
-  rf[sHDII] += -rate;
-  rf[sHI]   += -rate;
-  rf[sHII]  +=  rate;
-  rf[sHDI]  +=  rate;       
-  
-  rate = k[41]*ni[sDII];
-  rf[sDII]  += -rate;
-  rf[sHI]   += -rate;
-  rf[sHDII] +=  rate;
-#endif
-  
-#ifdef DMINUS
-  rate = k[47]*ni[sDM];
-  rf[sDM] += -rate;
-  rf[sHI] += -rate;
-  rf[sHM] +=  rate;
-  rf[sDI] +=  rate;
-  
-  rate = k[48]*ni[sDM];
-  rf[sDM]   += -rate;
-  rf[sHI]   += -rate;
-  rf[sHDI]  +=  rate;
-  rf[sELEC] +=  rate;
-#endif
-#endif
-
-#ifdef THREEBODY
-  rate = 3.*k[55]*ni[sHI]*ni[sHI];
-  rf[sHI]  += -2.0*rate;
-  rf[sH2I] +=  rate;
-    
-  rate = 2.*k[57]*ni[sHI]*ni[sH2I];
-  rf[sHI]  += -2.0*rate;
-  rf[sH2I] +=  rate;
-#endif
-
-#ifdef H2_FORMATION_ON_DUST
-  rate = k[51];
-  rf[sHI]  += -2.0*rate;
-  rf[sH2I] +=  rate;
-#endif
-
-#ifdef INVERSE_REACTIONS
-  rate = k_inverse[2];
-  rf[sHI]   += -rate;
-  rf[sHII]  += rate;
-  rf[sELEC] += rate;
-
-  rate = 2*k_inverse[13]*ni[sHI]*ni[sELEC];
-  rf[sHI]   += -2*rate;
-  rf[sH2I]  += rate;
-
-  rate = k_inverse[16]*ni[sELEC]*ni[sELEC];
-  rf[sHI]   += -rate;
-  rf[sELEC] += -rate;
-  rf[sHM]   += rate;
-
-  rate = 2*k_inverse[17]*ni[sHI]*ni[sELEC];
-  rf[sHI]   += -rate;
-  rf[sELEC] += -rate;
-  rf[sHM]   += rate;
-
-  rate = 2*k_inverse[18]*ni[sHI];
-  rf[sHI]   += -2.*rate;
-  rf[sHII]  += rate;
-  rf[sHM]   += rate;
-
-  rate = k_inverse[30]*ni[sHII]*ni[sELEC];
-  rf[sHII]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += rate;
-#endif
-	
-
-  return 0;
-}
-
-int ReactionRate_diff_nometal_HII(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[2]*ni[sELEC];
-  rf[sELEC] += -rate;
-  rf[sHI]   +=  rate;
-  rf[sHII]  += -rate;
-
-#ifdef H2_PLUS
-  rate = k[9]*ni[sHI];
-  rf[sHI]   += -rate;
-  rf[sHII]  += -rate;
-  rf[sH2II] +=  rate;
-    
-  rate = k[12]*ni[sH2I];
-  rf[sH2I]  += -rate;
-  rf[sHII]  += -rate;
-  rf[sH2II] +=  rate;
-  rf[sHI]   +=  rate;
-#endif
-
-#ifdef HELIUM
-  rate = k[15]*ni[sHeI];
-  rf[sHeI]  += -rate;
-  rf[sHII]  += -rate;
-  rf[sHeII] +=  rate;
-  rf[sHI]   +=  rate;
-#endif	
-
-  rate = k[18]*ni[sHM];
-  rf[sHM]  += -rate;
-  rf[sHII] += -rate;
-  rf[sHI]  += 2.0*rate;
-	
-#ifdef H2_PLUS
-  rate = k[19]*ni[sHM];
-  rf[sHM]   += -rate;
-  rf[sHII]  += -rate;
-  rf[sH2II] +=  rate;
-  rf[sELEC] +=  rate;
-#endif
-
-#ifdef HD
-  rate = k[32]*ni[sDI];
-  rf[sDI]  += -rate;
-  rf[sHII] += -rate;
-  rf[sDII] +=  rate;
-  rf[sHI]  +=  rate;
-	
-  rate = k[39]*ni[sHDI];
-  rf[sHDI] += -rate;
-  rf[sHII] += -rate;
-  rf[sH2I] +=  rate;
-  rf[sDII] +=  rate;
-
-#ifdef HD_PLUS  
-  rate = k[40]*ni[sDI];
-  rf[sDI]   += -rate;
-  rf[sHII]  += -rate;
-  rf[sHDII] +=  rate;
-#endif
-
-#ifdef DMINUS	
-  rate = k[45]*ni[sDM];
-  rf[sHII] += -rate;
-  rf[sDM]  += -rate;
-  rf[sHI]  +=  rate;
-  rf[sDI]  +=  rate;
-#endif
-#endif
-
-
-#ifdef INVERSE_REACTIONS
-  rate = k_inverse[1]*ni[sELEC]*ni[sELEC];
-  rf[sHII]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += rate;
-
-  rate = k_inverse[30]*ni[sHI]*ni[sELEC];
-  rf[sHII]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += rate;
-#endif
-	
-
-  return 0;
-}
-
-#ifdef HELIUM
-int ReactionRate_diff_nometal_HeI(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[3]*ni[sELEC];
-  rf[sELEC] +=  rate;
-  rf[sHeI]  += -rate;
-  rf[sHeII] +=  rate;
-    
-  rate = k[15]*ni[sHII];
-  rf[sHeI]  += -rate;
-  rf[sHII]  += -rate;
-  rf[sHeII] +=  rate;
-  rf[sHI]   +=  rate;
-
-  return 0;
-}
-
-int ReactionRate_diff_nometal_HeII(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[4]*ni[sELEC];
-  rf[sELEC] += -rate;
-  rf[sHeI]  +=  rate;
-  rf[sHeII] += -rate;
-  
-  rate = k[5]*ni[sELEC];
-  rf[sELEC]  +=  rate;
-  rf[sHeII]  += -rate;
-  rf[sHeIII] +=  rate;
-
-  rate = k[14]*ni[sHI];
-  rf[sHeII] += -rate;
-  rf[sHI]   += -rate;
-  rf[sHeI]  +=  rate;
-  rf[sHII]  +=  rate;
-
-  return 0;
-}
-
-int ReactionRate_diff_nometal_HeIII(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[6]*ni[sELEC];
-  rf[sELEC]  += -rate;
-  rf[sHeII]  +=  rate;
-  rf[sHeIII] += -rate;
-
-  return 0;
-}
-#endif
-
-int ReactionRate_diff_nometal_H2I(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
- 
-  rate = k[11]*ni[sHI];
-  rf[sH2I] += -rate;
-  rf[sHI]  += 2.0*rate;
-  
-#ifdef H2_PLUS
-  rate = k[12]*ni[sHII];
-  rf[sH2I]  += -rate;
-  rf[sHII]  += -rate;
-  rf[sH2II] +=  rate;
-  rf[sHI]   +=  rate;
-#endif
-  
-  rate = k[13]*ni[sELEC];
-  rf[sH2I] += -rate;
-  rf[sHI]  += 2.0*rate;
-
-#ifdef LYMANWERNER
-  rate = k[29];
-  rf[sH2I] += -rate;
-  rf[sHI]  += 2*rate;
-#endif
-  
-#ifdef HD
-  rate = k[35]*ni[sDI];
-  rf[sDI]  += -rate;
-  rf[sH2I] += -rate;
-  rf[sHI]  +=  rate;
-  rf[sHDI] +=  rate;
-
-  rate = k[37]*ni[sDII];
-  rf[sDII] += -rate;
-  rf[sH2I] += -rate;
-  rf[sHII] +=  rate;
-  rf[sHDI] +=  rate;  
-#endif
-	
-#ifdef THREEBODY
-  rate = k[57]*ni[sHI]*ni[sHI];
-  rf[sHI]  += -2.0*rate;
-  rf[sH2I] +=  rate;
-  
-  rate = 2 * k[58]*ni[sH2I];
-  rf[sH2I] += -rate;
-  rf[sHI]  += 2.0*rate;
-#endif
-
-
-#ifdef INVERSE_REACTIONS
-  rate = k_inverse[8]*ni[sELEC];
-  rf[sH2I]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += rate;
-  rf[sHM]   += rate;
-#endif
-	
-
-  return 0;
-}
-
-#ifdef H2_PLUS
-int ReactionRate_diff_nometal_H2II(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[10]*ni[sHI];
-  rf[sHI]   += -rate;
-  rf[sH2II] += -rate;
-  rf[sH2I]  +=  rate;
-  rf[sHII]  +=  rate;
-
-  rate = k[20]*ni[sELEC];
-  rf[sH2II] += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   += 2.0*rate;
-	
-  rate = k[21]*ni[sHM];
-  rf[sH2II] += -rate;
-  rf[sHM]   += -rate;
-  rf[sHI]   +=  rate;
-  rf[sH2I]  +=  rate;
-
-  return 0;
-}
-#endif
-
-int ReactionRate_diff_nometal_HM(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[8]*ni[sHI];
-  rf[sHM]   += -rate;
-  rf[sHI]   += -rate;
-  rf[sH2I]  +=  rate;
-  rf[sELEC] +=  rate;
-
-  rate = k[16]*ni[sELEC];
-  rf[sHM]   += -rate;
-  rf[sELEC] +=  rate;
-  rf[sHI]   +=  rate;
-	
-  rate = k[17]*ni[sHI];
-  rf[sHM]   += -rate;
-  rf[sHI]   +=  rate;
-  rf[sELEC] +=  rate;
-	
-  rate = k[18]*ni[sHII];
-  rf[sHM]  += -rate;
-  rf[sHII] += -rate;
-  rf[sHI]  += 2.0*rate;
-	
-#ifdef H2_PLUS
-  rate = k[19]*ni[sHII];
-  rf[sHM]   += -rate;
-  rf[sHII]  += -rate;
-  rf[sH2II] +=  rate;
-  rf[sELEC] +=  rate;
-	
-  rate = k[21]*ni[sH2II];
-  rf[sH2II] += -rate;
-  rf[sHM]   += -rate;
-  rf[sHI]   +=  rate;
-  rf[sH2I]  +=  rate;
-#endif
-
-#ifdef LYMANWERNER
-  rate = k[25];
-  rf[sHM]   += -rate;
-  rf[sHI]   += rate;
-  rf[sELEC] += rate;
-#endif
-
-#ifdef HD
-#ifdef DMINUS
-  rate = k[46]*ni[sDI];
-  rf[sHM] += -rate;
-  rf[sDI] += -rate;
-  rf[sHI] +=  rate;
-  rf[sDM] +=  rate;
-#endif
-#endif
-
-
-#ifdef INVERSE_REACTIONS
-  rate = k_inverse[7];
-  rf[sHM]   += -rate;
-  rf[sHI]   += rate;
-  rf[sELEC] += rate;
-#endif
-
-
-  return 0;
-}
-
-#ifdef HD
-int ReactionRate_diff_nometal_DI(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-	
-  rate = k[32]*ni[sHII];
-  rf[sDI]  += -rate;
-  rf[sHII] += -rate;
-  rf[sDII] +=  rate;
-  rf[sHI]  +=  rate;
-  
-  /*rate = k[34]*ni[sHI];
-  rf[sDI]  += -rate;
-  rf[sHI]  += -rate;
-  rf[sHDI] +=  rate;*/
-  
-  rate = k[35]*ni[sH2I];
-  rf[sDI]  += -rate;
-  rf[sH2I] += -rate;
-  rf[sHI]  +=  rate;
-  rf[sHDI] +=  rate;
-
-#ifdef HD_PLUS	
-  rate = k[40]*ni[sHII];
-  rf[sDI]   += -rate;
-  rf[sHII]  += -rate;
-  rf[sHDII] +=  rate;
-#endif  
-
-#ifdef DMINUS
-  rate = k[43]*ni[sELEC];
-  rf[sDI]   += -rate;
-  rf[sELEC] += -rate;
-  rf[sDM]   +=  rate;
-  
-  rate = k[46]*ni[sHM];
-  rf[sHM] += -rate;
-  rf[sDI] += -rate;
-  rf[sHI] +=  rate;
-  rf[sDM] +=  rate;
-#endif
-
-  return 0;
-}
-
-int ReactionRate_diff_nometal_DII(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  /*rate = k[31]*ni[sELEC];
-  rf[sDII]  += -rate;
-  rf[sELEC] += -rate;
-  rf[sDI]   +=  rate;*/
-	
-  rate = k[33]*ni[sHI];
-  rf[sDII] += -rate;
-  rf[sHI]  += -rate;
-  rf[sDI]  +=  rate;
-  rf[sHII] +=  rate;
-	
-  rate = k[37]*ni[sH2I];
-  rf[sDII] += -rate;
-  rf[sH2I] += -rate;
-  rf[sHII] +=  rate;
-  rf[sHDI] +=  rate;
-  
-#ifdef HD_PLUS
-  rate = k[41]*ni[sHI];
-  rf[sDII]  += -rate;
-  rf[sHI]   += -rate;
-  rf[sHDII] +=  rate;
-#endif
-
-#ifdef DMINUS  
-  rate = k[44]*ni[sDM];
-  rf[sDII] += -rate;
-  rf[sDM]  += -rate;
-  rf[sDI]  +=  2.0*rate;
-#endif
-
-  return 0;
-}
-
-int ReactionRate_diff_nometal_HDI(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[38]*ni[sHI];
-  rf[sHDI] += -rate;
-  rf[sHI]  += -rate;
-  rf[sH2I] +=  rate;
-  rf[sDI]  +=  rate;
-  
-  rate = k[39]*ni[sHII];
-  rf[sHDI] += -rate;
-  rf[sHII] += -rate;
-  rf[sH2I] +=  rate;
-  rf[sDII] +=  rate;
-  
-#ifdef LYMANWERNER
-  rate = k[53];
-  rf[sHDI] += -rate;
-  rf[sHI]  += rate;
-  rf[sDI]  += rate;
-#endif
-
-  return 0;
-}
-
-#ifdef HD_PLUS
-int ReactionRate_diff_nometal_HDII(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[36]*ni[sHI];
-  rf[sHDII] += -rate;
-  rf[sHI]   += -rate;
-  rf[sHII]  +=  rate;
-  rf[sHDI]  +=  rate;
-	
-  rate = k[42]*ni[sELEC];
-  rf[sHDII] += -rate;
-  rf[sELEC] += -rate;
-  rf[sHI]   +=  rate;
-  rf[sDI]   +=  rate;
-
-  return 0;
-}
-#endif
-
-#ifdef DMINUS
-int ReactionRate_diff_nometal_DM(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  double rate;
-  enum SPECIES species;
-
-  rate = k[44]*ni[sDII];
-  rf[sDII] += -rate;
-  rf[sDM]  += -rate;
-  rf[sDI]  +=  2.0*rate;
-	
-  rate = k[45]*ni[sHII];
-  rf[sHII] += -rate;
-  rf[sDM]  += -rate;
-  rf[sHI]  +=  rate;
-  rf[sDI]  +=  rate;
-  
-  rate = k[47]*ni[sHI];
-  rf[sDM] += -rate;
-  rf[sHI] += -rate;
-  rf[sHM] +=  rate;
-  rf[sDI] +=  rate;
-  
-  rate = k[48]*ni[sHI];
-  rf[sDM]   += -rate;
-  rf[sHI]   += -rate;
-  rf[sHDI]  +=  rate;
-  rf[sELEC] +=  rate;
-
-  return 0;
-}
-#endif
-#endif
-
-int func_other(double nH,double *ni,double *k,double *k_inverse,double *rf){
-  return 1;
-}
-
-static void init_switch_func(void){
-  for(int jj = 0;jj < 256;jj++)
-    switch_func[jj] = &func_other; 
-  
-  switch_func[sELEC] = &ReactionRate_diff_nometal_Elec;
-  switch_func[sHI]   = &ReactionRate_diff_nometal_HI;
-  switch_func[sHII]  = &ReactionRate_diff_nometal_HII;
-#ifdef HELIUM
-  switch_func[sHeI]   = &ReactionRate_diff_nometal_HeI;
-  switch_func[sHeII]  = &ReactionRate_diff_nometal_HeII;
-  switch_func[sHeIII] = &ReactionRate_diff_nometal_HeIII;
-#endif
-  switch_func[sH2I]   = &ReactionRate_diff_nometal_H2I;
-#ifdef H2_PLUS
-  switch_func[sH2II]  = &ReactionRate_diff_nometal_H2II; 
-#endif
-  switch_func[sHM]    = &ReactionRate_diff_nometal_HM; 
-#ifdef HD
-  switch_func[sDI]    = &ReactionRate_diff_nometal_DI;
-  switch_func[sDII]   = &ReactionRate_diff_nometal_DII; 
-  switch_func[sHDI]   = &ReactionRate_diff_nometal_HDI; 
-#ifdef HD_PLUS
-  switch_func[sHDII]  = &ReactionRate_diff_nometal_HDII;
-#endif
-#ifdef DMINUS
-  switch_func[sDM]    = &ReactionRate_diff_nometal_DM; 
-#endif
-#endif
-}
-#endif
 
 static int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepData *step, const ChemState *state, ChemWorkspace *workspace){
   const double rho_cgs = environment->rho_cgs;
@@ -4318,9 +2497,9 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 #ifdef METALLICITY
   const double metallicity = environment->metallicity;
 #endif
-  
+
   //update_radiation_state(sph_in, sph_out, sph_state, T_gas);
-  
+
   /*********** initialize ************/
   for(int j=0; j<k_MAX; j++)
     workspace->rates.forward[j] = 0.0;
@@ -4329,16 +2508,16 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
   /* ------- Compute temperature index. */
   const double ln_T0 = log(T_start);
   const double ln_T9 = log(T_end);
-  
+
   const double log_T  = log10(T_gas);
   const double log_T2 = log_T * log_T;
   const double log_T3 = log_T * log_T * log_T;
-  
+
   double ln_T  = log(T_gas);
   if(ln_T < ln_T0) ln_T = ln_T0;
   if(ln_T > ln_T9) ln_T = ln_T9;
   int i_T = (int) ((ln_T-ln_T0)/dln_T);
-  
+
   if(i_T<0) i_T=0;
   if(i_T>N_T-2) i_T=N_T-2;
 
@@ -4348,23 +2527,23 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
     printf("ThisTask %d ID %d T %g n %g H2I %g HI %g HII %g\n"
 	   , ThisTask, environment->ID, T_gas, n_nuclei, state->abund[sH2I], state->abund[sHI], state->abund[sHII]);
     fflush(stdout);
-    
+
     printf("\nStop.(in chemistry_noneq_chem_implicit)\n");
     /* savepositions(All.SnapshotFileCount++); */
-    
+
     endrun(); /* just debugging */
   }
-  
-  
-  if (i_T > N_T-2) i_T = N_T-2;  /* [i_T+1] appears below */  
+
+
+  if (i_T > N_T-2) i_T = N_T-2;  /* [i_T+1] appears below */
   if (i_T < 0    ) i_T = 0;
-  
+
   const double c_T = (T_gas - T_table[i_T])/(T_table[i_T+1]-T_table[i_T]);
-  
+
   for(int j=1; j<=21; j++){
     workspace->rates.forward[j] = k_table[j][i_T] + c_T*(k_table[j][i_T+1] - k_table[j][i_T]);
   }
-  
+
   workspace->rates.forward[30] = k_table[30][i_T] + c_T*(k_table[30][i_T+1] - k_table[30][i_T]);
   workspace->rates.forward[22] = workspace->rates.forward[23] = workspace->rates.forward[24] = 0.;
 
@@ -4372,7 +2551,7 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
   workspace->rates.forward[22] = step->k22;
   workspace->rates.forward[23] = workspace->rates.forward[24] = 0.;
 #endif
-  
+
 #ifdef LYMANWERNER    /* with Photo-Dissociation */
   workspace->rates.forward[25] = 0.;
   workspace->rates.forward[29] = 0.;
@@ -4391,7 +2570,7 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 
 #ifdef BACKGROUND_LW_RADIATION
   workspace->rates.forward[25] += All.rate_Hminus_pd;
-  
+
   double k29_ext = All.rate_H2_diss;
 #ifdef HD
   double k53_ext = 1.55/1.39 * All.rate_H2_diss;
@@ -4437,14 +2616,14 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 
   if(FlagPrint)
     printf("k25=%g %g k29=%g %g f=%g\n", workspace->rates.forward[25], All.rate_Hminus_pd, workspace->rates.forward[29], k29_ext, f_print_H2self);
-  
+
 #endif //BACKGROUND_LW_RADIATION
 #endif // LYMANWERNER
 
 #ifdef HD
   for(int j=31; j<=48; j++)
     workspace->rates.forward[j] = k_table[j][i_T] + c_T*(k_table[j][i_T+1] - k_table[j][i_T]);
-#endif  
+#endif
 
 #ifdef THREEBODY
   for(int j=55; j<=58; j++)
@@ -4465,7 +2644,7 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 
   double dummy = calc_continuum_opacities(T_gas, rho_cgs, l_core, &opac);
   tau_cont = opac.tau;
-  
+
 #ifdef DUST_COOLING
   double stellar_flux = 0.;
 #ifdef THERMAL_FEEDBACK
@@ -4482,7 +2661,7 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 
   tau_cont = opac.tau;
 #endif
-  
+
   workspace->continuum.tau = tau_cont;
   workspace->continuum.reduction_factor = 1./(1. + 3./4.*tau_cont*tau_cont);
 #endif
@@ -4509,7 +2688,7 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
   workspace->rates.inverse[18] *= nH / (n_crit + nH);
 
   //printf("tau=%g n_crit=%g\n", tau_cont, n_crit);
-  
+
   workspace->rates.inverse[2] *= (1 - exp(-tau_cont)) * n_nuclei / (n_crit + n_nuclei);
   workspace->rates.inverse[7] *= (1 - exp(-tau_cont)) * n_nuclei / (n_crit + n_nuclei);
   //workspace->rates.inverse[2] *= (1 - exp(-tau_cont));
@@ -4532,19 +2711,19 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
   }
 #endif
 #endif
-  
+
 #ifdef H2_FORMATION_ON_DUST
   workspace->rates.forward[51] = H2form_on_grains(rho_cgs, T_gas, workspace->continuum.dust_temperature, metallicity);
 #endif
 
   if(T_gas > 10.){
-#ifdef MARTIN97	
+#ifdef MARTIN97
     double a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21;
     double p, n_c1, n_c2, log_g_h1, log_g_l1, log_g_h2, log_g_l2, log_n_c1, log_n_c2;
     double log_gamma_cd, log_gamma_dt;
 
     a1  = -1.784239e2;
-    a2  = -6.842243e1; 
+    a2  = -6.842243e1;
     a3  =  4.320243e1;
     a4  = -4.633167;
     a5  =  6.970086e1;
@@ -4561,7 +2740,7 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
     a16 =  4.749030e-1;
     a17 = -1.338283e2;
     a18 = -1.164408;
-    a19 =  8.227443e-1; 
+    a19 =  8.227443e-1;
     a20 =  5.864073e-1;
     a21 = -2.056313;
 
@@ -4571,19 +2750,19 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 
     log_g_l1 = a8 + a9 * log_T + a10 * log_T2 + a11 * log10(1 + a12/T_gas);
     log_g_l2 = a13/T_gas;
-  
+
     log_n_c1 = a14 + a15*log_T + a16*log_T2 + a17/T_gas;
     n_c1 = pow(10.0, log_n_c1);
 
     log_n_c2 = a18 + log_n_c1;
     n_c2 = pow(10.0, log_n_c2);
 
-    p = a19 + a20 *exp(-T_gas/1850.0) + a21 * exp(-T_gas/440.0); 
-  
+    p = a19 + a20 *exp(-T_gas/1850.0) + a21 * exp(-T_gas/440.0);
+
     log_gamma_cd = log_g_h1 - (log_g_h1 - log_g_l1)/(1.0+pow(nH/n_c1, p)) + log_g_h2 - (log_g_h2 - log_g_l2)/(1.0+pow(nH/n_c2, p));
-  
+
     a1  = -1.427664e2;
-    a2  =  4.270741e1; 
+    a2  =  4.270741e1;
     a3  = -2.027365;
     a4  = -2.582097e-1;
     a5  =  2.136094e1;
@@ -4600,11 +2779,11 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
     a16 =  1.985955e-1;
     a17 =  7.430600e2;
     a18 = -1.174242;
-    a19 =  7.502286e-1; 
+    a19 =  7.502286e-1;
     a20 =  2.358848e-1;
     a21 =  2.937507;
 
-  
+
     log_g_h1 = a1 + a2*log_T + a3*log_T2 + a4*log_T3 + a5*log10(1+a6/T_gas);
     log_g_h2 = a7/T_gas;
 
@@ -4616,16 +2795,16 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 
     log_n_c2 = a18 + log_n_c1;
     n_c2 = pow(10.0, log_n_c2);
-  
-    p = a19 + a20*exp(-T_gas/1850.0) + a21*exp(-T_gas/440.0); 
-  
-    log_gamma_dt = log_g_h1 - (log_g_h1 - log_g_l1)/(1.0+pow(nH/n_c1, p)) + log_g_h2 - (log_g_h2 - log_g_l2)/(1.0+pow(nH/n_c2, p));  
+
+    p = a19 + a20*exp(-T_gas/1850.0) + a21*exp(-T_gas/440.0);
+
+    log_gamma_dt = log_g_h1 - (log_g_h1 - log_g_l1)/(1.0+pow(nH/n_c1, p)) + log_g_h2 - (log_g_h2 - log_g_l2)/(1.0+pow(nH/n_c2, p));
 
     workspace->rates.forward[11] = pow(10.0, log_gamma_cd) + pow(10.0, log_gamma_dt);
 
     if(FlagPrint)
       printf("k11=%g gamma=%g %g\n", workspace->rates.forward[11], log_gamma_cd, log_gamma_dt);
-   
+
 
 #ifdef INVERSE_REACTIONS
     double xk_L = workspace->rates.forward[11];
@@ -4633,24 +2812,24 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 
     double rlgT4 = log10(T_gas*1.e-4);
     double rn_cr = pow(10.0, 4.0 - 0.416*rlgT4 - 0.327*rlgT4*rlgT4);
-  
+
     double a = 1.0/(1.0 + nH/rn_cr);
 
     if(a == 1.0)       workspace->rates.forward[11] = xk_L;
     else if(a == 0.0)  workspace->rates.forward[11] = xk_H;
-    else               workspace->rates.forward[11] = pow(xk_H,1.0-a)*pow(xk_L,a);      
+    else               workspace->rates.forward[11] = pow(xk_H,1.0-a)*pow(xk_L,a);
 #endif
 #else
     double xk_L  = 1.12e-10*exp(-7.035e+4/T_gas);
     double xk_H  = 6.5e-7/sqrt(T_gas)*exp(-5.2e+4/T_gas)*(1.0-exp(-6.e+3/T_gas));
     double rlgT4 = log10(T_gas*1.e-4);
     double rn_cr = pow(10.0, 4.0 - 0.416*rlgT4 - 0.327*rlgT4*rlgT4);
-  
+
     double a = 1.0/(1.0 + nH/rn_cr);
-  
+
     if(a == 1.0)       workspace->rates.forward[11] = xk_L;
     else if(a == 0.0)  workspace->rates.forward[11] = xk_H;
-    else               workspace->rates.forward[11] = pow(xk_H,1.0-a)*pow(xk_L,a);  
+    else               workspace->rates.forward[11] = pow(xk_H,1.0-a)*pow(xk_L,a);
 #endif
   }else
     workspace->rates.forward[11] = 0.;
@@ -4673,7 +2852,7 @@ static int evaluate_reaction_rates(const ChemEnvironment *environment, const Che
 void correct_initial_abundances(double *yi){
   /********** correct the total H abundances **********/
   if(yi[sHM] > 1.e-3) yi[sHM] = 1.e-10;
-  
+
   double yHtot   = yi[sHI]   + yi[sHII]  + 2*yi[sH2I] + yi[sHM];
 #ifdef H2_PLUS
   yHtot  += 2*yi[sH2II];
@@ -4702,7 +2881,7 @@ void correct_initial_abundances(double *yi){
 
   if(yHetot > XHe/XH){
     double ratio1 = (XHe/XH) / yHetot;
-  
+
     yi[sHeI]   *= ratio1;
     yi[sHeII]  *= ratio1;
     yi[sHeIII] *= ratio1;
@@ -4763,7 +2942,7 @@ void correct_initial_abundances(double *yi){
 
     if(minus_charge < 0.9 * yi[sELEC]){
       yi[sELEC] -= minus_charge;
-    }else{      
+    }else{
       minus_charge -= (0.9 * yi[sELEC]);
       yi[sELEC] *= 0.1;
 
@@ -4818,7 +2997,7 @@ void correct_initial_abundances(double *yi){
         yi[sHeIII] += (diff3+diff2);
       }
 #endif
-    }  
+    }
   }else if(y_plus > 1.00001 * y_minus){
     double plus_charge = y_plus - y_minus;
     yi[sELEC] += plus_charge;
@@ -4826,7 +3005,7 @@ void correct_initial_abundances(double *yi){
   /****************************************************/
 
 
-  /********** Again, correct the total H, He, D abundances **********/  
+  /********** Again, correct the total H, He, D abundances **********/
   if(yi[sHI] > 0.1){
     yi[sHI]     = 1. - yi[sHII] - 2*yi[sH2I] - yi[sHM];
 #ifdef H2_PLUS
@@ -4845,7 +3024,7 @@ void correct_initial_abundances(double *yi){
   }
 
 
-#ifdef HELIUM  
+#ifdef HELIUM
   if(yi[sHeI] > 0.1 * XHe/XH)
     yi[sHeI]   = XHe/XH - yi[sHeII] - yi[sHeIII];
   else if(yi[sHeII] > 0.1 * XHe/XH)
@@ -4861,7 +3040,7 @@ void correct_initial_abundances(double *yi){
     yi[sDI]    -= yi[sHDII];
 #endif
 #ifdef DMINUS
-    yi[sDI]    -= yi[sDM];      
+    yi[sDI]    -= yi[sDM];
 #endif
   }else if(yi[sDII] > 0.1 * D_number_fraction/XH){
     yi[sDII]    = D_number_fraction/XH - yi[sDI] - yi[sHDI];
@@ -4869,7 +3048,7 @@ void correct_initial_abundances(double *yi){
     yi[sDII]   -= yi[sHDII];
 #endif
 #ifdef DMINUS
-    yi[sDII]   -= yi[sDM];      
+    yi[sDII]   -= yi[sDM];
 #endif
   }else{
     yi[sHDI]    = D_number_fraction/XH - yi[sDI] - yi[sDII];
@@ -4877,7 +3056,7 @@ void correct_initial_abundances(double *yi){
     yi[sHDI]   -= yi[sHDII];
 #endif
 #ifdef DMINUS
-    yi[sHDI]   -= yi[sDM];      
+    yi[sHDI]   -= yi[sDM];
 #endif
   }
 #endif
@@ -4911,14 +3090,14 @@ void give_initial_guess(double T_gas, double nH, double dt, double *yi, double *
 
 void bound_ddy(double *yi, double *ddy, double *y_max, int itr, int flag_reset, double *err_max){
   for(int i_sp=0;i_sp<N_SP;i_sp++) {
-    if(yi[i_sp] + ddy[i_sp] < 0.1 * yi[i_sp]){       
-      ddy[i_sp] = -0.9 * yi[i_sp];       
-      *err_max += (double) (i_sp + 1);	
+    if(yi[i_sp] + ddy[i_sp] < 0.1 * yi[i_sp]){
+      ddy[i_sp] = -0.9 * yi[i_sp];
+      *err_max += (double) (i_sp + 1);
     }else if(yi[i_sp]+ddy[i_sp] > y_max[i_sp]){
       ddy[i_sp] = dmin(0.9*yi[i_sp], 0.9 * (y_max[i_sp] - yi[i_sp]));
       *err_max += 100. * (double) (i_sp + 1);
     }
-  }    
+  }
 }
 
 
@@ -4951,15 +3130,10 @@ void update_background_J21(void){
 int InitChem(void)
 {
   enum SPECIES species;
-  enum REACTIONS reactions;
-	
+
   /* ----- cross-sections, etc ... */
   int ifunc = chem_tabulate();
 
-#ifdef CHEM_DIFF_ANALYTIC
-  init_switch_func();
-#endif
- 
 #ifdef CONTINUUM_COOLING_MATSUKOBA
   read_opacity_tables();
   tabulate_cooling_rate_cont_thin();
@@ -4978,7 +3152,7 @@ int InitChem(void)
   update_background_J21();
 #endif
 #endif
-  
+
 #ifdef METAL_LINE_COOLING_SD93
   read_continuum_cooling_rate_table_SD93();
 #endif
@@ -5001,9 +3175,9 @@ int InitChem(void)
 #endif
 
   N_SP = sEND - sELEC;
-  N_RE = REEND - RE1;
+  N_RE = (int)chemistry_network_reaction_count();
 
-  return(ifunc);  
+  return(ifunc);
 }
 
 
@@ -5012,9 +3186,9 @@ int InitChem(void)
     ------- 1:	HI    + e   -> HII   + 2e    hydrogen collisional ionization
     ------- 2:	HII   + e   -> HI    + p     hydrogen radiative recombination
     ------- 3:	HeI   + e   -> HeII  + 2e    He collisional ionization
-    ------- 4:	HeII  + e   -> HeI   + p     He recombination 
+    ------- 4:	HeII  + e   -> HeI   + p     He recombination
     ------- 5:	HeII  + e   -> HeIII + 2e    HeII collisional ionization
-    ------- 6:	HeIII + e   -> HeII  + p     HeII recombination 
+    ------- 6:	HeIII + e   -> HeII  + p     HeII recombination
     ------- 7:	HI    + e   -> HM    + p     photo-attachment
     ------- 8:	HM    + HI  -> H2I*  + e     H2 formation path (H-)
     ------- 9:  HI    + HII -> H2II  + p     H2+ channel
@@ -5022,8 +3196,8 @@ int InitChem(void)
     ------- 11:	H2I   + HI  -> 3HI
     ------- 12:	H2I   + HII -> H2II  + HI    charge transfer
     ------- 13:	H2I   + e   -> 2HI   + e     collisional dissociation
-    ------- 14: HeII  + HI  -> HeI   + HII + p  charge transfer   
-    ------- 15: HeI   + HII -> HeII  + HI  
+    ------- 14: HeII  + HI  -> HeI   + HII + p  charge transfer
+    ------- 15: HeI   + HII -> HeII  + HI
     ------- 16:	HM    + e   -> HI    + 2e
     ------- 17:	HM    + HI  -> 2H    + e
     ------- 18:	HM    + HII -> 2HI
@@ -5035,53 +3209,53 @@ int InitChem(void)
     ------- 23:	HeII  + p   -> HeIII + e     HeII ionization
     ------- 24:	HeI   + p   -> HeII  + e     photo-ionization He
     ------- 25:	HM    + p   -> HI    + e     photo-detachment
-    ------- 26:	H2II  + p   -> HI    + HII   
-    ------- 27:	H2I   + p   -> H2II  + e     
+    ------- 26:	H2II  + p   -> HI    + HII
+    ------- 27:	H2I   + p   -> H2II  + e
     ------- 28:	H2II  + p   -> 2HII  + e
-    ------- 29:	H2I   + p   -> 2HI           photo-dissociation      
+    ------- 29:	H2I   + p   -> 2HI           photo-dissociation
 
     ------- 60,61: H2    + e   -> HM    + HI
     ------- 62,63: HI    + HI  -> H2II  + e
 
     HD (Nakamura-Umemura complete model)
-     
-    ------- 31:  DII  + e    -> DI   + p      radiative recombination 
+
+    ------- 31:  DII  + e    -> DI   + p      radiative recombination
     ------- 32:  DI   + HII  -> DII  + HI     charge transfer
     ------- 33:  DII  + HI   -> DI   + HII    reverse reaction of 32
     ------- 34:  DI   + HI   -> HDI  + p      * neutral formation path
     ------- 35:  DI   + H2I  -> HI   + HDI    * neutral path by H2
     ------- 36:  HDII + HI   -> HII  + HDI    charge transfer
     ------- 37:  DII  + H2I  -> HII  + HDI    * D+ formation path
-    ------- 38:  HDI  + HI   -> H2I  + DI     
-    ------- 39:  HDI  + HII  -> H2I  + DII    
-    ------- 40:  DI   + HII  -> HDII + p 
-    ------- 41:  DII  + HI   -> HDII + p 
-    ------- 42:  HDII + e    -> HI   + DI     collisional dissociation 
+    ------- 38:  HDI  + HI   -> H2I  + DI
+    ------- 39:  HDI  + HII  -> H2I  + DII
+    ------- 40:  DI   + HII  -> HDII + p
+    ------- 41:  DII  + HI   -> HDII + p
+    ------- 42:  HDII + e    -> HI   + DI     collisional dissociation
     ------- 43:  DI   + e    -> DM   + p      D- formation/photo-attachment
     ------- 44:  DII  + DM   -> 2DI           mutual neutrization
     ------- 45:  HII  + DM   -> DI   + HI     mutual neutrization
-    ------- 46:  HM   + DI   -> HI   + DM 
-    ------- 47:  DM   + HI   -> DI   + HM 
+    ------- 46:  HM   + DI   -> HI   + DM
+    ------- 47:  DM   + HI   -> DI   + HM
     ------- 48:  DM   + HI   -> HDI  + e      * D- formation path
 
-    ------- 50:  DI   + p    -> DII  + e      photo-ionization D   
-    ------- 51:  HDII + p    -> HI   + DII    photo-dissociation HD+  
-    ------- 52:  HDII + p    -> HII  + DI     photo-dissociation HD+  
-    ------- 53:  HDI  + p    -> HI   + DI     photo-dissociation HD  
+    ------- 50:  DI   + p    -> DII  + e      photo-ionization D
+    ------- 51:  HDII + p    -> HI   + DII    photo-dissociation HD+
+    ------- 52:  HDII + p    -> HII  + DI     photo-dissociation HD+
+    ------- 53:  HDI  + p    -> HI   + DI     photo-dissociation HD
 
     3 body reactions
-   
-    ------- 55:  HI + HI + HI -> H2I + HI  
+
+    ------- 55:  HI + HI + HI -> H2I + HI
     ------- 56:  H2I + HI     -> HI + HI + HI  same as reaction 11
     ------- 57:  HI + HI + H2I-> H2I + H2I
     ------- 58:  H2I + H2I    -> HI + HI + H2I  reverse reaction
-  */ 
+  */
 
 
   /* probably this part should be parallelized in the near future */
 int chem_tabulate(void)
 {
- 
+
   /* ----- Declare other values. */
   int i,j;
   double ln_T,ln_T_eV,T_eV,log10_T;
@@ -5130,12 +3304,12 @@ int chem_tabulate(void)
   CarbonII_cooling = CarbonII_twolevel_cooling;
 #endif
 
-  /*************** H2 opacity (fitting based on F18 or recalculate it as O00 do) ******/    
+  /*************** H2 opacity (fitting based on F18 or recalculate it as O00 do) ******/
 #ifdef H2_OPACITY
 #ifdef H2_COOLING_O00
   H2_line_escape_fraction = fesc_unity;
 #elif defined(H2_OPACITY_FIT)
-  H2_line_escape_fraction = fesc_fit;  
+  H2_line_escape_fraction = fesc_fit;
 #else
   H2_line_escape_fraction = H2line_reduction;
 #endif
@@ -5149,12 +3323,12 @@ int chem_tabulate(void)
 #endif
 #endif
 
-  /*************** continuum opacity (tables in M19 or Yoshida-san's formulation) *****/    
+  /*************** continuum opacity (tables in M19 or Yoshida-san's formulation) *****/
 #ifdef CONT_OPACITY
   continuum_escape_fraction = calc_continuum_opacities;
 #endif
 
-  /*************** partition function of H2 ************************************** *****/    
+  /*************** partition function of H2 ************************************** *****/
 
 #ifdef PARTITION_H2_EBM1989
   partition_H2 = partition_H2_EBM1989;
@@ -5174,7 +3348,7 @@ int chem_tabulate(void)
 
   /* ----- Compute temperature grid. */
   dln_T= (log(T_end) - log(T_start))/N_T;
-  
+
   for( i = 0;i< N_T;i++){
     ln_T = log(T_start) + i*dln_T;
     T_table[i] = exp(ln_T);
@@ -5182,13 +3356,13 @@ int chem_tabulate(void)
 
   /* ----- Initialize arrays. */
   for(i=0;i<N_T;i++){
-    
+
     for(j=0;j<k_MAX;j++) k_table[j][i] = 0;
     for(j=0;j<k_MAX;j++) k_table_inverse[j][i] = 0;
 
     //for(j=0;j<NREACTION_HI;j++) k_table_HI[j][i] = 0;
     //for(j=0;j<NREACTION_HI;j++) k_table_HI_inverse[j][i] = 0;
-        
+
     ceHIa[i]    = 0.;
     ceHeIa[i]   = 0.;
     ceHeIIa[i]  = 0.;
@@ -5196,7 +3370,7 @@ int chem_tabulate(void)
     ciHeIa[i]   = 0.;
     ciHeISa[i]  = 0.;
     ciHeIIa[i]  = 0.;
-#ifndef CONTINUUM_COOLING_MATSUKOBA  
+#ifndef CONTINUUM_COOLING_MATSUKOBA
     reHIIa[i]   = 0.;
 #ifdef HELIUM
     reHeII1a[i] = 0.;
@@ -5207,8 +3381,8 @@ int chem_tabulate(void)
     H2_CIE[i]   = 0.;
 #endif
   }
-  
-      
+
+
   /* ----- Fill in tables over the range T_start to T_end. */
   for(i=0 ; i<N_T ; i++){
     z_H2I = partition_H2(T_table[i]);
@@ -5226,7 +3400,7 @@ int chem_tabulate(void)
     log10_T = log10(T_table[i]);
     T_eV = T_table[i]/eV_to_K;
     ln_T_eV = log(T_eV);
-    
+
     ln_T_eV2=ln_T_eV*ln_T_eV;
     ln_T_eV3=ln_T_eV*ln_T_eV2;
     ln_T_eV4=ln_T_eV*ln_T_eV3;
@@ -5235,7 +3409,7 @@ int chem_tabulate(void)
     ln_T_eV7=ln_T_eV*ln_T_eV6;
     ln_T_eV8=ln_T_eV*ln_T_eV7;
     ln_T_eV9=ln_T_eV*ln_T_eV8;
-    
+
 #ifdef CASE_B
     double lambda_HI   = 2 * 157807.0/T_table[i];
 #if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
@@ -5244,11 +3418,11 @@ int chem_tabulate(void)
 #endif
 #endif
 
-    
+
     /************* H collisional ionization ****************/
-    k_table[1][i] = exp(-32.71396786375 
+    k_table[1][i] = exp(-32.71396786375
 			+ 13.53655609057     *ln_T_eV
-			- 5.739328757388     *ln_T_eV2 
+			- 5.739328757388     *ln_T_eV2
 			+ 1.563154982022     *ln_T_eV3
 			- 0.2877056004391    *ln_T_eV4
 			+ 0.03482559773736999*ln_T_eV5
@@ -5258,7 +3432,7 @@ int chem_tabulate(void)
 
 
 
-    /************** hydrogen recombination *****************/  
+    /************** hydrogen recombination *****************/
 #ifdef CASE_B
     k_table[2][i] = 2.753e-14 * pow(315614.0/T_table[i], 1.5)/pow(1.0+pow(115188.0/T_table[i], 0.406), 2.242);
     /* Ferland et al. 1992 fitted by Hui & Gnedin 1997 */
@@ -5312,12 +3486,12 @@ int chem_tabulate(void)
     //k_table[4][i] =  3.92e-13/pow(T_eV,0.6353); /* Case A radiative recombination */
     //1.9e-3 * pow(T_table[i],-1.5)*exp( -470000./T_table[i] )
     //	*(1.+0.3*exp( -94000./T_table[i] )); /* dielectric recombination */
-			
+
     k_table[4][i] = 1.54e-9*(1.+0.3/exp(8.099328789667/T_eV))
       / (exp(40.49664394833662/T_eV)*pow(T_eV,1.5)) /* Dielectric */
       + 3.92e-13/pow(T_eV,0.6353);  /* radiative */
 #endif
-      
+
     /* HeII collisional ionization */
     k_table[5][i] = exp(-68.71040990212001
 			+ 43.93347632635      *ln_T_eV
@@ -5332,20 +3506,20 @@ int chem_tabulate(void)
     /* HeII recombinatiom (HeIII -> HeII) */
 #ifdef CASE_B
     k_table[6][i] = 2.0 * 2.753e-14 * pow(315614.0/(T_table[i]/4.0), 1.5)/pow(1.0+pow(115188.0/(T_table[i]/4.0), 0.406), 2.242);
-    /* 2 x k2(T/4) */ 
+    /* 2 x k2(T/4) */
 #else
     k_table[6][i] = 3.36e-10/sqrt(T_table[i])/pow(T_table[i]/1.e3,0.2)/(1+pow(T_table[i]/4.e6,0.7)); /* Fukugita-Kawasaki 94 */
 #endif
 
-    
+
     /* 14: HeII  + HI  -> HeI   + HII + p  charge transfer */
 #ifdef ENZO_CHEM
     k_table[14][i] = 0.;
 #else
     k_table[14][i] = 1.2e-15 * pow(T_table[i]/300.0, 0.25);
-#endif    
-    
-    /* 15: HeI   + HII -> HeII  + HI */  
+#endif
+
+    /* 15: HeI   + HII -> HeII  + HI */
 #ifdef ENZO_CHEM
     k_table[15][i] = 0.;
 #else
@@ -5353,7 +3527,7 @@ int chem_tabulate(void)
       k_table[15][i] = 4.0e-37*pow(T_table[i], 4.74);
     else
       k_table[15][i] = 1.26e-9*pow(T_table[i], -0.75) * exp(-127500.0/T_table[i]);
-#endif        
+#endif
 #endif
 
 
@@ -5362,18 +3536,18 @@ int chem_tabulate(void)
 #if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
       k_table[3][i] = 0;
 #ifdef CASE_B
-      k_table[4][i] = 1.26e-14 * pow(lambda_HeI, 0.75); // He radiative recombination only 
+      k_table[4][i] = 1.26e-14 * pow(lambda_HeI, 0.75); // He radiative recombination only
 #else
       k_table[4][i] = 3.92e-13/pow(T_eV,0.6353);
 #endif
       k_table[5][i] = 0;
 #endif
     }
-      
-      
+
+
     /*************** Reactions related to H-      ****************************/
     /*************** k7, 8, 16, 17, 18            ****************************/
-    
+
     /* H- formation by photo-attachment */
     /* old one k_table[7][i] = 6.77e-15*pow(T_eV,0.8779); */
 #ifdef ENZO_CHEM
@@ -5382,20 +3556,20 @@ int chem_tabulate(void)
     k_table[7][i] = 1.4e-18 * pow(T_table[i], 0.928) * exp(-T_table[i]/1.62e4);
 #elif defined(CONTINUUM_COOLING_MATSUKOBA)
     if(T_table[i] < 6000.){
-      k_table[7][i] = pow(10, -17.845 
-			  + 0.762*log10_T 
-			  + 0.1523*log10_T*log10_T 
+      k_table[7][i] = pow(10, -17.845
+			  + 0.762*log10_T
+			  + 0.1523*log10_T*log10_T
 			  - 0.03274*log10_T*log10_T *log10_T);
     }else{
-      k_table[7][i] = pow(10, -16.4199 
-			  + 0.1998   *log10_T*log10_T 
-			  - 5.447e-3 *log10_T*log10_T*log10_T*log10_T 
+      k_table[7][i] = pow(10, -16.4199
+			  + 0.1998   *log10_T*log10_T
+			  - 5.447e-3 *log10_T*log10_T*log10_T*log10_T
 			  + 4.0415e-5*log10_T*log10_T*log10_T*log10_T*log10_T*log10_T);
     } //Wishart1979
 #else
     k_table[7][i] = 1.4e-18 * pow(T_table[i], 0.928) * exp(-T_table[i]/16200.0);  /* from GP98 */
-#endif 
-    
+#endif
+
     /* H2 formation path H- channel */
 #ifdef ENZO_CHEM
     /* old one based on Brwon \& Dalgarno */
@@ -5415,7 +3589,7 @@ int chem_tabulate(void)
     if(T_table[i] > 300.0) /* GP98, based on Launey et al. 1991 */
       k_table[8][i] = 4.0e-9 * pow(T_table[i], -0.17);
     else
-      k_table[8][i] = 1.516e-9;    
+      k_table[8][i] = 1.516e-9;
 #elif defined(CONTINUUM_COOLING_MATSUKOBA)
     k_table[8][i] = 1.35e-9* ( pow(T_table[i], 0.098493) + 0.32852 * pow(T_table[i],0.5561) + 2.771e-7 * pow(T_table[i],2.1826) )/
       (1. + 6.191e-3*pow(T_table[i],1.0461) + 8.9712e-11*pow(T_table[i], 3.0424) + 3.2576e-14*pow(T_table[i],3.7741)); //Kreckel+2010
@@ -5441,9 +3615,9 @@ int chem_tabulate(void)
 			   - 2.631285809207e-6  *ln_T_eV8);
     }else
       k_table[16][i] =  0;
-    
 
-    
+
+
     /* HM    + HI  -> 2H    + e  */
     if(T_eV > 0.1){
       k_table[17][i] = exp(-20.37260896533324
@@ -5460,7 +3634,7 @@ int chem_tabulate(void)
       k_table[17][i] = 2.56e-9*pow(T_eV,1.78186);
     }
 
-    
+
     /* HM    + HII -> 2HI */
 #ifdef ENZO_CHEM
     k_table[18][i] = 6.5e-9/sqrt(T_eV);
@@ -5472,7 +3646,7 @@ int chem_tabulate(void)
     k_table[18][i] = 2.4e-6*pow(T_table[i], -0.5) * (1. + T_table[i]/2.e4);       //Croft+1999
 #else
     k_table[18][i] = 6.92e-14*pow(T_table[i], 0.5) + 8.00e-13*pow(T_table[i], 0.83) + 6.18e-7 *pow(T_table[i],-0.27);
-#endif    
+#endif
 
     /*************** Reactions related to H2II ****************************/
     /*************** k9, 10, 12, 19, 20, 21    ****************************/
@@ -5480,7 +3654,7 @@ int chem_tabulate(void)
 #ifdef H2_PLUS
     /* 9: HI    + HII -> H2II  + p     H+ channel  */
     k_table[9][i] = 1.85e-23*pow(T_table[i],1.8);
-    if (T_table[i] > 6.7e3) 
+    if (T_table[i] > 6.7e3)
       k_table[9][i] = 5.81e-16*pow(T_table[i]/56200,-0.6657*log10(T_table[i]/56200));
 
 
@@ -5514,39 +3688,39 @@ int chem_tabulate(void)
     /* 20: H2II  + e   -> 2HI */
 #ifdef ENZO_CHEM
     if(T_table[i] > 617)
-      k_table[20][i] = 1.32e-6 * pow(T_table[i],-0.76); 
+      k_table[20][i] = 1.32e-6 * pow(T_table[i],-0.76);
     else
-      k_table[20][i] = 1.e-8; 
+      k_table[20][i] = 1.e-8;
 #else
     /* old incorrect one k_table[20][i] = 5.56396e-8/pow(T_eV,0.6035); */
-    k_table[20][i] = 2.0e-7/pow(T_table[i],0.5);  
-#endif    
-    
+    k_table[20][i] = 2.0e-7/pow(T_table[i],0.5);
+#endif
+
     /* 21: H2II  + HM  -> HI    + H2I  */
     k_table[21][i] = 4.64e-8/sqrt(T_eV);
-#endif 
+#endif
 
 
     /* k11 : H2I   + H   -> 3HI */
     /* k13 : H2I   + e   -> 2HI   + e     collisional dissociation */
     if(T_eV > 0.3) {
       k_table[11][i] = 1.0670825e-10*pow(T_eV,2.012)/
-	(exp(4.463/T_eV)*pow(1+0.2472*T_eV,3.512));  
+	(exp(4.463/T_eV)*pow(1+0.2472*T_eV,3.512));
       /* low density limit, see k56 */
-      
+
       k_table[13][i] = 4.38e-10*exp(-102000.0/T_table[i])*pow(T_table[i],0.35);
     }else{
-      k_table[11][i] = 0; 
+      k_table[11][i] = 0;
       k_table[13][i] = 0;
     }
 #ifdef ENZO_CHEM
     k_table[11][i] = 1.0670825e-10*pow(T_eV,2.012)/
-      (exp(4.463/T_eV)*pow(1+0.2472*T_eV,3.512));  
+      (exp(4.463/T_eV)*pow(1+0.2472*T_eV,3.512));
     k_table[13][i] = 5.6e-11*exp(-102124.0/T_table[i])*pow(T_table[i],0.5);
 #elif defined(O05_CHEM)
 #elif defined(CONTINUUM_COOLING_MATSUKOBA)
     k_table[13][i] = 1.91e-9 * pow(T_table[i], 0.136) * exp(-53407.1/T_table[i]);
-#endif    
+#endif
 
 
 #ifdef INVERSE_REACTIONS
@@ -5565,9 +3739,9 @@ int chem_tabulate(void)
     if(T_table[i] > 1.e3){
       dE   = (chem_e[sHI] + chem_e[sELEC] - chem_e[sHII] - 2*chem_e[sELEC]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
       Z_pf = z_HI * z_elec/ z_HII / z_elec / z_elec;
-      Mass = m_HI * m_elec/ m_HII / m_elec / m_elec; 
-      
-      K_T = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);    
+      Mass = m_HI * m_elec/ m_HII / m_elec / m_elec;
+
+      K_T = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);
       k_table_inverse[1][i] = k_table[1][i] * K_T;
     }
 
@@ -5576,16 +3750,16 @@ int chem_tabulate(void)
     /**** Hp + e- -> HI  ****/
     dE   = (chem_e[sHII] + chem_e[sELEC] - chem_e[sHI]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_HII * z_elec / z_HI;
-    Mass = m_HII * m_elec / m_HI;     
-    K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, 1.5) * exp(-dE/T_table[i]);    
+    Mass = m_HII * m_elec / m_HI;
+    K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, 1.5) * exp(-dE/T_table[i]);
     k_table_inverse[2][i] = k_table[2][i] * K_T; //note this value is optically thick limit.
 
 
     /**** HI + e- -> HM  ****/
     dE   = (chem_e[sHI] + chem_e[sELEC] - chem_e[sHM]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_HI * z_elec / z_HM;
-    Mass = m_HI * m_elec / m_HM;     
-    K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, 1.5) * exp(-dE/T_table[i]);    
+    Mass = m_HI * m_elec / m_HM;
+    K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, 1.5) * exp(-dE/T_table[i]);
     k_table_inverse[7][i] = k_table[7][i] * K_T; //note this value is optically thick limit.
 
 
@@ -5593,7 +3767,7 @@ int chem_tabulate(void)
     dE   = (chem_e[sHI] + chem_e[sHM] - chem_e[sH2I] - chem_e[sELEC]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_HI * z_HM / z_H2I / z_elec;
     Mass = m_HI * m_HM / m_H2I / m_elec;
-    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);    
+    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);
     k_table_inverse[8][i] = k_table[8][i] * K_T;
 
 #ifdef H2_PLUS
@@ -5601,7 +3775,7 @@ int chem_tabulate(void)
     dE   = (chem_e[sH2I] + chem_e[sHII] - chem_e[sH2II] - chem_e[sHI]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_H2I * z_HII / z_HI / z_H2II;
     Mass = m_H2I * m_HII / m_HI / m_H2II;
-    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);    
+    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);
     //k_table_inverse[10][i] = k_table[10][i] * K_T;
     k_table[10][i] = k_table[12][i] * K_T;
 #endif
@@ -5611,7 +3785,7 @@ int chem_tabulate(void)
       dE   = (chem_e[sH2I] + chem_e[sELEC] - 2*chem_e[sHI] - chem_e[sELEC]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
       Z_pf = z_H2I * z_elec / z_HI / z_HI / z_elec;
       Mass = m_H2I * m_elec / m_HI / m_HI / m_elec;
-      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);    
+      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);
       k_table_inverse[13][i] = k_table[13][i] * K_T;
     }
 
@@ -5621,10 +3795,10 @@ int chem_tabulate(void)
       dE   = (chem_e[sHM] + chem_e[sELEC] - chem_e[sHI] - 2*chem_e[sELEC]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
       Z_pf = z_HM * z_elec / z_HI / z_elec / z_elec;
       Mass = m_HM * m_elec / m_HI / m_elec / m_elec;
-      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);    
+      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);
 #ifdef AIU
       k_table_inverse[16][i] = k_table[16][i] * K_T;
-#endif    
+#endif
     }
 
 
@@ -5635,7 +3809,7 @@ int chem_tabulate(void)
       dE   = (chem_e[sHM] + chem_e[sHI] - 2*chem_e[sHI] - chem_e[sELEC]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
       Z_pf = z_HM * z_HI / z_HI / z_HI / z_elec;
       Mass = m_HM * m_HI / m_HI / m_HI / m_elec;
-      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);    
+      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);
       k_table_inverse[17][i] = k_table[17][i] * K_T;
     }
 #endif
@@ -5644,14 +3818,14 @@ int chem_tabulate(void)
     dE   = (chem_e[sHM] + chem_e[sHII] - 2*chem_e[sHI]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_HM * z_HII / z_HI / z_HI;
     Mass = m_HM * m_HII / m_HI / m_HI;
-    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);    
+    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);
     k_table_inverse[18][i] = k_table[18][i] * K_T;
 
 #ifdef CONTINUUM_COOLING_MATSUKOBA
     dE   = (chem_e[sHM] + chem_e[sHII] - 2*chem_e[sHI]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_HM * z_HII / z_HI / z_HI;
     Mass = m_HM * m_HII / m_HI / m_HI;
-    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);    
+    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);
     //k_table_HI_inverse[1][i] = k_table_HI[1][i] * K_T;
 #endif
 
@@ -5659,8 +3833,8 @@ int chem_tabulate(void)
       /***** HI + HI -> Hp + HI + e- *****/
       dE   = (2*chem_e[sHI] - chem_e[sHII] - chem_e[sHI] - chem_e[sELEC]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
       Z_pf = z_HI * z_HI / z_HII / z_elec / z_HI;
-      Mass = m_HI * m_HI / m_HII / m_elec / m_HI;     
-      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);    
+      Mass = m_HI * m_HI / m_HII / m_elec / m_HI;
+      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);
       k_table_inverse[30][i] = k_table[30][i] * K_T;
     }
 
@@ -5669,18 +3843,18 @@ int chem_tabulate(void)
 
 #ifdef HD
     /* deuterium network */
-    //k_table[31][i]=3.6e-12*pow(T_table[i]/300.0, -0.75);   
+    //k_table[31][i]=3.6e-12*pow(T_table[i]/300.0, -0.75);
     //k_table[34][i]=1.0e-25;
     /* new rate Savin (2002)  (old one may be 3.7e-10*pow(T_table[i],0.28)*exp(-43.0/T_table[i]) ) */
-    //k_table[32][i]=2.0e-10*pow(T_table[i],0.402)*exp(-37.1/T_table[i]) - 3.31e-17*pow(T_table[i],1.48);     
-    //k_table[33][i]=2.06e-10*pow(T_table[i],0.396)*exp(-33.0/T_table[i]) + 2.03e-9*pow(T_table[i],-0.332);  
+    //k_table[32][i]=2.0e-10*pow(T_table[i],0.402)*exp(-37.1/T_table[i]) - 3.31e-17*pow(T_table[i],1.48);
+    //k_table[33][i]=2.06e-10*pow(T_table[i],0.396)*exp(-33.0/T_table[i]) + 2.03e-9*pow(T_table[i],-0.332);
     //k_table[37][i]=1.6e-9;/* old one may be 2.1e-9 */
     /* new rate Savin (2002)  (old one may be 3.7e-10*pow(T_table[i],0.28)  )                */
 
 #ifdef CHEM_HIRANO
-    k_table[31][i]=3.6e-12*pow(T_table[i]/300.0, -0.75);   
-    k_table[32][i]=2.0e-10*pow(T_table[i],0.402)*exp(-37.1/T_table[i]) - 3.31e-17*pow(T_table[i],1.48);     
-    k_table[33][i]=2.06e-10*pow(T_table[i],0.396)*exp(-33.0/T_table[i]) + 2.03e-9*pow(T_table[i],-0.332);  
+    k_table[31][i]=3.6e-12*pow(T_table[i]/300.0, -0.75);
+    k_table[32][i]=2.0e-10*pow(T_table[i],0.402)*exp(-37.1/T_table[i]) - 3.31e-17*pow(T_table[i],1.48);
+    k_table[33][i]=2.06e-10*pow(T_table[i],0.396)*exp(-33.0/T_table[i]) + 2.03e-9*pow(T_table[i],-0.332);
     k_table[34][i]=1.0e-25;
     k_table[37][i]=1.6e-9;
 #else
@@ -5691,7 +3865,7 @@ int chem_tabulate(void)
     k_table[37][i]=2.1e-9;
 #endif
 
-    k_table[35][i]=9.0e-11*exp(-3876.0/T_table[i]); 
+    k_table[35][i]=9.0e-11*exp(-3876.0/T_table[i]);
     k_table[38][i]=3.2e-11*exp(-3624.0/T_table[i]);
     k_table[39][i]=1.0e-9*exp(-464.0/T_table[i]);
 
@@ -5703,27 +3877,27 @@ int chem_tabulate(void)
       k_table[41][i]=pow(10.0, -19.38-1.523*log10_T+1.118*log10_T*log10_T-0.1269*log10_T*log10_T*log10_T);
     }else
       k_table[40][i]=k_table[41][i]=0;
-    
+
     k_table[42][i]=7.2e-8/sqrt(T_table[i]);
 #endif
 
 #ifdef DMINUS
     /* D- part */
-    k_table[43][i]=3.0e-16*pow(T_table[i]/300.0, 0.95)*exp(-T_table[i]/9320.0);   
-    k_table[44][i]=5.7e-8*pow(T_table[i]/300.0, -0.5);   
-    k_table[45][i]=4.6e-8*pow(T_table[i]/300.0, -0.5);   
-    k_table[46][i]=6.4e-9*pow(T_table[i]/300.0, 0.41);   
-    k_table[47][i]=6.4e-9*pow(T_table[i]/300.0, 0.41);   
-    k_table[48][i]=1.5e-9*pow(T_table[i]/300.0, -0.1);   
+    k_table[43][i]=3.0e-16*pow(T_table[i]/300.0, 0.95)*exp(-T_table[i]/9320.0);
+    k_table[44][i]=5.7e-8*pow(T_table[i]/300.0, -0.5);
+    k_table[45][i]=4.6e-8*pow(T_table[i]/300.0, -0.5);
+    k_table[46][i]=6.4e-9*pow(T_table[i]/300.0, 0.41);
+    k_table[47][i]=6.4e-9*pow(T_table[i]/300.0, 0.41);
+    k_table[48][i]=1.5e-9*pow(T_table[i]/300.0, -0.1);
 #endif
-#endif  
+#endif
     /* 3-body reacions
        k_table[55][i]=5.5e-29/T_table[i];
        k_table[56][i]=6.5e-7/sqrt(T_table[i])*exp(-52000.0/T_table[i])*(1.0-exp(-6000.0/T_table[i]));
        k_table[57][i]=6.875e-30/T_table[i];
        k_table[58][i]=8.125e-8/sqrt(T_table[i])*exp(-52000.0/T_table[i])*(1.0-exp(-6000.0/T_table[i]));  */
 
-    /* 3-body, new rate, consistent with equilibrium chemistry */    
+    /* 3-body, new rate, consistent with equilibrium chemistry */
     k_table[55][i]=4.5e-29/T_table[i];
     k_table[56][i]=6.5e-7/sqrt(T_table[i])*exp(-52000.0/T_table[i])*(1.0-exp(-6000.0/T_table[i]));
     k_table[57][i]=k_table[55][i]/40.0;
@@ -5751,7 +3925,7 @@ int chem_tabulate(void)
       dE   = (3*chem_e[sHI] - chem_e[sH2I] - chem_e[sHI]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
       Z_pf = z_HI * z_HI * z_HI / z_H2I / z_HI;
       Mass = m_HI * m_HI * m_HI / m_H2I / m_HI;
-      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, 1.5) * exp(-dE/T_table[i]);    
+      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, 1.5) * exp(-dE/T_table[i]);
       k_table_inverse[55][i] = k_table[55][i] * K_T;
 
 
@@ -5759,13 +3933,13 @@ int chem_tabulate(void)
       dE   = (2*chem_e[sH2I] - 2*chem_e[sHI] - chem_e[sH2I]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
       Z_pf = z_H2I * z_H2I / z_HI / z_HI / z_H2I;
       Mass = m_H2I * m_H2I / m_HI / m_HI / m_H2I;
-      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);    
+      K_T  = Z_pf * pow(Mass, 1.5) * pow(Ene, -1.5) * exp(-dE/T_table[i]);
       k_table[57][i] = k_table[58][i] * K_T;
     }
-#endif        
+#endif
   }
-  
-    
+
+
   /* coefficients for cooling and heating */
   for(i=0; i<N_T; i++){
 #ifdef CASE_B
@@ -5775,17 +3949,17 @@ int chem_tabulate(void)
     double lambda_HeII = 2 * 631515.0/T_table[i];
 #endif
 #endif
-    
+
     /* ------- Collisional excitations (Black 1981; Cen 1992) */
     ceHIa[i]   = 7.5e-19*exp( -118348./T_table[i] )
       /(1.+sqrt(T_table[i]/1.e5));
-    
+
     ceHeIa[i]   = 9.1e-27*exp( -13179./T_table[i] )
       *pow(T_table[i],-0.1687)/(1.+sqrt(T_table[i]/1.e5));
-    
+
     ceHeIIa[i]  = 5.54e-17*exp( -473638./T_table[i] )
       *pow(T_table[i],-0.397)/(1.+sqrt(T_table[i]/1.e5));
-    
+
 
     /* ------- Collisional ionizations (Tom's polynomial fits) */
     ciHIa[i]    = 2.18e-11*k_table[1][i];
@@ -5794,17 +3968,17 @@ int chem_tabulate(void)
 
     ciHeISa[i]  = 5.01e-27*pow(T_table[i],-0.1687)/(1.+sqrt(T_table[i]/1.e5))
       *exp( -55338./T_table[i] );
-    
+
     /* ------- Recombinations */
 #ifdef CASE_B
     reHIIa[i]   = 3.435e-30 * T_table[i] * pow(lambda_HI, 1.97)/pow(1.0+pow(lambda_HI/2.25, 0.376), 3.72);
-    
+
 #if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
-    reHeII1a[i] = BOLTZMANN * T_table[i] * 1.26e-14 * pow(lambda_HeI, 0.75); 
-    
+    reHeII1a[i] = BOLTZMANN * T_table[i] * 1.26e-14 * pow(lambda_HeI, 0.75);
+
     reHeII2a[i] = 1.24e-13*pow(T_table[i],-1.5)*exp( -470000/T_table[i] )
       *(1.+0.3*exp( -94000./T_table[i] ));     /* He dielectric recombination */
-    
+
     reHeIIIa[i] = 8 * 3.435e-30 * T_table[i] * pow(lambda_HeII, 1.97)/pow(1.0+pow(lambda_HeII/2.25, 0.376), 3.72);
 #endif
 #else
@@ -5816,25 +3990,25 @@ int chem_tabulate(void)
 
     reHeII2a[i] = 1.24e-13*pow(T_table[i],-1.5)*exp( -470000/T_table[i] )
       *(1.+0.3*exp( -94000./T_table[i] ));     /* He dielectric recombination */
-    
+
     reHeIIIa[i] = 3.48e-26*sqrt(T_table[i])*pow(T_table[i]/1000.0,-0.2)
       / (1.0 + pow(T_table[i]/4.e6,0.7));
-#endif    
+#endif
 
 
     /* ------- Bremsstrahlung (Black 1981)(Spitzer & Hart 1979) */
     brema[i]    = 1.43e-27*sqrt(T_table[i])
       *(1.1+0.34*exp(-pow(5.5-log10(T_table[i]),2.0)/3.0));
-  
+
     log10_T = log10(T_table[i]);
-    H2_CIE[i]   = pow(10.0, - 116.6 
-v		      + 96.3   *log10_T 
-		      - 47.15  *log10_T*log10_T 
-		      + 10.744 *log10_T*log10_T*log10_T 
-		      -  0.9155*log10_T*log10_T*log10_T*log10_T);    
+    H2_CIE[i]   = pow(10.0, - 116.6
+		      + 96.3   *log10_T
+		      - 47.15  *log10_T*log10_T
+		      + 10.744 *log10_T*log10_T*log10_T
+		      -  0.9155*log10_T*log10_T*log10_T*log10_T);
 #endif
   }
-  
+
   return (i);
 }
 
@@ -5844,14 +4018,14 @@ double SelfShield(double ColumnDens, double T_gas, double b)
 {
   double x = ColumnDens/5.e14;
   double b5 = b/1.;  /* Since "b[km/sec]"*/
-  
+
   return 0.965/pow(1.+x/b5, 1.1) + 0.035/pow(1.+x, 0.5)*exp(-8.5e-4*pow(1.+x, 0.5));
 }
 
 double EachShield(double ColumnDens, double alpha, double delta, double eta)
 {
   double x = ColumnDens/eta;
-  
+
   return exp(-alpha*x)/pow(1.+x, delta);
 }
 #endif

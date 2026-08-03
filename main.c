@@ -1668,7 +1668,11 @@ static void set_chemistry_table_dir(const char *argv0)
   }
 
   *slash = '\0';
-  snprintf(All.ChemistryTableDir, sizeof(All.ChemistryTableDir), "%s/chemistry", exe_path);
+#ifdef CHEMISTRY_OLD
+  snprintf(All.ChemistryTableDir, sizeof(All.ChemistryTableDir), "%s/chemistry_old", exe_path);
+#else
+  snprintf(All.ChemistryTableDir, sizeof(All.ChemistryTableDir), "%s/chemistry_new", exe_path);
+#endif
 }
 
 
