@@ -1,12 +1,18 @@
-
+#ifdef CHEMISTRY_OLD
 int compute_abundances_d(int mode, int ithis, double a_start, double a_end,int *flag_implicit, int flag_print);
+#else
+int compute_abundances_d(int mode, const struct chemdata_in *sph_in, struct chemdata_out *sph_out, double dtime);
+#endif
 int H2line_tabulate(void);
 int InitChem(void);
 
 void make_rate_tables_LW_radiation(void);
 void get_Hminus_PD_rate(double Teff, double *Hminus_pd_rate, double *G0);
 
+double compute_gamma_from_abund(const double *abund, double T_gas);
+#ifdef CHEMISTRY_OLD
 int compute_gamma(int ithis);
+#endif
 double compute_temp(int ithis);
 
 double timestep_flag(double dt_pre, int flag_chem);
@@ -20,4 +26,4 @@ double compute_freefall_time(double rho_gas);
 double compute_collapse_time(double SHR, double rho_gas);
 double update_phys(int ithis, double dt, double SHR0);
 
-void endrun(int ierr);
+void endrun(void);

@@ -62,8 +62,7 @@ void check_partition_functions_H2(void){
 
 double partition_H2_Rossi1985(double T_gas)
 {
-  int nlevel;
-  double z_H2, Z, En, lnQ;
+  double z_H2, Z, lnQ;
   
   /* rossi partition function 1985 */    
   Z = T_gas/1000.0;
@@ -83,15 +82,10 @@ double partition_H2_Rossi1985(double T_gas)
 
 double partition_H2_Irwin1987(double T_gas)
 {
-  int nlevel;
-  double z_H2, Z, En, logQ;
-  
   /* Irwin partition function 1987 */    
-  Z = log10(5040.0/T_gas);
-  
-  logQ = b0 + b1*Z + b2*Z*Z + b3*Z*Z*Z + b4*pow(Z, 4) + b5*pow(Z, 5) + b6*pow(Z, 6) + b7*pow(Z, 7);
-  
-  z_H2=pow(10.0,logQ);
+  double Z = log10(5040.0/T_gas);  
+  double logQ = b0 + b1*Z + b2*Z*Z + b3*Z*Z*Z + b4*pow(Z, 4) + b5*pow(Z, 5) + b6*pow(Z, 6) + b7*pow(Z, 7); 
+  double z_H2 = pow(10.0,logQ);
 
   return z_H2;
 }
@@ -246,18 +240,14 @@ double E_H2_BFM(int iv,int J){
 
 double partition_H(double T_gas)
 {
-
-  int nlevel;
-  double z_H, dn, En;
+  double z_H = 2.0;
   
-  if(T_gas < 1.0e4)
-    z_H = 2.0; 
-  else{
+  if(T_gas > 1.0e4){
     z_H=0.0;
-    dn = 1.0;
+    int nlevel;
     for(nlevel=1;nlevel<=10;nlevel++){
-      dn = nlevel;
-      En = (1.0-1.0/(dn*dn)) * 13.598 * eV_to_erg;
+      double dn = (double) nlevel;
+      double En = (1.0-1.0/(dn*dn)) * 13.598 * eV_to_erg;
       z_H += 2.0 * dn*dn * exp(- En/(BOLTZMANN * T_gas));
     }
   }
@@ -290,8 +280,6 @@ double pf_z_H(double T_K){
 double linear(double *xa,double *ya,int m,double x);
 
 double pf_z_H2p(double T_K){
-  double pf_z_H2p;
-  double xq_H2p;
   double xTBC[] = 
     {1.00000e0, 1.30000e0, 1.70000e0, 2.00000e0, 3.00000e0,  
      5.00000e0, 7.00000e0, 1.00000e1, 1.50000e1, 2.00000e1,  
@@ -309,7 +297,7 @@ double pf_z_H2p(double T_K){
       1.93054e2 , 2.94603e2 , 4.22340e2 , 5.76489e2 , 7.56297e2,  
       9.60417e2 , 1.18728e3};
 
-  pf_z_H2p = linear(xTBC,xqh2p,32,T_K);
+  double pf_z_H2p = linear(xTBC,xqh2p,32,T_K);
 
   return pf_z_H2p;
 }

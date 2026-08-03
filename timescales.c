@@ -308,7 +308,13 @@ int compute_molecular_weight(int ithis){
     + SphP[ithis].H2II
 #endif
 #ifdef HD
-    + XHD
+    + SphP[ithis].DI + SphP[ithis].DII + SphP[ithis].HDI
+#ifdef HD_PLUS
+    + SphP[ithis].HDII
+#endif
+#ifdef DMINUS
+    + SphP[ithis].DM
+#endif
 #endif
 #ifdef HELIUM
     + SphP[ithis].HeI + SphP[ithis].HeII + SphP[ithis].HeIII
@@ -405,4 +411,3 @@ double compute_effective_gamma(double rho, double e, double Gamma, double L_rad,
   *gamma_eff0 = gamma_eff;
   return t_col_new;
 }
-

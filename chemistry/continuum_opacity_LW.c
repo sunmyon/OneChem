@@ -1,11 +1,10 @@
-#if defined(CHEMISTRY) && defined(LYMANWERNER)
+#if defined(CHEMISTRY_SC) && defined(LYMANWERNER)
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <fenv.h>
-#include <mpi.h>
 
 #include "../allvars.h"
 #include "../proto.h"
@@ -69,6 +68,22 @@ void tabulate_opacities_in_LW_band(void){
   mass_fraction_dust[dOrthopy] = 7.33e-4/ DUST_TO_GAS_MASS_RATIO;
 
   double sum = 0.;
+  sum += kappa_dust_abs[dWater] * mass_fraction_dust[dWater];
+  sum += kappa_dust_scat[dWater] * mass_fraction_dust[dWater];
+  kappa_dust_T[0] = sum;
+
+  sum += kappa_dust_abs[dVolorg] * mass_fraction_dust[dVolorg];
+  sum += kappa_dust_scat[dVolorg] * mass_fraction_dust[dVolorg];
+  kappa_dust_T[1] = sum;
+
+  sum += kappa_dust_abs[dReforg] * mass_fraction_dust[dReforg];
+  sum += kappa_dust_scat[dReforg] * mass_fraction_dust[dReforg];
+  kappa_dust_T[2] = sum;
+
+  sum += kappa_dust_abs[dTroilite] * mass_fraction_dust[dTroilite];
+  sum += kappa_dust_scat[dTroilite] * mass_fraction_dust[dTroilite];
+  kappa_dust_T[3] = sum;
+
   sum += kappa_dust_abs[dIron] * mass_fraction_dust[dIron];
   sum += kappa_dust_scat[dIron] * mass_fraction_dust[dIron];
 
@@ -79,22 +94,6 @@ void tabulate_opacities_in_LW_band(void){
   sum += kappa_dust_scat[dOrthopy] * mass_fraction_dust[dOrthopy];
   kappa_dust_T[4] = sum;
 
-  sum += kappa_dust_abs[dTroilite] * mass_fraction_dust[dTroilite];
-  sum += kappa_dust_scat[dTroilite] * mass_fraction_dust[dTroilite];
-  kappa_dust_T[3] = sum;
-
-  sum += kappa_dust_abs[dReforg] * mass_fraction_dust[dReforg];
-  sum += kappa_dust_scat[dReforg] * mass_fraction_dust[dReforg];
-  kappa_dust_T[2] = sum;
-
-  sum += kappa_dust_abs[dVolorg] * mass_fraction_dust[dVolorg];
-  sum += kappa_dust_scat[dVolorg] * mass_fraction_dust[dVolorg];
-  kappa_dust_T[1] = sum;
-
-  sum += kappa_dust_abs[dWater] * mass_fraction_dust[dWater];
-  sum += kappa_dust_scat[dWater] * mass_fraction_dust[dWater];
-  kappa_dust_T[0] = sum;
-
   Sigma_HM_bf_at_ELW = Hminus_detachment_John1988(E_LW);
   Sigma_HI_bf_2s2p_at_ELW = 1.58e-17 * pow(4.*E_LW/E_Lyl, -3);
 
@@ -104,17 +103,17 @@ void tabulate_opacities_in_LW_band(void){
 }
 
 
-double calc_continuum_opacities_LW(int ithis){
+double calc_continuum_opacities_LW(double *abund, double Tdust, double metallicity){
   double T_gas = compute_temp(ithis);
   double beta_LW = E_LW * eV_to_erg/ BOLTZMANN / T_gas;
   double beta_2s2p = E_2s2p * eV_to_erg/ BOLTZMANN / T_gas;
 
   const double g2 = 8.;
 
-  double f_HM = SphP[ithis].HM;
-  double f_HI = SphP[ithis].HI;
+  double f_HM = abund[sHM];
+  double f_HI = abund[sHI];
   double f_HI_2s2p = f_HI * g2 * exp(-beta_2s2p)/partition_H(T_gas);
-  double f_elec = SphP[ithis].elec;
+  double f_elec = abund[sELEC];
 
   double kappa_nu = (Sigma_HM_bf_at_ELW * f_HM + Sigma_HI_bf_2s2p_at_ELW * f_HI_2s2p) * (1. - exp(-beta_LW)) 
     + Sigma_H_Rayleigh_at_ELW * f_HI + Sigma_Thomson * f_elec;
@@ -128,9 +127,6 @@ double calc_continuum_opacities_LW(int ithis){
 
   double kappa_dust = 0.;
 #ifdef METALLICITY
-  double T_dust = SphP[ithis].Tdust;
-  double metallicity = SphP[ithis].Metallicity;
-
   if(T_dust < 159.)
     kappa_dust = kappa_dust_T[0];
   else if(T_dust < 275.)
@@ -144,6 +140,11 @@ double calc_continuum_opacities_LW(int ithis){
 
   kappa_dust *= metallicity;
 #endif
+
+  if(FlagPrint)
+    printf("kappa_gas=%g %g %g %g kappa_dust=%g beta_LW=%g, f_HM=%g f_HI=%g, f_HI_2s2p=%g f_elec=%g\n"
+	   , kappa_gas[0]/PROTONMASS, kappa_gas[1]/PROTONMASS, kappa_gas[2]/PROTONMASS, kappa_gas[3]/PROTONMASS, kappa_dust
+	   , beta_LW, f_HM, f_HI, f_HI_2s2p, f_elec);
 
   double kappa = kappa_nu/PROTONMASS + kappa_dust;
 

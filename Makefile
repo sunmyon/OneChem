@@ -10,6 +10,17 @@ OPT1  += -DOMUKAI05
 
 #OPT1  +=  -DDEBUG_PRINT_FLAG
 #OPT1  +=  -DID_CHEM_DEBUG=0
+USE_CHEMISTRY_OLD = 0
+ifeq ($(USE_CHEMISTRY_OLD),1)
+OPT1  +=  -DCHEMISTRY_OLD
+endif
+ENABLE_LW ?= 0
+UPDATE_L_CORE ?= 0
+EXTRA_OPT ?=
+OPT1 += $(EXTRA_OPT)
+ifeq ($(UPDATE_L_CORE),1)
+OPT1 += -DUPDATE_L_CORE_IN_SOLVER
+endif
 
 OPT1  += -DSINK
 OPT1  += -DSPLIT
@@ -25,9 +36,11 @@ OPT1  +=  -DFLOAT=double
 #OPT1  +=  -DADIABATIC_EXPANSION
 #OPT1  +=  -DSTELLAR_FUV
 #OPT1  +=  -DSURVEY_NT_REGION
-#OPT1  += -DSURVEY_METALLICITY
-#OPT1  += -DSURVEY_CMB_REDSHIFT
+OPT1  += -DSURVEY_METALLICITY
+OPT1  += -DSURVEY_CMB_REDSHIFT
+ifeq ($(ENABLE_LW),1)
 OPT1  += -DSURVEY_LYMANWERNER
+endif
 
 #OPT1  += -DDENSITY_GRAD
 #OPT1  +=  -DJEANS_LENGTH_TMAX=1.e4
@@ -70,16 +83,17 @@ OPT1  +=  -DCONTINUUM_COOLING_MATSUKOBA
 
 OPT1  +=  -DCASE_B
 
-#OPT1  +=  -DMETALLICITY=-4.
-#OPT1  +=  -DMETAL_COOLING_LW
-#OPT1  +=  -DDUST_COOLING
-#OPT1  +=  -DH2_FORMATION_ON_DUST
+OPT1  +=  -DMETALLICITY=-4.
+OPT1  +=  -DMETAL_COOLING_LW
+OPT1  +=  -DDUST_COOLING
+OPT1  +=  -DH2_FORMATION_ON_DUST
 #OPT1  +=  -DNO_H2_DESTRUCTION
 
 OPT1  +=  -DH2_OPACITY 
 OPT1  +=  -DH2_OPACITY_FIT
 OPT1  +=  -DCONT_OPACITY
 
+ifeq ($(ENABLE_LW),1)
 OPT1  +=  -DLYMANWERNER
 OPT1  +=  -DBACKGROUND_LW_RADIATION
 #OPT1  +=  -DTYPE_A
@@ -88,27 +102,53 @@ OPT1  +=  -DTYPE_B   #type of the spectrum of LW intensity
 #OPT1  +=  -DTYPE_POW   #type of the spectrum of LW intensity
 OPT1  +=  -DSHIELD_LW 
 #OPT1  +=  -DSHIELD_DENS=1.e9
+endif
 
 #OPT1  +=  -DIONIZATION_PHOTON
 #OPT1  +=  -DSUBGRID_CHAMPAGNE_FLOW
 #OPT1  +=  -DX_RAY=1.e-3
 #OPT1  +=  -DX_RAY_2nd
 
-GSL_INCL =  -I${GSL_DIR}/include -I/home/chon/usr/local/include
-GSL_LIBS =  -L${GSL_DIR}/lib -L/home/chon/usr/local/lib
+GSL_DIR ?= $(shell gsl-config --prefix 2>/dev/null || echo /opt/homebrew)
+LOCAL_PREFIX ?= /home/chon/usr/local
+LOCAL_INCL = $(if $(wildcard $(LOCAL_PREFIX)/include),-I$(LOCAL_PREFIX)/include)
+LOCAL_LIBS = $(if $(wildcard $(LOCAL_PREFIX)/lib),-L$(LOCAL_PREFIX)/lib)
+GSL_INCL =  -I$(GSL_DIR)/include $(LOCAL_INCL)
+GSL_LIBS =  -L$(GSL_DIR)/lib $(LOCAL_LIBS)
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+LAPACK_LIBS = -framework Accelerate
+else
+LAPACK_LIBS = -llapack -lblas -lgfortran
+endif
 
-CFLAGS =  $(OPT1) -g -O0 -I/home/chon/usr/local/include -L/home/chon/usr/local/lib -lblas -llapack -lgslcblas -Wformat
+CFLAGS =  $(OPT1) -g -O0 $(GSL_INCL) -Wformat
 
-LIBS   =  $(GSL_INCL) $(GSL_LIBS) -lm -llapack -lblas -lgsl -lgslcblas -lgfortran
+LIBS   =  $(GSL_INCL) $(GSL_LIBS) -lm $(LAPACK_LIBS) -lgsl -lgslcblas
 
-CC     =  cc
+CC     =  mpicc
+
+ifneq (,$(findstring -DCHEMISTRY_OLD,$(OPT1)))
+CHEMISTRY_DIR  = chemistry_old
+CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/chemistry_200601.o \
+                 $(CHEMISTRY_DIR)/cooling_func_200601.o \
+                 $(CHEMISTRY_DIR)/stellar_spectrum.o
+CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h
+else
+OPT1 += -DCHEMISTRY_SC
+CHEMISTRY_DIR  = chemistry_new
+CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/chemistry.o \
+                 $(CHEMISTRY_DIR)/cooling_func.o \
+                 $(CHEMISTRY_DIR)/react_rate_FUV.o
+CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h
+endif
 
 OBJS   = main.o allvars.o timescales.o \
-	 chemistry/H2cooling.o chemistry/dust_cooling.o \
-	 chemistry/chemistry_200601.o chemistry/cooling_func_200601.o \
-         chemistry/saha.o chemistry/partition.o chemistry/stellar_spectrum.o
+	 $(CHEMISTRY_DIR)/H2cooling.o $(CHEMISTRY_DIR)/dust_cooling.o \
+	 $(CHEMISTRY_OBJS) \
+         $(CHEMISTRY_DIR)/saha.o $(CHEMISTRY_DIR)/partition.o
 
-INCL   = allvars.h proto.h tags.h chemistry/chemistry.h
+INCL   = allvars.h proto.h tags.h $(CHEMISTRY_INCL)
 
 BUILDDIR := build
 OBJDIR_OBJS := $(addprefix $(BUILDDIR)/,$(OBJS))

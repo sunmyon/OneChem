@@ -7,7 +7,6 @@
 #include "../proto.h"
 #include "chemistry.h"
 
-
 double partition_H(double T_gas);
 void correct_initial_abundances(double *yi, double *y_init);
 int dgesv_(int *n, int *nrhs, double *a, int *lda, int *ipiv, double *b, int *ldb, int *info);
@@ -28,8 +27,8 @@ double chem_saha(double xnH,double T_K,double *y_H,double *y_H2,double *y_e,doub
   double err_cnv = 1.e-5;
   const int itrmax = 1000;
   double m_H, m_e=9.1094e-28;
-  double z_Hp=1.0,z_e=2.0,z_Hm=1.0;
-  double h_Pla=6.625e-27,xk_B=1.381e-16, chi_H=2.179e-11,chi_H2=7.177e-12,chi_Hm=1.210e-12;;
+  double z_Hp=1.0,z_e=2.0;
+  double h_Pla=6.625e-27,xk_B=1.381e-16, chi_H=2.179e-11,chi_H2=7.177e-12;
   int itr;
 
   z_H  = partition_H(T_K);
@@ -129,10 +128,10 @@ double chem_saha_5sp(double xnH, double T_K, double *y){
 
   double Z_pf[n_sp], Mass[n_sp], g[n_sp], dE[n_sp];
   double f[n_sp];
-  double y_init[n_sp], dy[n_sp], dy_norm[n_sp],y_ave[n_sp];
-  double AA[n_sp*n_sp], AA0[n_sp*n_sp];
+  double y_init[n_sp], dy[n_sp], dy_norm[n_sp];
+  double AA[n_sp*n_sp];
   double y_H, y_H2,  y_e, y_Hp, y_Hm;
-  double Ene, T_erg, tch, err, err_max;
+  double Ene, T_erg, err, err_max;
   
   int i, j;
   int itr, info;
@@ -218,11 +217,6 @@ double chem_saha_5sp(double xnH, double T_K, double *y){
 
     /* solve A*dy = -f with gauss elimination */
     /* use LAPACK solver                      */
-    for(i=0;i<n_sp;i++)
-      for(j=0;j<n_sp;j++)
-	AA0[i*n_sp+j]= AA[i*n_sp+j];
-
-
     for(i=0;i<n_sp;i++)  dy[i] = -f[i];
     
     dgesv_(&n_sp, &inc, AA, &n_sp, ipiv, dy, &n_sp, &info);  

@@ -137,6 +137,11 @@ int ReactionRate_diff_nometal_HDII(double nH,double *ni,double *rf,int ithis);
 int ReactionRate_diff_nometal_DM(double nH,double *ni,double *rf,int ithis);
 #endif
 int func_other(double nH,double *ni,double *rf,int ithis);
+static void init_switch_func(void);
+#endif
+
+#if defined(CHEMISTRY_IMPLICIT) && !defined(CHEM_DIFF_ANALYTIC) && !defined(ALLOW_CHEM_DIFF_NUMERIC)
+#error "Finite-difference chemistry Jacobian is deprecated and very slow; define CHEM_DIFF_ANALYTIC or explicitly opt in with ALLOW_CHEM_DIFF_NUMERIC."
 #endif
 
 int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int *st_flag, int flag_print);
@@ -224,12 +229,14 @@ double EachShield(double ColumnDens, double alpha, double delta, double eta);
 
 #ifdef ENERGY_IMPLICIT
 double give_g(int ithis, double dt, double rho_gas, double T_gas, double *e_new, double *g, double *rhoU_chem, double *rhoU_rad);
-double solve_brent(int ithis, double dt, double rho_gas,double T_min, double g_min, double T_max, double g_max,
-								 double *e_new0, double *rhoU_chem, double *rhoU_rad, int max_iter);
+double solve_bisection(int ithis, double dt, double rho_gas,double T_min, double g_min, double T_max, double g_max,
+		       double *T_new0, double *e_new0, double *rhoU_chem, double *rhoU_rad, int max_iter);
+static double commit_g(int ithis, double dt, double rho_gas, double T_gas, double *e_new, double *g, double *rhoU_chem, double *rhoU_rad);
 int dgesv_(int *n, int *nrhs, double *a, int *lda, int *ipiv, double *b, int *ldb, int *info);
 #endif
 
 void set_reaction_rate_coeff(int ithis, double T_gas, double rho_gas, double *k);
+static void update_radiation_state_old(int ithis, double T_gas, double rho_cgs);
 void correct_initial_abundances(double *yi);
 void give_initial_guess(double T_gas, double nH, double dt, double *yi, double *y_init, double *k);
 void bound_ddy(double *yi, double *ddy, double *y_max, int itr, int flag_reset, double *err_max);
@@ -336,7 +343,7 @@ const double XHD = 3.e-5;
 double T[N_T], J0_nu[N_nu], J_nu[N_nu], nu[N_nu];
 double k_table[k_MAX][N_T];
 double k_table_inverse[k_MAX][N_T];
-double ciHIa[N_T], ciHeIa[N_T], ciHeIIa[N_T], ciHeISa[N_T], reHIIa[N_T], brema[N_T];
+double ciHIa[N_T], ciHeIa[N_T], ciHeIIa[N_T], ciHeISa[N_T], reHIIa[N_T], brema[N_T], H2_CIE[N_T];
 double ceHIa[N_T], ceHeIa[N_T], ceHeIIa[N_T], reHeII1a[N_T], reHeII2a[N_T], reHeIIIa[N_T];
 
 /* cross-sections */
@@ -517,6 +524,52 @@ double get_core_radius(int ithis){
 #endif
 }
 
+static void update_radiation_state_old(int ithis, double T_gas, double rho_cgs)
+{
+  double n_nuclei = rho_cgs / PROTONMASS;
+  double l_core = set_core_radius(ithis, T_gas);
+
+#ifdef SHIELD_LW
+  double ColumnDens_H2, ColumnDens_HI;
+#ifdef HD
+  double ColumnDens_HD;
+#endif
+
+#ifdef SHIELD_6RAY
+  int i;
+  ColumnDens_H2 = ColumnDens_HI = 0.;
+#ifdef HD
+  ColumnDens_HD = 0.;
+#endif
+  for(i=0; i<6; i++){
+    ColumnDens_H2 += 1./SphP[ithis].ColumnDens_H2[i];
+    ColumnDens_HI += 1./SphP[ithis].ColumnDens_HI[i];
+#ifdef HD		
+    ColumnDens_HD += 1./SphP[ithis].ColumnDens_HD[i];
+#endif		
+  }
+  ColumnDens_H2 = 6./ColumnDens_H2;
+  ColumnDens_HI = 6./ColumnDens_HI;
+#ifdef HD	
+  ColumnDens_HD = 6./ColumnDens_HD;
+#endif
+#else
+  ColumnDens_H2 = l_core * n_nuclei * SphP[ithis].H2I;
+  ColumnDens_HI = l_core * n_nuclei * SphP[ithis].HI;
+#ifdef HD	
+  ColumnDens_HD = l_core * n_nuclei * SphP[ithis].HDI;
+#endif
+#endif
+
+  sph_temp.f_byH2self = SelfShield(ColumnDens_H2, T_gas, 9.12*pow(T_gas/1.e4, 0.5));
+  sph_temp.f_byHI     = EachShield(ColumnDens_HI, 1.49e-1, 1.62e+0, 2.85e23);
+#ifdef HD	
+  sph_temp.f_byHDself = SelfShield(ColumnDens_HD, T_gas, 7.45*pow(T_gas/1.e4, 0.5));    
+#endif
+  sph_temp.f_byH2     = EachShield(ColumnDens_H2, 5.20e-3, 2.38e-1, 2.34e19);
+#endif
+}
+
 
 
 int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int *flag_implicit0, int flag_print)
@@ -538,6 +591,7 @@ int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int 
   int conv_flag = 0;
   int flag_implicit=0;
   int flag_chem_implicit=0;
+  int status = 0;
 
   double n_nuclei;
   double rhoU_dot_rad, rhoU_dot_chem;
@@ -549,10 +603,6 @@ int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int 
   double sum_fraction, molecular_weight;
   double t_chem;
   double err;
-
-#ifdef SHIELD_LW
-  double ColumnDens_H2, ColumnDens_HI, ColumnDens_HD;
-#endif
 
   FlagPrint = flag_print;
 
@@ -638,56 +688,7 @@ int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int 
   k[23] = k[24] = piHeI = piHeII = 0.;
 #endif
   
-#ifdef SHIELD_LW
-#ifdef SHIELD_6RAY
-  int i;
-  ColumnDens_H2 = ColumnDens_HI = ColumnDens_HD = 0.;
-  for(i=0; i<6; i++){
-    ColumnDens_H2 += 1./SphP[ithis].ColumnDens_H2[i];
-    ColumnDens_HI += 1./SphP[ithis].ColumnDens_HI[i];
-#ifdef HD		
-    ColumnDens_HD += 1./SphP[ithis].ColumnDens_HD[i];
-#endif		
-  }
-  ColumnDens_H2 = 6./ColumnDens_H2;
-  ColumnDens_HI = 6./ColumnDens_HI;
-#ifdef HD	
-  ColumnDens_HD = 6./ColumnDens_HD;
-#endif
-#else
-
-  double l_core = set_core_radius(ithis, T_gas);
-
-  ColumnDens_H2 = l_core * n_nuclei * SphP[ithis].H2I;
-  ColumnDens_HI = l_core * n_nuclei * SphP[ithis].HI;
-#ifdef HD	
-  ColumnDens_HD = l_core * n_nuclei * SphP[ithis].HDI;
-#endif
-#endif
-  //>--- [H2]
-  // eq-12 in Wolcott-Green et al. (2011)
-  //   - Dopper broadening is defined in Ahn&Shapiro(2007)
-  //        b = 1.29e4*(T/atomic-weight)**0.5 [cm/s]  (Spitzer 1978)
-  //          = 1.29e4*(T/2)**0.5 [cm/s] (for H2)
-  //          = 9.12e5*(T/1e4)**0.5 [cm/s]
-  sph_temp.f_byH2self = SelfShield(ColumnDens_H2, T_gas, 9.12*pow(T_gas/1.e4, 0.5));
-
-  // eq-12 & Table-1 in Wolcott-Green&Haiman(2011)
-  sph_temp.f_byHI     = EachShield(ColumnDens_HI, 1.49e-1, 1.62e+0, 2.85e23);
-  
-#ifdef HD	
-  //>--- [HD]
-  // eq-12 in Wolcott-Green et al. (2011)
-  //   - Dopper broadening is defined in Ahn&Shapiro(2007)
-  //        b = 1.29e4*(T/atomic-weight)**0.5 [cm/s]  (Spitzer 1978)
-  //          = 1.29e4*(T/3)**0.5 [cm/s] for HD
-  //          = 7.45e5*(T/1e4)**0.5 [cm/s]
-  sph_temp.f_byHDself = SelfShield(ColumnDens_HD, T_gas, 7.45*pow(T_gas/1.e4, 0.5));    
-#endif
-
-  // eq-12 & Table-1 in Wolcott-Green&Haiman(2011)
-  sph_temp.f_byH2     = EachShield(ColumnDens_H2, 5.20e-3, 2.38e-1, 2.34e19);
-#endif
+  update_radiation_state_old(ithis, T_gas, rho_cgs);
 
 
   {
@@ -731,7 +732,11 @@ int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int 
     /*---------  Set the internal time step for subcycling */
     time1 = All.Epsilon * fabs(SphP[ithis].t_cool);
     time2 = All.Epsilon * fabs(SphP[ithis].t_chem);
-    time3 = dt_tot;
+    time3 = (a_end - a_now) * All.UnitTime_in_s/All.HubbleParam;
+    if(All.ComovingIntegrationOn)
+      time3 /= (a_now * All.cf_hubble_a);
+    if(time3 <= 0.)
+      goto LOOP_OUT;
         
     /* take the minimum */ 
     dt = dmin(time1, dmin(time2,time3));
@@ -770,6 +775,8 @@ int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int 
 #if defined(ENERGY_IMPLICIT) || defined(HYBRID_IMPLICIT)
     if(flag_implicit){
       conv_flag = chemistry_noneq_energy_implicit(ithis, dt, rho_cgs, T_gas_in, &rhoU_dot_chem, &rhoU_dot_rad);		
+      if(conv_flag)
+	status = 1;
       SphP[ithis].t_cool = MAX_REAL_NUMBER, SphP[ithis].t_chem = MAX_REAL_NUMBER;
     }else
 #endif
@@ -780,11 +787,15 @@ int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int 
 #if defined(CHEMISTRY_IMPLICIT)|| defined(HYBRID_IMPLICIT)
 	if(flag_chem_implicit){
 	  ifunc = chemistry_noneq_chem_implicit(advance_flag=1, ithis, dt, rho_cgs, T_gas_in, &rhoU_dot_chem, &t_cool_chem, &err);    		
+	  if(ifunc != 1)
+	    status = 1;
 	  SphP[ithis].t_chem = MAX_REAL_NUMBER;       	
 	}else
 #endif
 	  {
 	    ifunc = chemistry_noneq_exp_nometal(advance_flag=1, ithis, dt, rho_cgs, T_gas_in, &t_chem,&rhoU_dot_chem, &t_cool_chem);
+	    if(ifunc == 2)
+	      status = 1;
 	    SphP[ithis].t_chem = t_chem;
 	  }
 
@@ -793,7 +804,9 @@ int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int 
 #endif
 	
 	/* Update temperature */ 
-	ifunc = radiative_cooling_d_nometal(ithis, rho_cgs, T_gas_in, &rhoU_dot_rad, &t_cool_rad);     
+	int cooling_status = radiative_cooling_d_nometal(ithis, rho_cgs, T_gas_in, &rhoU_dot_rad, &t_cool_rad);
+	if(cooling_status)
+	  status = 1;
 
 	SphP[ithis].t_cool  = dmin(fabs(t_cool_rad),fabs(t_cool_chem));
 		
@@ -852,6 +865,9 @@ int compute_abundances_d(int mode, int ithis, double a_start, double a_end, int 
     
   SphP[ithis].Entropy  = SphP[ithis].ThermalEnergy * (SphP[ithis].Gamma-1.0) / pow(SphP[ithis].Density * a3inv, SphP[ithis].Gamma-1.0);
   *flag_implicit0 = flag_implicit + 2*flag_chem_implicit;
+
+  if(status)
+    return 1;
     
   if(flag_implicit)
     return conv_flag;
@@ -906,6 +922,8 @@ int radiative_cooling_d_nometal(int ithis, double rho_gas, double T_gas, double 
   n_nuclei  = rho_gas/PROTONMASS;  
   a3inv     = All.cf_a3inv;
 
+  set_reaction_rate_coeff(ithis, T_gas, rho_gas, k);
+
   
   /* --------- Compute temperature index.  */
   ln_T = log(T_gas);
@@ -959,7 +977,7 @@ int radiative_cooling_d_nometal(int ithis, double rho_gas, double T_gas, double 
   /************************ line cooling by H, He, H2, HD, CI, OII ******************************/ 
   /**********************************************************************************************/ 
 
-  double l_core = set_core_radius(ithis, T_gas);
+  double l_core = get_core_radius(ithis);
 
   /******************************* Hydrogen lines ***********************************************/
 #ifdef HLINE_COOLING_THIN
@@ -1030,7 +1048,7 @@ int radiative_cooling_d_nometal(int ithis, double rho_gas, double T_gas, double 
     
     if(f_reduce < 0){ /* something wrong */
       fflush(stdout);
-      endrun(367523);
+      endrun();
     }
     
     edot_H2 *= f_reduce;
@@ -1050,7 +1068,7 @@ int radiative_cooling_d_nometal(int ithis, double rho_gas, double T_gas, double 
     
     if(f_reduce < 0){ /* something wrong */
       fflush(stdout);
-      endrun(367523);
+      endrun();
     }
     
     edot_HD *= f_reduce;
@@ -1132,6 +1150,7 @@ int radiative_cooling_d_nometal(int ithis, double rho_gas, double T_gas, double 
 #endif
 
 #ifdef DUST_COOLING
+  double edot_PE = 0.;
   if(SphP[ithis].Tdust < 2000.){
     //edot_CII *= (1. - DUST_TO_GAS_MASS_RATIO);
     //edot_OI  *= (1. - DUST_TO_GAS_MASS_RATIO);
@@ -1140,7 +1159,6 @@ int radiative_cooling_d_nometal(int ithis, double rho_gas, double T_gas, double 
   }
 
 #ifdef LYMANWERNER
-  double edot_PE;
   edot_PE = dust_PEheating(ithis, nH, y_e, T_gas, SphP[ithis].Metallicity);
 #endif
   if(FlagPrint)
@@ -1608,7 +1626,7 @@ int chemistry_noneq_energy_implicit(int ithis, double dt, double rho_gas, double
 #ifdef FLAG_BRENT
     if( flag_brent == 1){
       SphP[ithis] = sph_old;
-      err = solve_brent(ithis, dt, rho_gas, T_minus, g_minus, T_plus, g_plus, &e_new, rhoU_chem, rhoU_rad, MAX_ITER + 20 - j);
+      err = solve_bisection(ithis, dt, rho_gas, T_minus, g_minus, T_plus, g_plus, &T_new, &e_new, rhoU_chem, rhoU_rad, MAX_ITER + 20 - j);
 
       if(err < 1.e-5)
 	flag_converged = 1;
@@ -1663,7 +1681,9 @@ int chemistry_noneq_energy_implicit(int ithis, double dt, double rho_gas, double
 	  T_new = 0.5 * (T_new + T_old);
 	else
 	  T_new = dmin(T_small,T_max), T_small *= 1.1;
-      }else T_new *=1.001 ;
+      }else{
+	T_new = T_new_temp + dT;
+      }
       
       if(j++ > MAX_ITER){
 	printf("didn't converged T_new=%g dT=%g.\n"
@@ -1755,15 +1775,16 @@ int chemistry_noneq_energy_implicit(int ithis, double dt, double rho_gas, double
 
     if(flag_brent == 1){
       SphP[ithis] = sph_old;
-      err = solve_brent(ithis, dt, rho_gas, T_minus, g_minus, T_plus, g_plus, &e_new, rhoU_chem, rhoU_rad, MAX_ITER + 20 - j);
+      err = solve_bisection(ithis, dt, rho_gas, T_minus, g_minus, T_plus, g_plus, &T_new, &e_new, rhoU_chem, rhoU_rad, MAX_ITER + 20 - j);
 
       if(err < 1.e-5) flag_converged = 1;	       	
     }
   }
 #endif
 
+  commit_g(ithis, dt, rho_gas, T_new, &e_new, &g, rhoU_chem, rhoU_rad);
   SphP[ithis].ThermalEnergy = e_new;
-  
+
  END:;
   if(isnan(err) || isnan(T_new))
     raise(11);
@@ -1849,7 +1870,9 @@ int chemistry_noneq_energy_implicit(int ithis, double dt, double rho_gas, double
 #pragma opt
 
 
-double give_g(int ithis, double dt, double rho_gas, double T_gas_new, double *e_new, double *g, double *rhoU_dot_chem, double *rhoU_dot_rad){
+static double evaluate_g(int ithis, double dt, double rho_gas, double T_gas_new, double *e_new, double *g,
+			 double *rhoU_dot_chem, double *rhoU_dot_rad, int commit)
+{
   int ifunc;
   int solve_it = 1;
   double e_old, de;
@@ -1857,6 +1880,8 @@ double give_g(int ithis, double dt, double rho_gas, double T_gas_new, double *e_
   double gamma_new, xmu_new;
   double t_cool_chem, t_cool_rad;
   double err;
+  struct sph_particle_data sph_old = SphP[ithis];
+  struct sph_data_local sph_temp_old = sph_temp;
   
   e_old = SphP[ithis].ThermalEnergy;
   
@@ -1907,94 +1932,60 @@ double give_g(int ithis, double dt, double rho_gas, double T_gas_new, double *e_
   }
 #endif
  
+  if(!commit){
+    SphP[ithis] = sph_old;
+    sph_temp = sph_temp_old;
+  }
+ 
   return err;
 }
 
+double give_g(int ithis, double dt, double rho_gas, double T_gas_new, double *e_new, double *g, double *rhoU_dot_chem, double *rhoU_dot_rad){
+  return evaluate_g(ithis, dt, rho_gas, T_gas_new, e_new, g, rhoU_dot_chem, rhoU_dot_rad, 0);
+}
 
-double solve_brent(int ithis, double dt, double rho_gas,double T_min, double g_min, double T_max, double g_max,
-		   double *e_new0, double *rhoU_chem, double *rhoU_rad, int max_iter){
-  int iter, mflag;
+static double commit_g(int ithis, double dt, double rho_gas, double T_gas_new, double *e_new, double *g, double *rhoU_dot_chem, double *rhoU_dot_rad){
+  return evaluate_g(ithis, dt, rho_gas, T_gas_new, e_new, g, rhoU_dot_chem, rhoU_dot_rad, 1);
+}
+
+double solve_bisection(int ithis, double dt, double rho_gas,double T_min, double g_min, double T_max, double g_max,
+		       double *T_new0, double *e_new0, double *rhoU_chem, double *rhoU_rad, int max_iter){
+  int iter;
   double err = 1.0;
-  double T_a, T_b, T_c, T_d;
-  double f1, f2, f3;
-  double T_cand, T_crit;
-  double val_a, val_b, val_c, val_d;
+  double T_a, T_b;
+  double T_cand;
+  double val_a, val_b;
   double val_new;
-  double xm;
-  double dummy1;
   double e_new;
-  struct sph_particle_data sph_old;
-  
-  const double Delta = 1.0e-30;
-  sph_old = SphP[ithis];
   
   if(g_min * g_max > 0){
-    printf("something wrong in solve_brent."
+    printf("something wrong in solve_bisection."
 	   " g_min and g_max must have opposite sign.\n");
     return 1e30;
   }
   
-  if( fabs(g_min) < fabs(g_max) ){
-    T_b = T_min, val_b = g_min;
-    T_a = T_max, val_a = g_max;
-  }else{
-    T_a = T_min, val_a = g_min;
-    T_b = T_max, val_b = g_max;
-  }
+  T_a = T_min, val_a = g_min;
+  T_b = T_max, val_b = g_max;
+  T_cand = 0.5 * (T_a + T_b);
+  e_new = *e_new0;
   
-  T_c = T_a, val_c = val_a;
-  
-  iter = 0, mflag = 1;
+  iter = 0;
   while(iter < max_iter && err > 1.0e-6){
-    
-    f1 = val_a - val_b;
-    
-    if(val_a != val_c && val_b != val_c){
-      f2 = val_b - val_c, f3= val_c - val_a;
-      T_cand = -( T_a *val_b*val_c/f3/f2 + T_b *val_c*val_a/f1/f3
-		  + T_c *val_a*val_b/f2/f1 );
-    }else{
-      T_cand = T_b - val_b*(T_a - T_b)/f1;
-    }
-    
-    T_crit = (3*T_a + T_b) * 0.25;
-    if(mflag == 1) xm = fabs(T_b - T_c);
-    else xm = fabs(T_c - T_d);
-    
-    mflag = 0;
-    if(  ((T_cand - T_crit) * (T_cand - T_b) > 0) && 
-	 ( (fabs(T_cand - T_b) > 0.5 * xm) || xm < Delta )  ){
-      
-      T_cand = 0.5 * (T_a + T_b);
-      mflag = 1;
-    }
-    
     T_cand = 0.5 * (T_a + T_b);
     
     err = give_g(ithis,dt,rho_gas,T_cand,&e_new,&val_new,rhoU_chem,rhoU_rad);
-    //  val_new = func(T_cand);
 
-    T_d = T_c, T_c = T_b;
-    val_d = val_c, val_c = val_b;
     if(val_a * val_new < 0) T_b = T_cand, val_b = val_new;
     else T_a = T_cand, val_a = val_new;
-    
-    //    printf("%g %g %d\n",T_cand,val_new,mflag);
-    
-    if( fabs(val_a) < fabs(val_b) ){
-      dummy1 = val_a, val_a = val_b, val_b = dummy1;
-      dummy1 = T_a, T_a = T_b, T_b = dummy1;
-    }
       
     err = fabs( (T_a - T_b)/T_b );
     
     if( err < 1.0e-5) break;
-    SphP[ithis] = sph_old;    
-    
 
     iter++;
   }
 	
+  *T_new0 = T_cand;
   *e_new0 = e_new;
 	
   return err;
@@ -2615,7 +2606,7 @@ int chemistry_noneq_exp_nometal(int solve_it, int ithis, double dt, double rho_g
 	printf("H! ThisTask %d ithis %d correction=%g\n"
 	       , ThisTask, ithis, correction);
 	fflush(stdout);
-	endrun(1100);
+	endrun();
       }
 
   
@@ -2648,7 +2639,7 @@ int chemistry_noneq_exp_nometal(int solve_it, int ithis, double dt, double rho_g
 	printf("D! ThisTask %d ithis %d correction=%g\n"
 	       , ThisTask, ithis, correction);
 	fflush(stdout);
-	endrun(1101);
+	endrun();
       } 
 
     SphP[ithis].DI   *= correction;
@@ -2674,7 +2665,7 @@ int chemistry_noneq_exp_nometal(int solve_it, int ithis, double dt, double rho_g
 	printf("He! ThisTask %d ithis %d correction=%g %g %g %g\n"
 	       , ThisTask, ithis, correction, SphP[ithis].HeI, SphP[ithis].HeII, SphP[ithis].HeIII);
 	fflush(stdout);
-	endrun(1102);
+	endrun();
       }
   
     SphP[ithis].HeI   *= correction;
@@ -2850,38 +2841,6 @@ int chemistry_noneq_chem_implicit(int solve_it, int ithis, double dt, double rho
 #endif
 
 
-#ifdef CHEM_DIFF_ANALYTIC
-  int jj;
-
-  for(jj = 0;jj < 256;jj++)
-    switch_func[jj] = &func_other; 
-  
-  switch_func[sELEC] = &ReactionRate_diff_nometal_Elec;
-  switch_func[sHI]   = &ReactionRate_diff_nometal_HI;
-  switch_func[sHII]  = &ReactionRate_diff_nometal_HII;
-#ifdef HELIUM
-  switch_func[sHeI]   = &ReactionRate_diff_nometal_HeI;
-  switch_func[sHeII]  = &ReactionRate_diff_nometal_HeII;
-  switch_func[sHeIII] = &ReactionRate_diff_nometal_HeIII;
-#endif
-  switch_func[sH2I]   = &ReactionRate_diff_nometal_H2I;
-#ifdef H2_PLUS
-  switch_func[sH2II]  = &ReactionRate_diff_nometal_H2II; 
-#endif
-  switch_func[sHM]    = &ReactionRate_diff_nometal_HM; 
-#ifdef HD
-  switch_func[sDI]    = &ReactionRate_diff_nometal_DI;
-  switch_func[sDII]   = &ReactionRate_diff_nometal_DII; 
-  switch_func[sHDI]   = &ReactionRate_diff_nometal_HDI; 
-#ifdef HD_PLUS
-  switch_func[sHDII]  = &ReactionRate_diff_nometal_HDII;
-#endif
-#ifdef DMINUS
-  switch_func[sDM]    = &ReactionRate_diff_nometal_DM; 
-#endif
-#endif
-#endif  
-  
   set_reaction_rate_coeff(ithis, T_gas, rho_gas, k);
   
   double yi[n_sp];
@@ -3198,6 +3157,10 @@ int chemistry_noneq_chem_implicit(int solve_it, int ithis, double dt, double rho
 #endif
       printf("\n");      
 #endif
+
+      *err0 = err_max;
+      SphP[ithis] = sph_old;
+      return 0;
 
     }else{
       t_chem1 = 1.0e20;
@@ -4462,11 +4425,43 @@ int ReactionRate_diff_nometal_DM(double nH,double *ni,double *rf,int ithis){
 int func_other(double nH,double *ni,double *rf,int ithis){
   return 1;
 }
+
+static void init_switch_func(void){
+  for(int jj = 0;jj < 256;jj++)
+    switch_func[jj] = &func_other; 
+  
+  switch_func[sELEC] = &ReactionRate_diff_nometal_Elec;
+  switch_func[sHI]   = &ReactionRate_diff_nometal_HI;
+  switch_func[sHII]  = &ReactionRate_diff_nometal_HII;
+#ifdef HELIUM
+  switch_func[sHeI]   = &ReactionRate_diff_nometal_HeI;
+  switch_func[sHeII]  = &ReactionRate_diff_nometal_HeII;
+  switch_func[sHeIII] = &ReactionRate_diff_nometal_HeIII;
+#endif
+  switch_func[sH2I]   = &ReactionRate_diff_nometal_H2I;
+#ifdef H2_PLUS
+  switch_func[sH2II]  = &ReactionRate_diff_nometal_H2II; 
+#endif
+  switch_func[sHM]    = &ReactionRate_diff_nometal_HM; 
+#ifdef HD
+  switch_func[sDI]    = &ReactionRate_diff_nometal_DI;
+  switch_func[sDII]   = &ReactionRate_diff_nometal_DII; 
+  switch_func[sHDI]   = &ReactionRate_diff_nometal_HDI; 
+#ifdef HD_PLUS
+  switch_func[sHDII]  = &ReactionRate_diff_nometal_HDII;
+#endif
+#ifdef DMINUS
+  switch_func[sDM]    = &ReactionRate_diff_nometal_DM; 
+#endif
+#endif
+}
 #endif
 
 
 
 void set_reaction_rate_coeff(int ithis, double T_gas, double rho_cgs, double *k){
+  update_radiation_state_old(ithis, T_gas, rho_cgs);
+
   //volatile int i_T;
   int i_T;
   int j;
@@ -4517,7 +4512,7 @@ void set_reaction_rate_coeff(int ithis, double T_gas, double rho_cgs, double *k)
     printf("\nStop.(in chemistry_noneq_chem_implicit)\n");
     /* savepositions(All.SnapshotFileCount++); */
     
-    endrun(8765); /* just debugging */
+    endrun(); /* just debugging */
   }
   
   
@@ -4629,6 +4624,7 @@ void set_reaction_rate_coeff(int ithis, double T_gas, double rho_cgs, double *k)
   
   SphP[ithis].tau_cont = tau_cont;
   sph_temp.f_reduce = 1./(1. + 3./4.*tau_cont*tau_cont);
+  SphP[ithis].f_reduce = sph_temp.f_reduce;
 #else
   tau_cont = 0.;
 #endif
@@ -5219,6 +5215,10 @@ int InitChem(void)
 	
   /* ----- cross-sections, etc ... */
   ifunc = chem_tabulate();
+
+#ifdef CHEM_DIFF_ANALYTIC
+  init_switch_func();
+#endif
  
 #ifdef CONTINUUM_COOLING_MATSUKOBA
   read_opacity_tables();
@@ -5379,7 +5379,7 @@ int chem_tabulate(void)
   H2_cooling = H2_cooling_O00;
 #else
   printf("you should choose which H2 cooling function will be used in the simulation!\n");
-  endrun(200210);
+  endrun();
 #endif
 
 #ifdef HD

@@ -1,59 +1,18 @@
-#ifdef CHEMISTRY
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <fenv.h>
-#ifdef HAVE_MPI
 #include <mpi.h>
-#endif
 
 #include "../allvars.h"
 #include "../proto.h"
 //#include "tags.h"
-#include "chemistry.h"
+#include "chemistry_internal.h"
 
-
-#define N_CONTOPAC  1.0e13
-//#define ID_CHEM_DEBUG -13042
-
-void make_ff_rate_table(void);
-void make_cont_cooling_rate_table(void);
-void get_HI_population(double *yH_pop);
-void init_cont_opacity(void);
-void init_cont_opacity_H2P_FB(void);
-void get_sigma_CIA(double *sigma0, double *sigma1, double nu, double Tgas);
-void get_sigma_H2P_FB(double *sigma0, double lambda, double Tgas);
-void get_part_H2P(double *part0, double Tgas);
+#ifdef CHEMISTRY_SC
 
 double C0[6]={152.519  ,     49.534,   -118.858 ,     92.536 ,    -34.194 ,    4.982  };
-
-double A1[6]={0.       ,  2483.3460,  -3449.8890,   2200.0400,   -696.2710,    88.2830};
-static double B1[6]={0.       ,   285.8270,  -1158.3820,   2427.7190,  -1841.4000,   444.5170};
-double C1[6]={0.       , -2054.2910,   8746.5230, -13651.1050,   8624.9700, -1863.8640};
-double D1[6]={0.       ,  2827.7760, -11485.6320,  16755.5240, -10051.5300,  2095.2880};
-double E1[6]={0.       , -1341.5370,   5303.6090,  -7510.4940,   4400.0670,  -901.7880};
-double F1[6]={0.       ,   208.9520,   -812.9390,   1132.7380,   -655.0200,   132.9850};
-
-double A2[6]={ 518.1021,   473.2636,   -482.2089,    115.5291,          0.,         0.};
-static double B2[6]={-734.8666,  1443.4137,   -737.1616,    169.6374,          0.,         0.};
-double C2[6]={1021.1775, -1977.3395,   1096.8827,   -245.6490,          0.,         0.};
-double D2[6]={-479.0721,   922.3575,   -521.1341,    114.2430,          0.,         0.};
-double E2[6]={  93.1373,  -178.9275,    101.7963,    -21.9972,          0.,         0.};
-double F2[6]={  -6.4285   , 12.3600,     -7.0571,      1.5097,          0.,         0.};
-
-double A3[6]={ 0.,   0.,   0.,    0.,          0.,         0.};
-static double B3[6]={0.,  0.,   0.,    0.,          0.,         0.};
-double C3[6]={0., 0.,   0.,   0.,          0.,         0.};
-double D3[6]={0., 0.,   0.,   0.,          0.,         0.};
-double E3[6]={0., 0.,   0.,   0.,          0.,         0.};
-double F3[6]={0., 0.,   0.,   0.,          0.,         0.};
-
-double eta_a[8], kappa_a[8];
-const double Amagat_to_cm3=2.68e19;
-static int flag_table_H2p=0;
-
 
 /*********************************************************************/
 /****************** Cooling by OxygenI *******************************/
@@ -461,13 +420,16 @@ double OxygenI_twolevel_cooling(double nOI, double ne, double nH, double T_gas)
 
 #ifdef CMB_HEATING
   double fac;
-  fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
+  //fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
+  fac = 1. - Q21 * (g2/g1 * R21/R12 - 1);
   Lambda *= fac;
 
   //printf("[OI]nH=%g Lambda=%g fac=%g f_red=%g\n", nH, Lambda, fac, (1. - exp(-tau21))/tau21);
 #endif
-  
-  //printf("[OI]nH=%g Lambda=%g f_red=%g\n", nH, Lambda, (1. - exp(-tau21))/tau21);
+
+  if(FlagPrint)
+    printf("[OI]nH=%g nOI=%g Lambda=%g tau21=%g n2=%g R12=%g R21=%g\n", nH, nOI, Lambda, tau21, n2, R12, R21);
+
   return Lambda; // erg/sec per OI atom
 }
 
@@ -584,14 +546,15 @@ double CarbonII_twolevel_cooling(double nCII, double ne, double nH, double T_gas
 
 #ifdef CMB_HEATING
   double fac;
-  fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
+  //  fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
+  fac = 1. - Q21 * (g2/g1 * R21/R12 - 1);
   Lambda *= fac;
 
   //printf("[CII]nH=%g Lambda=%g fac=%g f_red=%g\n", nH, Lambda, fac, (1. - exp(-tau21))/tau21);
 #endif
-
-  //printf("[CII]nH=%g Lambda=%g n2=%g nCII=%g R12=%g R21=%g f_red=%g\n"
-  //	 , nH, Lambda, n2, nCII, R12, R21, (1. - exp(-tau21))/tau21);
+  
+  if(FlagPrint)
+    printf("[CII]nH=%g nCII=%g Lambda=%g tau21=%g n2=%g R12=%g R21=%g\n", nH, nCII, Lambda,  tau21, n2, R12, R21);
     			   
   return Lambda; // erg/sec per CII atom
 }
@@ -874,13 +837,16 @@ double CarbonI_twolevel_cooling(double nCI, double ne, double nH, double T_gas)
   
 #ifdef CMB_HEATING
   double fac;
-  fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
+  //fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
+  fac = 1. - Q21 * (g2/g1 * R21/R12 - 1);
+
   Lambda *= fac;
 
   //printf("[CI]nH=%g Lambda=%g fac=%g f_red=%g\n", nH, Lambda, fac, (1. - exp(-tau21))/tau21);
 #endif
 
-  //printf("[CI]nH=%g Lambda=%g f_red=%g\n", nH, Lambda, (1. - exp(-tau21))/tau21);
+  if(FlagPrint)
+    printf("[CI]nH=%g nCI=%g Lambda=%g tau21=%g n2=%g R12=%g R21=%g\n", nH, nCI, Lambda, tau21, n2, R12, R21);
 
   return Lambda; // erg/sec per OI atom
 }
@@ -1002,15 +968,129 @@ void gaussj3(double a[3][3], int n, double b[3][2], int m)
 #undef SWAP
 
 
+#ifdef METAL_LINE_COOLING_SD93
+static double *SD93_Tgas, *SD93_CoolRate;
+static double TMax_SD93, TMin_SD93;
+static int nT_SD93;
+static const char fname_SD93[]="continuum_metal.dat";
+static int flag_read_SD93;
+
+void read_continuum_cooling_rate_table_SD93(void){
+  if(ThisTask == 0){
+    FILE *fp;
+
+    if(!(fp = open_chemistry_table(fname_SD93))){
+      exit(1);
+    }
+
+    char buf[200];
+    char *tp;
+
+    int count = 0;
+    while(fgets(buf, sizeof(buf), fp) != NULL){
+      double Tgas, cool_rate;
+      int n=sscanf(buf, "%le %le", &Tgas, &cool_rate);
+      if(n != 2) continue;
+
+      count++;
+    }
+
+    rewind(fp);
+    nT_SD93   = count;
+
+    if(!(SD93_Tgas = malloc(sizeof(double)*nT_SD93)) || 
+       !(SD93_CoolRate = malloc(sizeof(double)*nT_SD93))){
+      printf("Can't allocate memory.\n");
+      exit(1);
+    }
+
+    count = 0;
+    TMax_SD93= -1.e30;
+    TMin_SD93 = 1.e30;
+
+    while(fgets(buf, sizeof(buf), fp) != NULL){    
+      double Tgas, cool_rate;
+      int n=sscanf(buf, "%le %le", &Tgas, &cool_rate);
+      if(n != 2) continue;
+
+      if(TMax_SD93 < Tgas) TMax_SD93 = Tgas;
+      if(TMin_SD93 > Tgas) TMin_SD93 = Tgas;
+
+      SD93_Tgas[count] = Tgas;
+      SD93_CoolRate[count] = cool_rate;
+
+      count++;
+    }
+
+    fclose(fp);
+  }
+
+#ifdef HAVE_MPI
+  if(NTask > 1){
+    MPI_Bcast(&nT_SD93, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&TMax_SD93, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&TMin_SD93, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    if(ThisTask != 0){
+      if(!(SD93_Tgas     = malloc(sizeof(double)*nT_SD93)) || 
+	 !(SD93_CoolRate = malloc(sizeof(double)*nT_SD93)))
+	{
+	  printf("Can't allocate memory.\n");
+	  exit(1);
+      }
+    }
+
+    MPI_Bcast(SD93_Tgas     , nT_SD93    , MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(SD93_CoolRate , nT_SD93    , MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  }
+#endif
+
+  flag_read_SD93 = 1;
+}
+
+double get_cooling_rate_SD93(double T_gas){
+  if(flag_read_SD93 == 0){
+    read_continuum_cooling_rate_table_SD93();
+  }
+
+  int i_T=0;
+  double T_new = SD93_Tgas[0];
+  while(T_gas > T_new){
+    i_T++;
+    T_new = SD93_Tgas[i_T];
+
+    if(i_T == nT_SD93-1) break;
+  }
+
+  int i_T_left  = i_T - 1;
+  if(i_T_left < 0) i_T_left = 0;
+  if(i_T == nT_SD93 - 1) i_T_left = nT_SD93-1;
+  
+  double c_T   = (SD93_Tgas[i_T]-T_gas)    / (SD93_Tgas[i_T] -SD93_Tgas[i_T_left]);
+
+  if(i_T == i_T_left)
+    c_T = 0.;
+
+  double cool_rate = c_T * SD93_CoolRate[i_T_left] + (1 - c_T) * SD93_CoolRate[i_T];
+
+  if(T_gas > TMax_SD93){
+    cool_rate *= pow(T_gas/TMax_SD93, -3);
+  }
+
+  if(T_gas < TMin_SD93){
+    cool_rate *= exp(-pow(T_gas-TMin_SD93, 2)/200.);
+  }
+
+  return cool_rate;
+}
+#endif
+
 
 
 #ifdef CONTINUUM_COOLING_MATSUKOBA
 void get_opacities(double T_gas, double rho_cgs, double *kappa_Rossland, double *kappa_Planck);
 void get_opacities_log(double T_gas, double rho_cgs, double *kappa_Rossland, double *kappa_Planck);
 void read_opacity_tables(void);
-void tabulate_cooling_rate_cont_thin(void);
-double continuum_cooling_rate_thin(int ithis, double T_gas, double rho_cgs);
-
 void output_cooling_rate(void);
 
 enum ContCooling{
@@ -1050,11 +1130,7 @@ void tabulate_cooling_rate_cont_thin(void){
   flag_tabulate = 1;
 }
 
-
-double continuum_cooling_rate_thin(int ithis, double T_gas, double rho_cgs){
-  double lambda_tot_thin;
-  double log_T, log_T2, log_T3, log_T4;
-
+double continuum_cooling_rate_thin_Lambda(double T_gas){
   if(flag_tabulate == 0){
     tabulate_cooling_rate_cont_thin();
     output_cooling_rate();
@@ -1063,19 +1139,20 @@ double continuum_cooling_rate_thin(int ithis, double T_gas, double rho_cgs){
   if(T_gas < 100.) return 0.;
 
   /************* DEBUGGING... [CHON200417] **************/
-  if(T_gas > 1.e6)
+  double fac = 1.;
+  if(T_gas > 1.e6){
+    fac = sqrt(T_gas / 1.e6);
     T_gas = 1.e6;
+  }
 
-  log_T  = log10(T_gas);
-  log_T2 = log_T  * log_T;
-  log_T3 = log_T2 * log_T;
-  log_T4 = log_T3 * log_T;  
+  double log_T  = log10(T_gas);
+  double log_T2 = log_T  * log_T;
+  double log_T3 = log_T2 * log_T;
+  double log_T4 = log_T3 * log_T;  
 
-  int i;
   double f[N_reaction];
 
-  //printf("T_gas=%g\n", T_gas);
-  for(i=0;i<N_reaction;i++){
+  for(int i=0;i<N_reaction;i++){
     f[i] = A_Cont[i][0] + A_Cont[i][1] * log_T 
       + A_Cont[i][2] * log_T2 + A_Cont[i][3] * log_T3 + A_Cont[i][4] * log_T4;
   }
@@ -1086,24 +1163,61 @@ double continuum_cooling_rate_thin(int ithis, double T_gas, double rho_cgs){
   if(f[cH2He_CIE] > -34)
     f[cH2He_CIE] = -34;
 
-  double n_nuclei;
-  double n_elec, n_HI, n_HII, n_H2I, n_HeI;
+  double Lambda = 4 * M_PI * (pow(10., f[cH_fb]) +  pow(10., f[cHM_ff]));
+  Lambda *= fac;
+  
+  return Lambda;
+}
 
-  n_nuclei  = rho_cgs/PROTONMASS;
+double continuum_cooling_rate_thin(double T_gas, double rho_cgs, const double *abund){
+  if(flag_tabulate == 0){
+    tabulate_cooling_rate_cont_thin();
+    output_cooling_rate();
+  }
 
-  n_elec = n_nuclei * SphP[ithis].elec;
-  n_HI   = n_nuclei * SphP[ithis].HI;
-  n_HII  = n_nuclei * SphP[ithis].HII;
-  n_H2I  = n_nuclei * SphP[ithis].H2I;  
+  if(T_gas < 100.) return 0.;
+
+  /************* DEBUGGING... [CHON200417] **************/
+  double fac = 1.;
+  if(T_gas > 1.e6){
+    fac = sqrt(T_gas / 1.e6);
+    T_gas = 1.e6;
+  }
+  
+  double log_T  = log10(T_gas);
+  double log_T2 = log_T  * log_T;
+  double log_T3 = log_T2 * log_T;
+  double log_T4 = log_T3 * log_T;  
+
+  double f[N_reaction];
+
+  //printf("T_gas=%g\n", T_gas);
+  for(int i=0;i<N_reaction;i++){
+    f[i] = A_Cont[i][0] + A_Cont[i][1] * log_T 
+      + A_Cont[i][2] * log_T2 + A_Cont[i][3] * log_T3 + A_Cont[i][4] * log_T4;
+  }
+
+  if(f[cH2H2_CIE] > -34)
+    f[cH2H2_CIE] = -34;
+
+  if(f[cH2He_CIE] > -34)
+    f[cH2He_CIE] = -34;
+
+  double n_nuclei  = rho_cgs/PROTONMASS;
+
+  double n_elec = n_nuclei * abund[sELEC];
+  double n_HI   = n_nuclei * abund[sHI];
+  double n_HII  = n_nuclei * abund[sHII];
+  double n_H2I  = n_nuclei * abund[sH2I];  
 #ifdef HELIUM
-  n_HeI  = n_nuclei * SphP[ithis].HeI;  
+  double n_HeI  = n_nuclei * abund[sHeI];  
 #else
-  n_HeI  = n_nuclei * XHe;  
+  double n_HeI  = n_nuclei * XHe;  
   //n_HeI  = 0.;  
 #endif
 
 
-  lambda_tot_thin = 4 * M_PI * 
+  double lambda_tot_thin = 4 * M_PI * 
     ( pow(10., f[cH_fb] ) * n_HII * n_elec +
       pow(10., f[cHM_fb]) * n_HI  * n_elec +
 #ifdef HELIUM_COOLING
@@ -1116,16 +1230,6 @@ double continuum_cooling_rate_thin(int ithis, double T_gas, double rho_cgs){
       );
 
 #ifdef ID_CHEM_DEBUG
-  if(P[ithis].ID == ID_CHEM_DEBUG || FlagPrint)
-    printf("cool_rate_cont=%g %g %g %g %g %g\n"
-	   , pow(10, f[cH_fb] ) * n_HII * n_elec
-	   , pow(10, f[cHM_fb] ) * n_HI * n_elec 
-	   , pow(10, f[cHM_ff]) * n_HI * n_elec
-	   , pow(10, f[cH_ff])  * n_HII * n_elec
-	   , pow(10, f[cH2H2_CIE]) * n_H2I * n_H2I
-	   , pow(10, f[cH2He_CIE]) * n_HeI * n_H2I
-	 );
-#endif
   if(FlagPrint)
     printf("cool_rate_cont=%g %g %g %g %g %g\n"
 	   , pow(10, f[cH_fb] ) * n_HII * n_elec
@@ -1135,8 +1239,9 @@ double continuum_cooling_rate_thin(int ithis, double T_gas, double rho_cgs){
 	   , pow(10, f[cH2H2_CIE]) * n_H2I * n_H2I
 	   , pow(10, f[cH2He_CIE]) * n_HeI * n_H2I
 	 );
+#endif
 
-  return lambda_tot_thin;
+  return lambda_tot_thin * fac;
 }
 
 void output_cooling_rate(void){
@@ -1180,9 +1285,9 @@ void output_cooling_rate(void){
 
 
 
-double calc_continuum_opacities(int ithis, double T_gas, double rho_cgs, double l_Jeans, struct opacities *opac){
+double calc_continuum_opacities(double T_gas, double rho_cgs, double l_Jeans, struct opacities *opac){
   int ifunc;
-  double tau_cont, f_reduce, x;
+  double tau_cont, f_reduce, x = 0.;
   double tau_Rossland=0., tau_Planck=0.;
   double kappa_Rossland=0., kappa_Planck=0.;
   
@@ -1215,35 +1320,6 @@ double calc_continuum_opacities(int ithis, double T_gas, double rho_cgs, double 
   return f_reduce;
 }
 
-
-double continuum_cooling_rate(int ithis, double T_gas, double rho_cgs, double l_Jeans){  
-  double cooling_rate_thin, cooling_rate;
-  cooling_rate_thin = continuum_cooling_rate_thin(ithis, T_gas, rho_cgs);
-
-  double f_reduce=1.;
-  
-  if(rho_cgs / PROTONMASS > 1.e2){
-    double tau_Rossland, tau_Planck;
-    double kappa_Rossland, kappa_Planck;
-    get_opacities_log(T_gas, rho_cgs, &kappa_Rossland, &kappa_Planck);
-
-    tau_Rossland = rho_cgs * kappa_Rossland * l_Jeans;
-    tau_Planck   = rho_cgs * kappa_Planck   * l_Jeans; 
-    
-    SphP[ithis].tau_cont = sqrt(tau_Rossland*tau_Planck);
-
-    f_reduce = 1./ (1. + tau_Planck * (1. + 3./4.*tau_Rossland));
-
-    cooling_rate = cooling_rate_thin * f_reduce;
-  }else{
-    cooling_rate = cooling_rate_thin;
-    SphP[ithis].tau_cont = 0.;
-  }
-
-  return cooling_rate;
-}
-
-
 double *Kappa_Tgas;
 double *Kappa_rho;
 double *Kappa_Rossland;
@@ -1253,8 +1329,8 @@ double TMin_tau, TMax_tau;
 
 int n_T, n_rho;
 
-char fname_Rossland[]="chemistry/opacities_Rossland.dat";
-char fname_Planck[]="chemistry/opacities_Planck.dat";
+char fname_Rossland[]="opacities_Rossland.dat";
+char fname_Planck[]="opacities_Planck.dat";
 
 void lntrim(char *str) {  
   char *p;  
@@ -1268,13 +1344,11 @@ void read_opacity_tables(void){
   if(ThisTask == 0){
     FILE *fp_r, *fp_p;
 
-    if(!(fp_r = fopen(fname_Rossland, "r"))){
-      printf("Can't open the opacity table, %s.\n", fname_Rossland);
+    if(!(fp_r = open_chemistry_table(fname_Rossland))){
       exit(1);
     }
 
-    if(!(fp_p = fopen(fname_Planck, "r"))){
-      printf("Can't open the opacity table, %s.\n", fname_Planck);
+    if(!(fp_p = open_chemistry_table(fname_Planck))){
       exit(1);
     }
 
@@ -1291,7 +1365,7 @@ void read_opacity_tables(void){
       tp = strtok(buf, " ");
       do{
 	count_rho++;
-      }while(tp = strtok(NULL, " "));
+      }while((tp = strtok(NULL, " ")));
       count_T++;
     }
 
@@ -1360,7 +1434,7 @@ void read_opacity_tables(void){
 	}
 	
 	count_rho++;
-      }while(tp = strtok(NULL, " "));
+      }while((tp = strtok(NULL, " ")));
 
       count_T++;
     }
@@ -1379,14 +1453,14 @@ void read_opacity_tables(void){
 	  Kappa_Planck[n_rho * (count_T-1) + (count_rho-1)] = pow(10, tau);
 	
 	count_rho++;
-      }while(tp = strtok(NULL, " "));
+      }while((tp = strtok(NULL, " ")));
       count_T++;
     }
 
     fclose(fp_p),fclose(fp_r);
   }
 
-#ifdef MPI
+#ifdef HAVE_MPI
   if(NTask > 1){
     MPI_Bcast(&n_T, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&n_rho, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -1542,6 +1616,7 @@ void get_opacities_log(double T_gas, double rho_cgs, double *kappa_Rossland, dou
   *kappa_Planck   = kappa_p;
 
 }
+#endif
 
 double  beta_esc(double tau_L,double tau_C){
   double beta_esc;
@@ -1555,6 +1630,7 @@ double  beta_esc(double tau_L,double tau_C){
   
   return beta_esc;
 }
+
 
 double H_criticaldensity(double xnH, double T_K,double xNc_H, double y_H,double y_e){
   double n_crit, n_crit_2,n_crit_3;
@@ -1675,7 +1751,7 @@ double H_criticaldensity(double xnH, double T_K,double xNc_H, double y_H,double 
   return n_crit;
 }
 
-double fesc_Lya(int ithis, double xnH,double T_K,double y_H,double y_e,double rr,double vel, double *cooling_rate_Lya, double *cooling_rate_2ph){
+double fesc_Lya(double xnH,double T_K,double y_H,double y_e,double rr,double vel, double *cooling_rate_Lya, double *cooling_rate_2ph){
   double fesc_Lya;
   double p_21,A_21,A_2ph,C_21,C_12;
   double r_2s2p,C_2s2p;
@@ -1688,7 +1764,6 @@ double fesc_Lya(int ithis, double xnH,double T_K,double y_H,double y_e,double rr
   double r_up=2.,r_low=1.;
   double f_21=0.4162,alpha_21=24.0;
   double DE_21=10.198,chi_21=0.28;
-  double eV_erg=1.602e-12;
   double boltz=1.3807e-16,c_ph=2.9979e10;
 
   n_H    = y_H*xnH;
@@ -1734,7 +1809,7 @@ double fesc_Lya(int ithis, double xnH,double T_K,double y_H,double y_e,double rr
   cool_2ph = -A_2ph * DE_21 * eV_to_erg            * n_H * r_21/(1. + r_21);
 
 #ifdef ID_CHEM_DEBUG
-  if(P[ithis].ID == ID_CHEM_DEBUG || FlagPrint) 
+  if(FlagPrint) 
     printf("[HI cooling] nH=%g HI=%g e=%g C_21=%g r21=%g cool_A21=%g\n"
 	   , n_H, y_H, y_e, C_21, r_21, cool_A21);
 #endif
@@ -1749,617 +1824,6 @@ double fesc_Lya(int ithis, double xnH,double T_K,double y_H,double y_e,double rr
 
   return fesc_Lya;
 }
-#endif
-
-
-
-#ifdef CONT_OPACITY
-double calc_continuum_opacities_CIE(int ithis, double T_gas, double rho_cgs, double l_Jeans, struct opacities *opac){
-  double f_reduce_CIE=1.0;
-  double tau_cont=0.0;
-  
-  if(rho_cgs/PROTONMASS > N_CONTOPAC){
-    double n_nuclei;
-    n_nuclei = rho_cgs/PROTONMASS;
-
-    double tau_CIE = pow(n_nuclei*2.*SphP[ithis].H2I/7.E15, 2.8);
-   
-    f_reduce_CIE = (1.-exp(-tau_CIE))/tau_CIE;
-    if(f_reduce_CIE > 1.0){
-      f_reduce_CIE = 1.0;
-    }
-
-    tau_cont = tau_CIE;
-  }
-
-  opac -> tau = tau_cont;
-  return f_reduce_CIE;
-}
-#endif  
-
-
-
-#ifdef CHEM_OMUKAI
-double continuum_opacities(double Enu, double Tgas, double *ni, double J_ext, double Rc, double *tau_a, double *J_nu_a, double *eta0, double *kappa0, double *k_PD_nu, double *k_RA_nu){
-  int n;
-  double sum;
-  double hc, lambda, beta;
-  double lambda_cm, nu_cm;
-  double f_lambda, k_lambda_ff;
-  double *A, *B, *C, *D, *E, *F;  
-
-  double mr[8];
-  //double eta_a[8], kappa_a[8];
-  double kappa_s[2], kappa_compt;
-  double sigma_PD_H , sigma_PD_He, sigma_PD_HM, sigma_PD_H2II;
-  double sigma_PD_H_star, sigma_PD_H_new;
-  double sigma_ff_HM, sigma_ff_H , sigma_CI_H2H2, sigma_CI_H2He;
-  double sigma_H_scat, sigma_e_scat;
-
-  double eta_a_tot, kappa_a_tot, kappa_s_tot;
-  double khai, xi, x_nu, tau;
-  double J_nu;
-
-  double z_elec, z_HI, z_HII, z_H2II, z_HeI, z_HeII, z_HeIII, z_HM;
-  double g_ff=1., nu0;
-  enum SPECIES species;
-
-  static int flag_table=0;
-
-  hc       = CLIGHT * PLANCK;
-  lambda   = hc / (Enu * eV_to_erg) * 1e4; //unit in micro-meter
-  lambda_cm= hc / (Enu * eV_to_erg)      ; //unit in centi-meter
-  beta     = Enu * eV_to_erg/ BOLTZMANN / Tgas;
-  nu0      = Enu * eV_to_erg / PLANCK; 
-  nu_cm    = 1. / lambda_cm; //unit in centi-meter^-1
-
-  if(!(flag_table)){
-    //make_ff_rate_table();
-    init_cont_opacity();
-    init_cont_opacity_H2P_FB();
-    flag_table = 1;
-  }
-
-  if(lambda < 1.6419){
-    for(n=0,sum=0.;n<6;n++){
-      sum += C0[n] * pow(1./lambda - 1./1.6419, n/2.);
-    }
-    f_lambda = sum;
-  }else{
-    f_lambda = 0.;
-  }
-
-  if(lambda > 0.1823){
-    if(lambda > 0.3645){
-      A = A1;
-      B = B1;
-      C = C1;
-      D = D1;
-      E = E1;
-      F = F1;
-    }else{
-      A = A2;
-      B = B2;
-      C = C2;
-      D = D2;
-      E = E2;
-      F = F2;
-    }
-
-    for(n=0,sum=0.;n<6;n++){
-      sum += (pow(5040./Tgas, (n+2)/2.) 
-	      * (A[n]*lambda*lambda + B[n] + C[n]/lambda + D[n]*pow(lambda,-2) + E[n]*pow(lambda,-3) + F[n]*pow(lambda,-4)));
-    }
-    k_lambda_ff = 1.e-29 * sum;
-  }else{
-    k_lambda_ff = 0.;
-  }
-
-  for(n=1,z_HI=0.;n<=5;n++){
-    z_HI  += 2*n*n*exp(-13.598*eV_to_erg*(1. - 1./n/n)/(BOLTZMANN*Tgas));
-  }
-  z_elec = 2.;
-  z_HII  = z_HM = z_HeI = z_HeIII = 1.;
-  z_HeII = 2.;
-  z_H2II = 1.; //incorrect!!
-  
-  sigma_ff_HM   = k_lambda_ff * BOLTZMANN * Tgas * ni[sELEC];
-  sigma_ff_H    = 3.692e8 * g_ff * pow(nu0, -3) * pow(Tgas, -0.5) * ni[sELEC];
-  sigma_CI_H2H2 = 0.;
-  sigma_CI_H2He = 0.;
-
-  double lambda_max, lambda_scat;
-
-  lambda_max    = hc / PLANCK / 2.922E15 * 1.e4;
-  //lambda_scat   = dmin(lambda_max, lambda);
-  lambda_scat   = lambda;
-  sigma_H_scat  = 5.799e-29 * pow(lambda_scat,-4) + 1.422e-30 * pow(lambda_scat,-6) + 2.784e-32 * pow(lambda_scat,-8);
-  sigma_e_scat  = 6.65e-25;
-
-
-  mr[0] = ELECTRONMASS;
-  mr[1] = ELECTRONMASS;
-  mr[2] = ELECTRONMASS;
-  mr[3] = PROTONMASS;
-
-  double beta_H, beta_He, beta_HM, beta_H2II;
-  double K_RA_H, K_RA_He, K_RA_HM, K_RA_H2II;
-  const double Enu_RA_H=13.598;
-  const double Enu_RA_He=24.586;
-  const double Enu_RA_HM=0.76;
-  const double Enu_RA_H2II=2.65;
-
-  beta_H = beta_He = beta_HM = beta_H2II = 1.e100;
-  sigma_PD_He = sigma_PD_HM = sigma_PD_H2II = 0.;
-
-  beta_H     = (Enu - Enu_RA_H)    * eV_to_erg /BOLTZMANN/Tgas;
-  sigma_PD_H = 7.909e-18 * pow(Enu/13.598,-3); //recalculated later
-
-  if(Enu > Enu_RA_He){
-    sigma_PD_He = 7.83e-18  * (1.66*pow(Enu/24.586,-2.05) - 0.66*pow(Enu/24.586,-3.05));
-    beta_He    = (Enu - Enu_RA_He)   * eV_to_erg /BOLTZMANN/Tgas;
-  }  
-  if(Enu > Enu_RA_HM){
-    beta_HM    = (Enu - Enu_RA_HM)   * eV_to_erg /BOLTZMANN/Tgas;
-    if(lambda < 1.6419)
-      sigma_PD_HM = 1.e-18 * pow(lambda,3) * pow(1./lambda - 1./1.6419, 1.5) * f_lambda;
-  }
-  if(Enu > Enu_RA_H2II){
-    beta_H2II  = (Enu - Enu_RA_H2II) * eV_to_erg /BOLTZMANN/Tgas;
-    sigma_PD_H2II = 0.;
-  }
-
-  int flag;
-  double sum_star;
-  double ci[5], ci_star[5], beta_ci[5];
-  double yH_pop[5];
-
-  get_HI_population(yH_pop);
-  for(n=1,sum=sum_star=0.,flag=0;n<=5;n++){
-    if(Enu > -Enu_H[n-1]){
-      ci[n-1] = yH_pop[n-1]/yH_pop[0];
-      beta_ci[n-1] = (Enu+Enu_H[n-1]) * eV_to_erg /BOLTZMANN/Tgas;
-
-      ci_star[n-1] = g_tot[n-1] * exp(-beta_ci[n-1]);
-      sum      += (ci[n-1]      * sigma_PD_H * pow(n ,-5));
-      sum_star += (ci_star[n-1] * sigma_PD_H * pow(n ,-5));
-
-      flag=1;
-    }
-  }
-
-  sigma_PD_H_star = sum_star;  //should be corrected
-  sigma_PD_H      = sum;
-  sigma_PD_H_new  = sum_star / sum;          //should be corrected
-  
-  get_sigma_CIA(&sigma_CI_H2H2, &sigma_CI_H2He, nu_cm, Tgas);
-  get_sigma_H2P_FB(&sigma_PD_H2II, lambda_cm, Tgas);
-  get_part_H2P(&z_H2II, Tgas);
-
-  sigma_CI_H2H2 *= ni[sH2I];
-  sigma_CI_H2He *= ni[sHeI];
-
-  //sigma_PD_H_star = sigma_PD_H;  //should be corrected
-  //sigma_PD_H_new  = 1.;          //should be corrected
-  
-  K_RA_H   = z_HII  * z_elec * pow(2*M_PI*mr[0]*BOLTZMANN*Tgas/PLANCK/PLANCK, 1.5);
-  K_RA_He  = z_HeII * z_elec * pow(2*M_PI*mr[1]*BOLTZMANN*Tgas/PLANCK/PLANCK, 1.5);
-  K_RA_HM  = z_HI   * z_elec * pow(2*M_PI*mr[2]*BOLTZMANN*Tgas/PLANCK/PLANCK, 1.5);
-  K_RA_H2II= z_HI   * z_HII  * pow(2*M_PI*mr[3]*BOLTZMANN*Tgas/PLANCK/PLANCK, 1.5);
-
-  
-  eta_a[0] = 2 * pow(Enu*eV_to_erg, 3)/hc/hc * sigma_PD_H_star *                   (1.     / K_RA_H    * ni[sHII] * ni[sELEC]);
-  eta_a[1] = 2 * pow(Enu*eV_to_erg, 3)/hc/hc * sigma_PD_He     * exp(-beta_He)   * (z_HeI  / K_RA_He   * ni[sHeII]* ni[sELEC]);
-  eta_a[2] = 2 * pow(Enu*eV_to_erg, 3)/hc/hc * sigma_PD_HM     * exp(-beta_HM)   * (z_HM   / K_RA_HM   * ni[sHI]  * ni[sELEC]);
-  eta_a[3] = 2 * pow(Enu*eV_to_erg, 3)/hc/hc * sigma_PD_H2II   * exp(-beta_H2II) * (z_H2II / K_RA_H2II * ni[sHI]  * ni[sHII]);
-  eta_a[4] = 2 * pow(Enu*eV_to_erg, 3)/hc/hc * sigma_ff_HM     * ni[sHI]  * exp(-beta);
-  eta_a[5] = 2 * pow(Enu*eV_to_erg, 3)/hc/hc * sigma_ff_H      * ni[sHII] * exp(-beta);
-  eta_a[6] = 2 * pow(Enu*eV_to_erg, 3)/hc/hc * sigma_CI_H2H2   * ni[sH2I] * exp(-beta);
-  eta_a[7] = 2 * pow(Enu*eV_to_erg, 3)/hc/hc * sigma_CI_H2He   * ni[sH2I] * exp(-beta);
-
-  if(flag==1)
-    kappa_a[0] =                 ni[sHI]  * (sigma_PD_H - sigma_PD_H_star * (1. /K_RA_H    * ni[sHII] * ni[sELEC]/ ni[sHI]));
-  else
-    kappa_a[0] = 0.;
-  kappa_a[1] = sigma_PD_He   * ni[sHeI] * (1 - exp(-beta_He)   * (z_HeI /K_RA_He   * ni[sHeII]* ni[sELEC]/ ni[sHeI]));
-  kappa_a[2] = sigma_PD_HM   * ni[sHM]  * (1 - exp(-beta_HM)   * (z_HM  /K_RA_HM   * ni[sHI]  * ni[sELEC]/ ni[sHM]));
-  kappa_a[3] = sigma_PD_H2II * ni[sH2II]* (1 - exp(-beta_H2II) * (z_H2II/K_RA_H2II * ni[sHI]  * ni[sHII] / ni[sH2II]));
-  kappa_a[4] = sigma_ff_HM   * ni[sHI]  * (1 - exp(-beta));
-  kappa_a[5] = sigma_ff_H    * ni[sHII] * (1 - exp(-beta));
-  kappa_a[6] = sigma_CI_H2H2 * ni[sH2I] * (1 - exp(-beta));
-  kappa_a[7] = sigma_CI_H2He * ni[sH2I] * (1 - exp(-beta));
-
-  kappa_s[0] = sigma_H_scat  * ni[sHI];
-  kappa_s[1] = sigma_e_scat  * ni[sELEC];
-
-  kappa_compt= 4 * BOLTZMANN * All.T_CMB / (ELECTRONMASS * CLIGHT * CLIGHT) * ni[sELEC];
-
-  if(isnan(sum) || isnan(sum_star) || isnan(kappa_a[0])){
-    raise(11);
-  }
-
-
-  eta_a_tot = kappa_a_tot=0.;
-  for(n=0;n<8;n++){
-    eta_a_tot   += eta_a[n];
-    kappa_a_tot += kappa_a[n];
-  }
-  kappa_s_tot = kappa_s[0] + kappa_s[1];
-
-  khai = kappa_a_tot + kappa_s_tot;
-  xi   = kappa_a_tot / khai;
-  tau  = khai * Rc;
-
-  if(tau < 1.) x_nu = tau;
-  else x_nu = tau * tau;
-
-  J_nu = (J_ext + xi * x_nu * eta_a_tot / (kappa_a_tot + kappa_compt))
-    / (1 + xi * x_nu * (1 - kappa_compt / (kappa_a_tot + kappa_compt)));
-
-  *tau_a = tau;
-  *J_nu_a = J_nu;
-
-  int j;
-  for(j=0;j<8;j++){
-    kappa0[j] = kappa_a[j];
-    eta0[j]   = eta_a[j];
-  }
-
-  kappa0[8] = kappa_s[0];
-  kappa0[9] = kappa_s[1];
-
-  double Lambda_cool_cont;
-  Lambda_cool_cont = 4 * M_PI * (eta_a_tot - kappa_a_tot * J_nu);
-  
-  k_PD_nu[0] = 4 * M_PI * J_nu / (Enu*eV_to_erg) * kappa_a[0] / ni[sHI];
-  k_PD_nu[1] = 4 * M_PI * J_nu / (Enu*eV_to_erg) * kappa_a[2] / ni[sHM];
-
-  k_RA_nu[0] = 4 * M_PI        / (Enu*eV_to_erg) * eta_a[0]   / ni[sHII] / ni[sELEC];
-  k_RA_nu[1] = 4 * M_PI        / (Enu*eV_to_erg) * eta_a[2]   / ni[sHI]  / ni[sELEC];
-
-  if(isnan(kappa_a[0]) || isnan(k_PD_nu[0]) || isnan(k_RA_nu[0])){
-    //raise(11);
-  }
-
-
-  return Lambda_cool_cont;
-}
-
-const int n_table_nu=226;
-const int n_table_T=9;
-
-double *Sigma_CIA_H2H2, *Sigma_CIA_H2He;
-double *Nu_CIA;
-double T_CIA[]={300., 600., 1000., 2000., 3000., 4000., 5000., 6000., 7000.};
-
-void init_cont_opacity(void){
-  int i;
-
-  FILE *fp_H2, *fp_He;
-  char fname_CIA_H2H2[]="CIA_H2H2.txt";
-  char fname_CIA_H2He[]="CIA_H2He.txt";
-  char buf_H2[400], buf_He[400];
-
-  if(!(Sigma_CIA_H2H2 = malloc(sizeof(double) * n_table_nu * n_table_T))){
-    printf("Can't allocate memory!\n");
-    exit(1);
-  }
-  if(!(Sigma_CIA_H2He = malloc(sizeof(double) * n_table_nu * n_table_T))){
-    printf("Can't allocate memory!\n");
-    exit(1);
-  }
-  if(!(Nu_CIA = malloc(sizeof(double) * n_table_nu))){
-    printf("Can't allocate memory!\n");
-    exit(1);
-  }
-
-  if(!(fp_H2 = fopen(fname_CIA_H2H2, "r")) || !(fp_He = fopen(fname_CIA_H2He, "r"))){
-    printf("Can't open the file, %s or %s.\n", fname_CIA_H2H2, fname_CIA_H2He);
-    exit(1);
-  }
-
-  int n, k;
-  double nu;
-  double sigma_H2[9];
-  double sigma_He[9];
-
-  for(i=0;i<n_table_nu;i++){
-    fgets(buf_H2, sizeof(buf_H2),fp_H2);
-    fgets(buf_He, sizeof(buf_He),fp_He);
-
-    n=sscanf(buf_H2, "%le %le %le %le %le %le %le %le %le %le"
-	   , &nu
-	   , sigma_H2  , sigma_H2+1, sigma_H2+2, sigma_H2+3, sigma_H2+4
-	   , sigma_H2+5, sigma_H2+6, sigma_H2+7, sigma_H2+8);
-
-    n=sscanf(buf_He, "%le %le %le %le %le %le %le %le %le %le"
-	   , &nu
-	   , sigma_He  , sigma_He+1, sigma_He+2, sigma_He+3, sigma_He+4
-	   , sigma_He+5, sigma_He+6, sigma_He+7, sigma_He+8);
-
-    if(n != 10){
-      printf("something wrong in reading CIA table? n=%d != 10\n", n);
-      exit(1);
-    }
-
-    Nu_CIA[i] = pow(10., nu);
-    for(k=0;k<9;k++){
-      Sigma_CIA_H2H2[i*n_table_T+k] = pow(10., sigma_H2[k])/ Amagat_to_cm3/ Amagat_to_cm3;
-      Sigma_CIA_H2He[i*n_table_T+k] = pow(10., sigma_He[k])/ Amagat_to_cm3/ Amagat_to_cm3;
-    }
-  }
-
-  fclose(fp_H2), fclose(fp_He);
-}
-
-
-void get_sigma_CIA(double *sigma0, double *sigma1, double nu, double Tgas){
-  int iT, inu;
-  double cT, cnu;
-
-  if(Tgas < T_CIA[0]){
-    Tgas = 1.001*T_CIA[0];
-  }
-  if(Tgas > T_CIA[n_table_T-1]){
-    Tgas = 0.999*T_CIA[n_table_T-1];
-  }
-
-  if(nu < Nu_CIA[0] || nu > Nu_CIA[n_table_nu-1]){
-    *sigma0 = *sigma1 = 0.;
-    return;
-  }
-
-  for(iT=0;iT<n_table_T;iT++){
-    if(Tgas < T_CIA[iT]) break;
-  }
-
-  for(inu=0;inu<n_table_nu;inu++){
-    if(nu < Nu_CIA[inu]) break;
-  }
-  
-  cT  = (Tgas - T_CIA[iT-1]) / (T_CIA[iT] - T_CIA[iT-1]);
-  cnu = (nu - Nu_CIA[inu-1]) / (Nu_CIA[inu] - Nu_CIA[inu-1]);
-
-  *sigma0 = cT  * cnu        * Sigma_CIA_H2H2[inu    *n_table_T + iT]
-    + (1. - cT) *        cnu * Sigma_CIA_H2H2[inu    *n_table_T + (iT-1)]
-    + cT        * (1. - cnu) * Sigma_CIA_H2H2[(inu-1)*n_table_T + iT]
-    + (1. - cT) * (1. - cnu) * Sigma_CIA_H2H2[(inu-1)*n_table_T + (iT-1)];
-
-  *sigma1 = cT  * cnu        * Sigma_CIA_H2He[inu    *n_table_T + iT]
-    + (1. - cT) *        cnu * Sigma_CIA_H2He[inu    *n_table_T + (iT-1)]
-    + cT        * (1. - cnu) * Sigma_CIA_H2He[(inu-1)*n_table_T + iT]
-    + (1. - cT) * (1. - cnu) * Sigma_CIA_H2He[(inu-1)*n_table_T + (iT-1)];
-}
-
-const int n_table_lambda=42;
-const int n_table_T_H2P=8;
-const int n_table_T_part=58;
-
-double *Sigma_H2P_FB;
-double *Lambda_H2P_FB;
-double *Temp_H2P_part;
-double *part_H2P;
-double T_H2P_FB[]={3150., 4200., 5040., 6300., 8400., 12600., 16800., 25200.};
-
-void init_cont_opacity_H2P_FB(void){
-  int i;
-
-  FILE *fp_H2p, *fp_H2p_part;
-  char fname_H2P_FB[]="Sigma_H2P_FB.txt";
-  char fname_H2P_part[]="H2P_partition_function.txt";
-  char buf[400];
-
-  if(!(Sigma_H2P_FB = malloc(sizeof(double) * n_table_lambda * n_table_T_H2P))){
-    printf("Can't allocate memory!\n");
-    exit(1);
-  }
-  if(!(Lambda_H2P_FB = malloc(sizeof(double) * n_table_lambda))){
-    printf("Can't allocate memory!\n");
-    exit(1);
-  }
-
-  if(!(part_H2P = malloc(sizeof(double) * n_table_T_part ))){
-    printf("Can't allocate memory!\n");
-    exit(1);
-  }
-  if(!(Temp_H2P_part = malloc(sizeof(double) * n_table_T_part))){
-    printf("Can't allocate memory!\n");
-    exit(1);
-  }
-
-  if(!(fp_H2p = fopen(fname_H2P_FB, "r")) || !(fp_H2p_part = fopen(fname_H2P_part, "r")) ){
-    printf("Can't open the file, %s or %s.\n", fname_H2P_FB, fname_H2P_part);
-    exit(1);
-  }
-
-  int n, k;
-  double lambda;
-  double sigma_H2P_FB[n_table_T_H2P+1];
-
-  for(i=0;i<n_table_lambda;i++){
-    fgets(buf, sizeof(buf),fp_H2p);
-
-    n=sscanf(buf, "%le %le %le %le %le %le %le %le %le"
-	   , &lambda
-	   , sigma_H2P_FB  , sigma_H2P_FB+1, sigma_H2P_FB+2, sigma_H2P_FB+3, sigma_H2P_FB+4
-	   , sigma_H2P_FB+5, sigma_H2P_FB+6, sigma_H2P_FB+7);
-    
-    
-    if(n != n_table_T_H2P+1){
-      printf("something wrong in reading CIA table? n=%d != %d\n", n, n_table_T_H2P);
-      exit(1);
-    }
-
-    Lambda_H2P_FB[i] = lambda * 1.e-7;
-    for(k=0;k<n_table_T_H2P;k++)
-      Sigma_H2P_FB[i*n_table_T_H2P+k] = sigma_H2P_FB[k] * 1.e-18;
-  }
-
-  double Temp, part;
-  char buf_part[400];
-  for(i=0;i<n_table_T_part;i++){
-    fgets(buf_part, sizeof(buf_part),fp_H2p_part);
-
-    n=sscanf(buf_part, "%le %le", &Temp, &part);
-
-    Temp_H2P_part[i] = Temp;
-    part_H2P[i] = part;
-
-    if(n != 2){
-      printf("something wrong in reading H2p partition function table? n=%d != %d\n", n, 2);
-      exit(1);
-    }    
-  }
-
-  fclose(fp_H2p), fclose(fp_H2p_part);
-
-  flag_table_H2p = 1;
-}
-
-void get_sigma_H2P_FB(double *sigma0, double lambda, double Tgas){
-  int iT, inu;
-  double cT, clb;
-
-  if(flag_table_H2p == 0){
-    init_cont_opacity_H2P_FB();
-  }
-
-  if(Tgas < T_H2P_FB[0]){
-    Tgas = 1.001*T_H2P_FB[0];
-  }
-  if(Tgas > T_H2P_FB[n_table_T_H2P-1]){
-    Tgas = 0.999*T_H2P_FB[n_table_T_H2P-1];
-  }
-
-  if(lambda < Lambda_H2P_FB[0] || lambda > Lambda_H2P_FB[n_table_lambda-1]){
-    *sigma0 = 0.;
-    return;
-  }
-  
-  for(iT=0;iT<n_table_T_H2P;iT++){
-    if(Tgas < T_H2P_FB[iT]) break;
-  }
-  
-  for(inu=0;inu<n_table_lambda;inu++){
-    if(lambda < Lambda_H2P_FB[inu]) break;
-  }
-  
-  cT  = (Tgas - T_H2P_FB[iT-1]) / (T_H2P_FB[iT] - T_H2P_FB[iT-1]);
-  clb = (lambda - Lambda_H2P_FB[inu-1]) / (Lambda_H2P_FB[inu] - Lambda_H2P_FB[inu-1]);
-
-  *sigma0 = cT  * clb        * Sigma_H2P_FB[inu    *n_table_T_H2P + iT]
-    + (1. - cT) *        clb * Sigma_H2P_FB[inu    *n_table_T_H2P + (iT-1)]
-    + cT        * (1. - clb) * Sigma_H2P_FB[(inu-1)*n_table_T_H2P + iT]
-    + (1. - cT) * (1. - clb) * Sigma_H2P_FB[(inu-1)*n_table_T_H2P + (iT-1)];
-}
-
-
-void get_part_H2P(double *part0, double Tgas){
-  int iT;
-  double cT;
-
-  if(flag_table_H2p == 0){
-    init_cont_opacity_H2P_FB();
-  }
-
-  if(Tgas < Temp_H2P_part[0]){
-    Tgas = 1.001*Temp_H2P_part[0];
-  }
-  if(Tgas > Temp_H2P_part[n_table_T_part-1]){
-    Tgas = 0.999*Temp_H2P_part[n_table_T_part-1];
-  }
-  
-  for(iT=0;iT<n_table_T_part;iT++){
-    if(Tgas < Temp_H2P_part[iT]) break;
-  }
-  
-  cT  = (Tgas - Temp_H2P_part[iT-1]) / (Temp_H2P_part[iT] - Temp_H2P_part[iT-1]);
-
-  *part0 = cT  * part_H2P[iT]
-    + (1. - cT) * part_H2P[iT-1];
-}
-
-
-void make_ff_rate_table(void){
-  double hc;
-  double Enu, lambda, Tgas;
-  double dln_E, dln_T;
-  const double Emin=0.01;
-  const double Emax=10.;
-  const double Tmin=100.;
-  const double Tmax=2.e4;
-  double *A, *B, *C, *D, *E, *F;  
-
-  double sum, f_lambda, k_lambda_ff;
-  
-  char fname[] = "ff_table.dat";
-  FILE *fp;
-
-  if(!(fp = fopen(fname, "w"))){
-    printf("Can't open the file, %s.\n", fname);
-    exit(1);
-  }
-
-  int i_e, i_T, n;
-  const int ne_bin=100;
-  const int nT_bin=100;
-
-  hc    = CLIGHT * PLANCK;
-  dln_E = log(Emax/Emin) / ne_bin;
-  dln_T = log(Tmax/Tmin) / nT_bin;
-
-  for(i_T=0;i_T<nT_bin;i_T++){
-    Tgas = Tmin * exp(i_T * dln_T);
-    for(i_e=0;i_e<ne_bin;i_e++){
-      Enu = Emin * exp(i_e * dln_E);
-      
-      lambda = hc / (Enu * eV_to_erg) * 1e4; //unit in micro-meter
-      if(lambda < 1.6419){
-	for(n=0,sum=0.;n<6;n++){
-	  sum += C0[n] * pow(1./lambda - 1./1.6419, n/2.);
-	}
-	f_lambda = sum;
-      }else{
-	f_lambda = 0.;
-      }
-
-      if(lambda > 0.3645){
-	A = A1;
-	B = B1;
-	C = C1;
-	D = D1;
-	E = E1;
-	F = F1;
-      }else if(lambda > 0.1823){
-	A = A2;
-	B = B2;
-	C = C2;
-	D = D2;
-	E = E2;
-	F = F2;
-      }else{
-	A = A3;
-	B = B3;
-	C = C3;
-	D = D3;
-	E = E3;
-	F = F3;
-      }
-
-      for(n=0,sum=0.;n<6;n++){
-	sum += (pow(5040./Tgas, (n+2)/2.) 
-		* (A[n]*lambda*lambda + B[n] + C[n]/lambda + D[n]*pow(lambda,-2) + E[n]*pow(lambda,-3) + F[n]*pow(lambda,-4)));
-      }
-      k_lambda_ff = 1.e-29 * sum;
-
-      fprintf(fp, "%g %g %g %g %g\n", Tgas, Enu, lambda, f_lambda, k_lambda_ff);
-    }
-  }
-
-  fclose(fp);
-}
-
-#endif
 #endif
 
  

@@ -8,13 +8,29 @@
 #define N_SPECIES 9
 #endif
 
+#define TGCHEM_NUM_ABUNDANCES N_SPECIES
+
 #ifndef METAL
 #define  k_MAX      60
 #else
 #define  k_MAX     200
 #endif
 
-#include "chemistry/chemistry.h"
+#ifndef LONGIDS
+typedef unsigned int MyIDType;
+#else
+typedef unsigned long long MyIDType;
+#endif
+
+#ifndef T_CMB0
+#define  T_CMB0 2.73
+#endif
+
+#ifdef CHEMISTRY_OLD
+#include "chemistry_old/chemistry.h"
+#else
+#include "chemistry_new/chemistry.h"
+#endif
 
 #define  mymalloc(x, y)            malloc(y)
 #define  myfree(x)                 free(x)
@@ -46,8 +62,6 @@
 #define  ELECTRONMASS 9.10953e-28
 
 #define  HYDROGEN_MASSFRAC 0.76  /*!< mass fraction of hydrogen, relevant only for radiative cooling */
-
-#define  T_CMB0 2.73
 
 #define  MAX_REAL_NUMBER   1e30
 #define  MAX_DBL_NUMBER   1e80
@@ -211,7 +225,8 @@ extern double alpha[3][20][3][20], n_pop_dummy[3][20][3][20], alpha_h2[3][20][3]
 
 extern int N_SP, N_RE;
 
-/* ----- Tables ------- */
+/* ----- Tables for the old chemistry module ------- */
+#ifdef CHEMISTRY_OLD
 extern double  T[N_T],J0_nu[N_nu],J_nu[N_nu],nu[N_nu];
 extern double  k_table[k_MAX][N_T];
 extern double  k_table_inverse[k_MAX][N_T];
@@ -225,6 +240,7 @@ extern double  ceHIa[N_T],ceHeIa[N_T],ceHeIIa[N_T],reHeII1a[N_T],reHeII2a[N_T],r
 extern double sigma[s_MAX][N_nu];
 extern double SIGMA_e22, SIGMA_e23, SIGMA_e24;
 #endif
+#endif
 
 
 /* ----- Declare some control parameters. */
@@ -235,12 +251,17 @@ extern double SIGMA_e22, SIGMA_e23, SIGMA_e24;
 #define A_O_sun  5.75e-4
 
 extern const int ThisTask;
+extern const int NTask;
 
 #define MAX(a,b) ((a)>(b)?(a):(b))
 #define MIN(a,b) ((a)>(b)?(b):(a))
 
+#ifndef dmax
 #define dmax(a,b) ((a)>(b)?(a):(b))
+#endif
+#ifndef dmin
 #define dmin(a,b) ((a)>(b)?(b):(a))
+#endif
 
 /*! This structure contains data which is the SAME for all tasks 
  *    (mostly code parameters read from the parameter file).  
@@ -332,6 +353,7 @@ extern struct global_data_all_processes
   int TypeOfTimestepCriterion;  /*!< gives type of timestep criterion (only 0 supported right now - unlike gadget-1.1) */
   int OutputListOn;             /*!< flags that output times are listed in a specified file */
 
+  char ChemistryTableDir[1024];
 
   /* Parameters determining output frequency */
   int NumCurrentTiStep;         /*!< counts the number of system steps taken up to this point */

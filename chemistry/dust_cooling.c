@@ -1,8 +1,6 @@
-#ifdef CHEMISTRY
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-
 #ifdef HAVE_MPI
 #include <mpi.h>
 #endif
@@ -11,11 +9,9 @@
 #include "../proto.h"
 #include "chemistry.h"
 
-
+#ifdef CHEMISTRY_SC
 #ifdef DUST_COOLING
 static int flag_dust_init=0;
-static double sigma_dust, S_dust;
-static double f_dust;
 
 void get_dust_opacities(double T_dust, double *kappa_Rossland, double *kappa_Planck);
 void read_dust_opacity_tables(void);
@@ -65,18 +61,11 @@ double dust_cross_section(double *S){
 
 
 double dust_temperature(double rho_cgs, double T_gas, double metallicity, double l_Jeans, double stellar_flux, struct opacities *opac, double *edot_dust){
-  double tau_g;
-  tau_g = opac -> tau;
+  double tau_g = opac -> tau;
 
-  if(flag_dust_init == 0){
-    sigma_dust = dust_cross_section(&S_dust);
+  if(flag_dust_init == 0)
     read_dust_opacity_tables();
-  }
-
-  double vH = sqrt(8./M_PI/PROTONMASS * BOLTZMANN*T_gas);
-  //tcoll_inv = 2 * BOLTZMANN * XH * rho_cgs /PROTONMASS * vH * S_dust * (1./sqrt(2) + 0.5 * XHe/XH) * (1. - 0.8 * exp(-75./T_gas));
   
-
   double tcoll_inv = rho_cgs / PROTONMASS * 1.1e-5 / DUST_TO_GAS_MASS_RATIO * sqrt(T_gas / 1000.) * (1. - 0.8 * exp(-75./T_gas));  
 
   double T_dust;
@@ -94,7 +83,7 @@ double dust_temperature(double rho_cgs, double T_gas, double metallicity, double
 
   int itr;
   for(itr=0;itr<30;itr++){
-    get_dust_opacities(T_dust, &kappa_P, &kappa_R);
+    get_dust_opacities(T_dust, &kappa_R, &kappa_P);
     
     kappa_P /= DUST_TO_GAS_MASS_RATIO; //kappa for unit dust mass (independent of metallicity)
     kappa_R /= DUST_TO_GAS_MASS_RATIO; //kappa for unit dust mass (independent of metallicity)
@@ -144,12 +133,12 @@ double dust_temperature(double rho_cgs, double T_gas, double metallicity, double
 }
 
 #ifdef LYMANWERNER
-double dust_PEheating(int ithis, double nH, double y_e, double T_gas, double metallicity){
+double dust_PEheating(double G0, double nH, double y_e, double T_gas, double metallicity){
   double edot_PE;
-  double G0, epsilon, n_e;
+  double epsilon, n_e;
   double fac1, beta;
 
-  G0 = SphP[ithis].G0;
+  if(G0 > 1.e5) G0 = 1.e5; //added [CHON240107]
 
   n_e  = nH * y_e;
   fac1 = G0 * sqrt(T_gas) / n_e;
@@ -161,13 +150,9 @@ double dust_PEheating(int ithis, double nH, double y_e, double T_gas, double met
   edot_PE  = 1.e-24 * epsilon * G0 * nH - 4.65e-30 * pow(T_gas, 0.94) * pow(fac1, beta) * nH * n_e;
   edot_PE *= metallicity;
 
-  if(SphP[ithis].Tdust > 1000.){
-    edot_PE = 0.;
-  }
-
   if(FlagPrint)
-    printf("edot_PE=%g epsilon=%g nH=%g n_e=%g fac1=%g beta=%g heat=%g cool=%g\n"
-	   , edot_PE, epsilon, nH, n_e, fac1, beta
+    printf("edot_PE=%g G0=%g epsilon=%g nH=%g n_e=%g fac1=%g beta=%g heat=%g cool=%g\n"
+	   , edot_PE, G0, epsilon, nH, n_e, fac1, beta
 	   , 1.e-24 * epsilon * G0 * nH * metallicity
 	   , 4.65e-30 * pow(T_gas, 0.94) * pow(fac1, beta) * nH * n_e * metallicity);
 
@@ -179,34 +164,9 @@ double dust_PEheating(int ithis, double nH, double y_e, double T_gas, double met
 // H2 formation rate on grains (Schneider et al. 2006)
 double H2form_on_grains(double rho_cgs, double T_gas, double T_dust, double metallicity)
 {
-  double k_H2form;
-  double vH_avr,epsilon_H2,S_H,rho_dust,sigma;
-  double T2;
-
-  vH_avr = sqrt(8.0/M_PI * BOLTZMANN*T_gas / PROTONMASS);
-  T2 = 0.01*T_gas;
-
-  double E_S,E_HP,E_HC,NI_NT;
-
-  if(1){
-    E_S  = 200.0;   // K
-    E_HP = 650.0;   // K
-    E_HC = 3.0e4;   // K
-    NI_NT = 0.25*pow( 1.0 + sqrt( (E_HC-E_S)/(E_HP-E_S) ), 2.0);
-  }else{
-    E_S  = 250.0;   // K
-    E_HP = 800.0;   // K
-    E_HC = 3.0e4;   // K
-    NI_NT = 0.25*pow( 1.0 + sqrt( (E_HC-E_S)/(E_HP-E_S) ), 2.0);
-  }
-  
-  epsilon_H2 = 1.0/(1.0 + NI_NT * exp(-E_S/T_dust));
-  S_H        = 1.0/( 1.0 + 0.4*sqrt(T2+0.01*T_dust) + 0.2*T2 + 0.08*T2*T2);
-
-  //rho_dust   = rho_cgs * 0.02 * metallicity * DUST_TO_GAS_MASS_RATIO;
-  //k_H2form = 0.5 * vH_avr * S_dust * epsilon_H2 * S_H * rho_dust;
-  
-  k_H2form = 6.0e-17 * sqrt(T_gas/300.) /(1. + exp(7.5e2*(1./75.-1./T_dust))) * S_H * metallicity * rho_cgs / PROTONMASS;
+  double T2       = 0.01*T_gas;
+  double S_H      = 1.0/( 1.0 + 0.4*sqrt(T2+0.01*T_dust) + 0.2*T2 + 0.08*T2*T2);  
+  double k_H2form = 6.0e-17 * sqrt(T_gas/300.) /(1. + exp(7.5e2*(1./75.-1./T_dust))) * S_H * metallicity * rho_cgs / PROTONMASS;
 
   //printf("k_H2form=%g epsilon=%g S_H=%g rho_d=%g sigma=%g vH_avr=%g\n", k_H2form, epsilon_H2, S_H, rho_dust, sigma_dust, vH_avr);
 
@@ -215,8 +175,8 @@ double H2form_on_grains(double rho_cgs, double T_gas, double T_dust, double meta
 #endif
 
 
-char fname_dust_Rossland[]="chemistry/kR.out";
-char fname_dust_Planck[]="chemistry/kP.out";
+char fname_dust_Rossland[]="kR.out";
+char fname_dust_Planck[]="kP.out";
 
 int n_Tdust;
 double *Kappa_Tdust;
@@ -228,13 +188,11 @@ void read_dust_opacity_tables(void){
   if(ThisTask == 0){
     FILE *fp_r, *fp_p;
 
-    if(!(fp_r = fopen(fname_dust_Rossland, "r"))){
-      printf("Can't open the opacity table, %s.\n", fname_dust_Rossland);
+    if(!(fp_r = open_chemistry_table(fname_dust_Rossland))){
       exit(1);
     }
     
-    if(!(fp_p = fopen(fname_dust_Planck, "r"))){
-      printf("Can't open the opacity table, %s.\n", fname_dust_Planck);
+    if(!(fp_p = open_chemistry_table(fname_dust_Planck))){
       exit(1);
     }
 
@@ -322,6 +280,7 @@ void read_dust_opacity_tables(void){
     fclose(fp_p),fclose(fp_r);
   }
 
+#ifdef HAVE_MPI
   if(NTask > 1){
     MPI_Bcast(&n_Tdust, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
@@ -339,6 +298,7 @@ void read_dust_opacity_tables(void){
     MPI_Bcast(Kappa_Dust_Rossland, n_Tdust, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Bcast(Kappa_Dust_Planck  , n_Tdust, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   }
+#endif
 
   flag_dust_init = 1;
 }

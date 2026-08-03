@@ -1,5 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
+#include<string.h>
+#include<limits.h>
 #include<math.h>
 #include<time.h>
 #include<sys/time.h>
@@ -8,6 +10,10 @@
 #include "allvars.h"
 #include "proto.h"
 
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
 #define nH_MAX 1.0e16
 
 const int ThisTask = 0;
@@ -15,12 +21,47 @@ const int ThisTask = 0;
 int set_units();
 int initialize_cells(double z, double theta);
 void Init_test(int ithis,double *a_start, double *dt_sec);
+static void set_chemistry_table_dir(const char *argv0);
 
 double gettimeofday_sec(void);
 int InitTable(void);
 void give_file_name(char *option);
 void dump_data(int idump, char *outname, int mode);
 void close_fp(void);
+
+#ifndef CHEMISTRY_OLD
+double compute_temp(int ithis)
+{
+  double abund[TGCHEM_NUM_ABUNDANCES] = {0};
+  abund[sELEC] = SphP[ithis].elec;
+  abund[sHI] = SphP[ithis].HI;
+  abund[sHII] = SphP[ithis].HII;
+  abund[sH2I] = SphP[ithis].H2I;
+  abund[sHM] = SphP[ithis].HM;
+#ifdef HELIUM
+  abund[sHeI] = SphP[ithis].HeI;
+  abund[sHeII] = SphP[ithis].HeII;
+  abund[sHeIII] = SphP[ithis].HeIII;
+#endif
+#ifdef H2_PLUS
+  abund[sH2II] = SphP[ithis].H2II;
+#endif
+#ifdef HD
+  abund[sDI] = SphP[ithis].DI;
+  abund[sDII] = SphP[ithis].DII;
+  abund[sHDI] = SphP[ithis].HDI;
+#ifdef HD_PLUS
+  abund[sHDII] = SphP[ithis].HDII;
+#endif
+#ifdef DMINUS
+  abund[sDM] = SphP[ithis].DM;
+#endif
+#endif
+
+  double utherm_cgs = SphP[ithis].ThermalEnergy * All.UnitEnergy_in_cgs / All.UnitMass_in_g;
+  return chemistry_temperature(abund, SphP[ithis].Gamma, utherm_cgs);
+}
+#endif
 
 #if defined(IONIZATION_PHOTON) || defined(X_RAY)
 int init_ionization_rad(void);
@@ -53,11 +94,15 @@ int main(int argc, char **argv){
   All.ScaleFactor = All.ExpansionParam;
   
   All.Time     = atime;	
+  All.cf_atime = All.ScaleFactor;
   All.cf_a3inv = 1.;
 
   All.T_CMB = T_CMB0 / All.ScaleFactor;  
 
   ifunc = set_units();
+#ifndef CHEMISTRY_OLD
+  set_chemistry_table_dir(argv[0]);
+#endif
   ifunc = InitTable();
 
 #ifdef METALLICITY
@@ -94,8 +139,8 @@ int main(int argc, char **argv){
   double time1 = gettimeofday_sec();
 
 #ifdef SURVEY_LYMANWERNER
-  const int nl=8;
-  double LW[8]={1.e-2, 1.e-1, 1., 10., 30., 1.e2, 300, 1.e3};
+  const int nl=5;
+  double LW[5]={1.e-1, 1., 10., 1.e2, 1.e3};
 
   for(int il=0;il<nl;il++)
 #endif
@@ -109,6 +154,9 @@ int main(int argc, char **argv){
 	{
 #ifdef SURVEY_LYMANWERNER
 	  All.LymanWerner = LW[il];
+#ifdef BACKGROUND_LW_RADIATION
+	  All.J21 = All.LymanWerner;
+#endif
 #endif
 
 #ifdef SURVEY_CMB_REDSHIFT
@@ -119,14 +167,15 @@ int main(int argc, char **argv){
 #endif
 
 #ifdef SURVEY_METALLICITY
-	  const int nmet=7;
-	  for(int imet=0;imet<nmet;imet++)
+		  const int nmet=6;
+		  double metallicity_survey[6] = {1.e-5, 1.e-4, 1.e-3, 1.e-2, 1.e-1, 1.};
+		  for(int imet=0;imet<nmet;imet++)
 #endif
-	    {
+		    {
 #ifdef SURVEY_METALLICITY
-	      All.Metallicity = pow(10., -1. * imet);
-	      //All.Metallicity = pow(10., -3.25-0.05 * imet);
-	      printf("[imet=%d] Metallicity=%g\n", imet, All.Metallicity);
+		      All.Metallicity = metallicity_survey[imet];
+		      //All.Metallicity = pow(10., -3.25-0.05 * imet);
+		      printf("[imet=%d] Metallicity=%g\n", imet, All.Metallicity);
 #endif
 
 #ifdef BACKGROUND_LW_RADIATION
@@ -190,19 +239,141 @@ int main(int argc, char **argv){
 		double dt_phys = timestep(dt_phys_pre);
 		double dt_in_sec = dt_phys * All.UnitTime_in_s/All.HubbleParam;
 		double t_end = t_phys + dt_phys;      
+#ifdef TRACE_1ZONE_CHEM
+		fprintf(stderr, "TRACE loop start: istep=%d dt=%g t=%g\n", istep, dt_phys, t_phys);
+#endif
 #ifndef MODE_TEST
 		if(istep > 0)
 		  SHR = update_phys(i=0, dt_in_sec, SHR);
 #endif
 
 		SphP[0].SHR = SHR;
+#ifdef TRACE_1ZONE_CHEM
+		fprintf(stderr, "TRACE before compute_temp\n");
+#endif
 		SphP[0].temperature = compute_temp(0);
+#ifdef TRACE_1ZONE_CHEM
+		fprintf(stderr, "TRACE after compute_temp: T=%g\n", SphP[0].temperature);
+#endif
 		
 		double rho_gas  = SphP[0].Density * All.HubbleParam * All.HubbleParam * All.UnitDensity_in_cgs*All.cf_a3inv;		
 		double nH = XH*rho_gas/PROTONMASS;
-	        
+
+
+#ifdef CHEMISTRY_OLD
 		int flag_implicit, flag_print=0, mode=1;
 		ifunc = compute_abundances_d(mode=1, i=0, t_phys, t_end, &flag_implicit, flag_print);
+#else
+			struct chemdata_in sph_in;
+			struct chemdata_out sph_out;
+			const int ithis = 0;
+			memset(&sph_in, 0, sizeof(sph_in));
+			memset(&sph_out, 0, sizeof(sph_out));
+#ifdef TRACE_1ZONE_CHEM
+		fprintf(stderr, "TRACE before particle2in: i=%d dt=%g T=%g Eth=%g elec=%g HI=%g HII=%g H2I=%g HM=%g\n",
+			ithis, dt_phys, SphP[ithis].temperature, SphP[ithis].ThermalEnergy, SphP[ithis].elec,
+			SphP[ithis].HI, SphP[ithis].HII, SphP[ithis].H2I, SphP[ithis].HM);
+#endif
+			sph_in.ID = P[ithis].ID;
+			sph_in.Density = SphP[ithis].Density;
+			sph_in.rho_cgs = SphP[ithis].Density * All.UnitDensity_in_cgs * All.HubbleParam * All.HubbleParam * All.cf_a3inv;
+#ifdef METALLICITY
+			sph_in.Metallicity = SphP[ithis].Metallicity;
+#endif
+#if defined(LYMANWERNER) && defined(LW_RADIATION_LOCAL)
+			sph_in.rate_Hminus_pd = SphP[ithis].rate_Hminus_pd;
+			sph_in.rate_H2_diss = SphP[ithis].rate_H2_diss;
+			sph_in.J21 = All.J21;
+#ifdef HD
+			sph_in.rate_HD_diss = SphP[ithis].rate_HD_diss;
+#endif
+#ifdef DUST_COOLING
+			sph_in.G0 = SphP[ithis].G0;
+#endif
+#endif
+#ifdef IONIZATION_PHOTON
+			sph_in.k22 = SphP[ithis].k22;
+			sph_in.piHI = SphP[ithis].piHI;
+#endif
+			SphP[ithis].n_nuclei = sph_in.rho_cgs / PROTONMASS;
+			SphP[ithis].ThermalEnergy = SphP[ithis].Entropy / (SphP[ithis].Gamma - 1.0) * pow(SphP[ithis].Density * All.cf_a3inv, SphP[ithis].Gamma - 1.0);
+			sph_out.Utherm = SphP[ithis].ThermalEnergy;
+			sph_out.Abund[sELEC] = SphP[ithis].elec;
+			sph_out.Abund[sHI] = SphP[ithis].HI;
+			sph_out.Abund[sHII] = SphP[ithis].HII;
+			sph_out.Abund[sH2I] = SphP[ithis].H2I;
+			sph_out.Abund[sHM] = SphP[ithis].HM;
+#ifdef HELIUM
+			sph_out.Abund[sHeI] = SphP[ithis].HeI;
+			sph_out.Abund[sHeII] = SphP[ithis].HeII;
+			sph_out.Abund[sHeIII] = SphP[ithis].HeIII;
+#endif
+#ifdef H2_PLUS
+			sph_out.Abund[sH2II] = SphP[ithis].H2II;
+#endif
+#ifdef HD
+			sph_out.Abund[sDI] = SphP[ithis].DI;
+			sph_out.Abund[sDII] = SphP[ithis].DII;
+			sph_out.Abund[sHDI] = SphP[ithis].HDI;
+#ifdef HD_PLUS
+			sph_out.Abund[sHDII] = SphP[ithis].HDII;
+#endif
+#ifdef DMINUS
+			sph_out.Abund[sDM] = SphP[ithis].DM;
+#endif
+#endif
+			sph_out.Gamma = SphP[ithis].Gamma;
+			sph_out.t_chem = SphP[ithis].t_chem;
+			sph_out.t_cool = SphP[ithis].t_cool;
+			sph_out.Tdust = SphP[ithis].Tdust;
+#ifdef TRACE_1ZONE_CHEM
+		fprintf(stderr, "TRACE before compute: rho=%g U=%g gamma=%g Abund=%g %g %g %g %g\n",
+			sph_in.rho_cgs, sph_out.Utherm, sph_out.Gamma,
+			sph_out.Abund[sELEC], sph_out.Abund[sHI], sph_out.Abund[sHII], sph_out.Abund[sH2I], sph_out.Abund[sHM]);
+#endif
+      
+		ifunc = compute_abundances_d(1, &sph_in, &sph_out, dt_in_sec);
+#ifdef TRACE_1ZONE_CHEM
+		fprintf(stderr, "TRACE after compute: ifunc=%d U=%g gamma=%g Abund=%g %g %g %g %g\n",
+			ifunc, sph_out.Utherm, sph_out.Gamma,
+			sph_out.Abund[sELEC], sph_out.Abund[sHI], sph_out.Abund[sHII], sph_out.Abund[sH2I], sph_out.Abund[sHM]);
+#endif
+		if(ifunc == 1 && count_print == 0){
+		  ifunc = compute_abundances_d(1, &sph_in, &sph_out, dt_in_sec);
+		  count_print++;
+		}
+		
+			SphP[ithis].ThermalEnergy = sph_out.Utherm;
+			SphP[ithis].elec = sph_out.Abund[sELEC];
+			SphP[ithis].HI = sph_out.Abund[sHI];
+			SphP[ithis].HII = sph_out.Abund[sHII];
+			SphP[ithis].H2I = sph_out.Abund[sH2I];
+			SphP[ithis].HM = sph_out.Abund[sHM];
+#ifdef HELIUM
+			SphP[ithis].HeI = sph_out.Abund[sHeI];
+			SphP[ithis].HeII = sph_out.Abund[sHeII];
+			SphP[ithis].HeIII = sph_out.Abund[sHeIII];
+#endif
+#ifdef H2_PLUS
+			SphP[ithis].H2II = sph_out.Abund[sH2II];
+#endif
+#ifdef HD
+			SphP[ithis].DI = sph_out.Abund[sDI];
+			SphP[ithis].DII = sph_out.Abund[sDII];
+			SphP[ithis].HDI = sph_out.Abund[sHDI];
+#ifdef HD_PLUS
+			SphP[ithis].HDII = sph_out.Abund[sHDII];
+#endif
+#ifdef DMINUS
+			SphP[ithis].DM = sph_out.Abund[sDM];
+#endif
+#endif
+			SphP[ithis].Gamma = sph_out.Gamma;
+			SphP[ithis].t_chem = sph_out.t_chem;
+			SphP[ithis].t_cool = sph_out.t_cool;
+			SphP[ithis].Tdust = sph_out.Tdust;
+			SphP[ithis].Entropy = SphP[ithis].ThermalEnergy * (SphP[ithis].Gamma - 1.0) / pow(SphP[ithis].Density * All.cf_a3inv, SphP[ithis].Gamma - 1.0);
+#endif
 		
 		SphP[0].temperature = compute_temp(0);
 		
@@ -849,9 +1020,11 @@ void close_fp(void){
 }
 
 int InitTable(void){
-  int ifunc;
+  int ifunc = 0;
 	
+#ifdef CHEMISTRY_OLD
   ifunc = H2line_tabulate();
+#endif
 	
 #ifdef METAL_COOLING
   ifunc = H2O_cooling_table();
@@ -893,16 +1066,21 @@ void set_J21(void){
   double hc = PLANCK * C_LIGHT;
   const double E_LW = 13.6;
   double J_13eV = 2. * pow(E_LW * eV_to_erg, 3) / hc / hc / (exp(E_LW*eV_to_erg/BOLTZMANN/Teff) - 1);
-  double Norm = All.J21 / J_13eV;
+  double J21 = All.J21 * 1.e-21;
+  double Norm = J21 / J_13eV;
 
   double PD_rate, g0;
   get_Hminus_PD_rate(Teff, &PD_rate, &g0);
 
   All.rate_Hminus_pd = Norm * PD_rate;
 #ifdef DUST_COOLING
+#ifdef CHEMISTRY_OLD
   All.G0           = Norm * g0 / 1.6e-3;
+#else
+  All.G0           = Norm * g0;
 #endif
-  All.rate_H2_diss = 1.39e9 * All.J21;
+#endif
+  All.rate_H2_diss = 1.39e9 * J21;
 }
 #endif
 
@@ -1083,7 +1261,38 @@ int initialize_cells(double z, double theta){
     SphP[i].molecular_weight = 1.0/sum_fraction;
 
     SphP[i].Gamma = 1.6666;
-    ifunc=compute_gamma(i);
+#ifdef CHEMISTRY_OLD
+    ifunc = compute_gamma(i);
+#else
+    {
+      double abund[TGCHEM_NUM_ABUNDANCES] = {0};
+      abund[sELEC] = SphP[i].elec;
+      abund[sHI] = SphP[i].HI;
+      abund[sHII] = SphP[i].HII;
+      abund[sH2I] = SphP[i].H2I;
+      abund[sHM] = SphP[i].HM;
+#ifdef HELIUM
+      abund[sHeI] = SphP[i].HeI;
+      abund[sHeII] = SphP[i].HeII;
+      abund[sHeIII] = SphP[i].HeIII;
+#endif
+#ifdef H2_PLUS
+      abund[sH2II] = SphP[i].H2II;
+#endif
+#ifdef HD
+      abund[sDI] = SphP[i].DI;
+      abund[sDII] = SphP[i].DII;
+      abund[sHDI] = SphP[i].HDI;
+#ifdef HD_PLUS
+      abund[sHDII] = SphP[i].HDII;
+#endif
+#ifdef DMINUS
+      abund[sDM] = SphP[i].DM;
+#endif
+#endif
+      SphP[i].Gamma = compute_gamma_from_abund(abund, T0);
+    }
+#endif
 
     SphP[i].pressure = All.UnitMass_in_g/All.UnitEnergy_in_cgs * rho0 /PROTONMASS /sum_fraction * BOLTZMANN * T0 ;
     SphP[i].ThermalEnergy = SphP[i].pressure/rho0/(SphP[i].Gamma-1.0);
@@ -1120,10 +1329,10 @@ int initialize_cells(double z, double theta){
 #endif    
 
 #ifdef LYMANWERNER
-    All.J21 = All.LymanWerner * 1.e-21;
+    All.J21 = All.LymanWerner;
     
 #ifdef DUST_COOLING
-    SphP[i].G0 = All.J21 * All.G0;
+    SphP[i].G0 = All.G0;
 #endif
 #endif
 
@@ -1443,9 +1652,27 @@ int set_units()    /* ... set some units */
   return 1;
 }
 
+static void set_chemistry_table_dir(const char *argv0)
+{
+  char exe_path[PATH_MAX];
 
-void endrun(int ierr){
-  exit(ierr);
+  if(realpath(argv0, exe_path) == NULL){
+    printf("Can't resolve executable path from argv[0]=%s.\n", argv0);
+    endrun();
+  }
+
+  char *slash = strrchr(exe_path, '/');
+  if(slash == NULL){
+    printf("Can't determine executable directory from %s.\n", exe_path);
+    endrun();
+  }
+
+  *slash = '\0';
+  snprintf(All.ChemistryTableDir, sizeof(All.ChemistryTableDir), "%s/chemistry", exe_path);
+}
+
+
+void endrun(void){
+  exit(1);
 }
  
-
