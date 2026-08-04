@@ -319,7 +319,41 @@ bracket width <= max(1e-4 K, 1e-5 Tdust)
 
 診断runでは全体実行時間が約5.23秒から4.93--4.99秒、平均4.96秒へ短縮した。ただしadaptive evolutionの経路とdust関数の呼び出し総数も変わるため、この約5%は厳密な同一軌道benchmarkではない。
 
-最終のclean buildによる36条件surveyでは、通常species modeが約4.67秒、中間体平衡modeが約5.23秒だった。この二値は異なるsolver modeなので、互いのdust最適化率を表すものではない。
+### HM平衡・非平衡の全体時間配分
+
+現行commit `59f6f33` を独立したbuild directoryでclean buildし、同じ36条件surveyについてHM非平衡とHM平衡を改めてprofileした。
+
+```text
+HM非平衡: INTERMEDIATE_EQUILIBRIUM=0
+HM平衡:   INTERMEDIATE_EQUILIBRIUM=1
+compiler optimization: 現行Makefileと同じ -O0
+```
+
+wall timeはprofilerを付けず各modeを3回測定した。HM非平衡は `4.36, 4.37, 4.33 s`、HM平衡は `4.94, 4.92, 4.94 s` で、平均はそれぞれ `4.35 s` と `4.93 s` だった。HM平衡による全体時間の増加は約 `13.3%` である。
+
+時間配分はmacOS sampling profilerを1 ms間隔でprocess終了まで実行し、各mode 2回分を合算した。HM非平衡は7,405、HM平衡は8,427のmain-function sampleを得た。表の秒数はsampling比率をprofilerなしの平均wall timeへ掛けた概算である。
+
+| 処理 | HM非平衡 | 概算時間 | HM平衡 | 概算時間 |
+|---|---:|---:|---:|---:|
+| reaction network Jacobian・RHS・化学量論演算 | 57.35% | 2.497 s | 52.56% | 2.593 s |
+| 保存則・algebraic Jacobian縮約 | 11.63% | 0.506 s | 9.66% | 0.477 s |
+| HM平衡値評価・中間体判定 | 0.92% | 0.040 s | 10.51% | 0.519 s |
+| reaction rate評価（dustを除く） | 2.39% | 0.104 s | 2.44% | 0.121 s |
+| dust温度・dust opacity | 4.62% | 0.201 s | 4.12% | 0.203 s |
+| radiative・chemical cooling | 1.55% | 0.068 s | 1.31% | 0.064 s |
+| LAPACK/BLAS線形方程式 | 0.95% | 0.041 s | 1.90% | 0.094 s |
+| implicit solverのその他の処理 | 7.62% | 0.332 s | 6.35% | 0.313 s |
+| energy solver・thermodynamics | 0.68% | 0.029 s | 0.58% | 0.029 s |
+| math library (`pow`, `exp`, `log`など) | 6.41% | 0.279 s | 5.67% | 0.280 s |
+| 出力I/O | 3.97% | 0.173 s | 3.42% | 0.169 s |
+| その他 | 1.92% | 0.083 s | 1.48% | 0.073 s |
+| **合計** | **100%** | **4.353 s** | **100%** | **4.933 s** |
+
+samplingはtop-of-stackを重複しない分類へまとめた。`pow`、`exp`、`log`などは複数の物理kernelから呼ばれるため、呼び出し元へ推定配分せずmath libraryとして独立させた。したがって、例えばreaction networkの実効コストにはmath library行の一部も含まれる。
+
+HM平衡化による約 `0.58 s` の増加のうち、約 `0.48 s` はHM平衡値評価・中間体判定の増加で直接説明できる。線形方程式の概算時間も約 `0.05 s` 増えており、中間体応答を含むalgebraic Jacobian処理の影響が見える。一方、dust温度計算は両modeとも約 `0.20 s` で、全体時間に占める割合の差は分母となる総時間の違いによる。radiative cooling、thermodynamics、I/Oも絶対時間はほぼ変化していない。
+
+現時点で最大の計算コストは、両modeともreaction networkのJacobian・RHS評価である。HM平衡modeをさらに高速化する場合は、dustやcoolingではなく、HM平衡値をNewton iteration中に何度再評価しているか、同じabundance/rateに対する再計算を省けるかを先に調べるべきである。
 
 ## 検証
 
