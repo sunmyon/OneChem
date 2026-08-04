@@ -155,6 +155,54 @@ F(Tdust) = Lambda_dust(Tdust) - Lambda_coll(Tdust) = 0
 
 gas の energy exchange には、平衡探索終了時の `Lambda_coll` を使用する。低密度で `Tdust` が CMB 温度に極めて近い場合、有限の温度誤差を持つ `Lambda_dust` をgas heatingへ流用すると、非物理的な加熱が生じるためである。
 
+### 低密度で発生していた false heating
+
+従来実装では、低密度領域でdust由来の非物理的なgas加熱が発生し、温度進化に約 `1.4e4 K` の一時的なpulseが現れる場合があった。これはdustの物理過程ではなく、根探索の有限精度をgasのenergy exchangeとして扱ったことが原因だった。
+
+低密度ではgas-dust collisionが非常に弱いため、dust平衡温度はほぼ放射温度に等しい。
+
+```text
+Tdust = Trad + delta T
+delta T ~ 1e-11 K
+```
+
+一方、従来の初期bracketは `[0, 2000 K]` で、二分法を常に30回行っていた。30回後にも残る区間幅は
+
+```text
+2000 K / 2^30 = 1.86e-6 K
+```
+
+であり、必要な `delta T ~ 1e-11 K` より約5桁粗い。したがって、返された `Tdust` では
+
+```text
+Lambda_dust - Lambda_coll != 0
+```
+
+という有限のresidualが残る。特に `Tdust` と `TCMB` がほぼ等しいときは、`Tdust^4 - TCMB^4` の直接差も桁落ちしやすい。
+
+旧実装は、この未収束な `Lambda_dust` を
+
+```text
+edot_dust = -Lambda_dust * rho * metallicity * dust_to_gas_ratio
+```
+
+としてgas energyへ戻していた。本来gasとdustの間で交換されるenergyは `Lambda_coll` だけであるため、放射平衡式に残った数値誤差が、そのまま実在するgas heatingとして解釈されていた。
+
+現在は次のように修正している。
+
+1. `Tdust^4 - TCMB^4` を
+
+   ```text
+   (Tdust - TCMB)(Tdust + TCMB)(Tdust^2 + TCMB^2)
+   ```
+
+   と因数分解し、近接温度での桁落ちを抑える。
+2. residualだけでなくbracket幅でも収束を判定する。
+3. 決定した最終 `Tdust` でbalanceを再評価する。
+4. gasのenergy exchangeには `-Lambda_coll` を使用し、放射residualをgasへ流さない。
+
+この修正により、根がmachine precisionに近すぎて放射residualを完全にはゼロにできない場合でも、低密度gasへfalse heatingが入らなくなった。
+
 ### 不連続性の除去
 
 従来の collision factor は 159、275、425、680 K にhard stepを持っていた。このため residual が不連続になり、境界付近では数学的な根が存在しない場合があった。
