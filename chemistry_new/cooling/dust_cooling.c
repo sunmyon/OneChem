@@ -5,9 +5,12 @@
 #include <mpi.h>
 #endif
 
-#include "../allvars.h"
-#include "../proto.h"
-#include "chemistry_internal.h"
+#include "allvars.h"
+#include "proto.h"
+#include "chemistry_constants.h"
+#include "chemistry_diagnostics.h"
+#include "chemistry_tables.h"
+#include "dust_cooling.h"
 
 #ifdef CHEMISTRY_SC
 #ifdef DUST_COOLING

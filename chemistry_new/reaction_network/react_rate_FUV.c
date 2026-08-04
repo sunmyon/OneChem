@@ -4,13 +4,12 @@
 #include <math.h>
 
 #include <mpi.h>
-#include "../allvars.h"
-#include "../proto.h"
+#include "allvars.h"
+#include "proto.h"
+#include "chemistry_constants.h"
 
 #ifdef CHEMISTRY_SC
 #ifdef LYMANWERNER
-#define eV_to_erg  1.60184e-12
-
 double Hminus_detachment_John1988(double hv);
 double calc_detachment_rate(double Trad);
 double calc_G0_rate(double Trad);

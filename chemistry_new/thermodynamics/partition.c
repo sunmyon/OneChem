@@ -1,8 +1,10 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
-#include "../allvars.h"
+#include "allvars.h"
 #include "chemistry.h"
+#include "chemistry_constants.h"
+#include "partition.h"
 
 
 /* rossi partition function for H2 */
@@ -26,11 +28,6 @@ const double  b6 = -2.63895;
 const double  b7 =  1.35708;
 
 double E_H2_BFM(int iv,int J);
-
-double partition_H2_Rossi1985(double T_gas);
-double partition_H2_Irwin1987(double T_gas);
-double partition_H2_EBM1989(double T_K);
-double partition_H2_EBM1989_fitted_by_Matsukoba(double T_K);
 
 void check_partition_functions_H2(void){
   FILE *fp = fopen("partition_functions_H2.dat", "w");

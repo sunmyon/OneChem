@@ -1,6 +1,9 @@
 #pragma once
 
 #include <stddef.h>
+#include "chemistry.h"
+
+extern int N_SP, N_RE;
 
 typedef enum {
   CHEM_RATE_FORWARD,

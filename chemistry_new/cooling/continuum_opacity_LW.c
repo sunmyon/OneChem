@@ -6,11 +6,14 @@
 #include <math.h>
 #include <fenv.h>
 
-#include "../allvars.h"
-#include "../proto.h"
+#include "allvars.h"
+#include "proto.h"
 #include "chemistry.h"
+#include "chemistry_constants.h"
+#include "chemistry_diagnostics.h"
+#include "cooling_func.h"
+#include "partition.h"
 
-double partition_H(double T_gas);
 double Hminus_detachment_John1988(double hv);
 
 enum dust_species{

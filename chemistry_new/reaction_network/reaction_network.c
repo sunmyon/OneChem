@@ -1,6 +1,6 @@
 #include <stddef.h>
 
-#include "../allvars.h"
+#include "allvars.h"
 #include "reaction_network.h"
 
 #define TERM(species_, order_, change_) {species_, order_, change_}

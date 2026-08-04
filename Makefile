@@ -122,7 +122,7 @@ else
 LAPACK_LIBS = -llapack -lblas -lgfortran
 endif
 
-CFLAGS =  $(OPT1) -g -O0 $(GSL_INCL) -Wformat
+CFLAGS =  $(OPT1) -g -O0 $(GSL_INCL) -I. $(CHEMISTRY_INCLUDE_FLAGS) -Wformat
 
 LIBS   =  $(GSL_INCL) $(GSL_LIBS) -lm $(LAPACK_LIBS) -lgsl -lgslcblas
 
@@ -133,21 +133,66 @@ CHEMISTRY_DIR  = chemistry_old
 CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/chemistry_200601.o \
                  $(CHEMISTRY_DIR)/cooling_func_200601.o \
                  $(CHEMISTRY_DIR)/stellar_spectrum.o
+CHEMISTRY_SUPPORT_OBJS = $(CHEMISTRY_DIR)/H2cooling.o \
+                         $(CHEMISTRY_DIR)/dust_cooling.o \
+                         $(CHEMISTRY_DIR)/saha.o \
+                         $(CHEMISTRY_DIR)/partition.o
 CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h
+CHEMISTRY_INCLUDE_FLAGS = -I$(CHEMISTRY_DIR)
 else
 OPT1 += -DCHEMISTRY_SC
 CHEMISTRY_DIR  = chemistry_new
-CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/chemistry.o \
-                 $(CHEMISTRY_DIR)/reaction_network.o \
-                 $(CHEMISTRY_DIR)/cooling_func.o \
-                 $(CHEMISTRY_DIR)/react_rate_FUV.o
-CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h
+CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/driver/chemistry_driver.o \
+                 $(CHEMISTRY_DIR)/initialization/chemistry_init.o \
+                 $(CHEMISTRY_DIR)/solver/chemistry_solver.o \
+                 $(CHEMISTRY_DIR)/solver/saha.o \
+                 $(CHEMISTRY_DIR)/common/chemistry_models.o \
+                 $(CHEMISTRY_DIR)/reaction_network/forward_rates.o \
+                 $(CHEMISTRY_DIR)/reaction_network/reaction_rates.o \
+                 $(CHEMISTRY_DIR)/reaction_network/reaction_network.o \
+                 $(CHEMISTRY_DIR)/reaction_network/react_rate_FUV.o \
+                 $(CHEMISTRY_DIR)/reaction_network/shielding.o \
+                 $(CHEMISTRY_DIR)/cooling/H2cooling.o \
+                 $(CHEMISTRY_DIR)/cooling/chemistry_cooling.o \
+                 $(CHEMISTRY_DIR)/cooling/cooling_func.o \
+                 $(CHEMISTRY_DIR)/cooling/dust_cooling.o \
+                 $(CHEMISTRY_DIR)/thermodynamics/partition.o \
+                 $(CHEMISTRY_DIR)/thermodynamics/thermodynamics.o
+CHEMISTRY_SUPPORT_OBJS =
+CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h \
+                 $(CHEMISTRY_DIR)/chemistry_config.h \
+                 $(CHEMISTRY_DIR)/chemistry_types.h \
+                 $(CHEMISTRY_DIR)/common/chemistry_constants.h \
+                 $(CHEMISTRY_DIR)/common/chemistry_diagnostics.h \
+                 $(CHEMISTRY_DIR)/common/chemistry_models.h \
+                 $(CHEMISTRY_DIR)/cooling/chemistry_cooling.h \
+                 $(CHEMISTRY_DIR)/cooling/cooling_func.h \
+                 $(CHEMISTRY_DIR)/cooling/dust_cooling.h \
+                 $(CHEMISTRY_DIR)/cooling/H2cooling.h \
+                 $(CHEMISTRY_DIR)/thermodynamics/partition.h \
+                 $(CHEMISTRY_DIR)/thermodynamics/thermodynamics.h \
+                 $(CHEMISTRY_DIR)/reaction_network/forward_rates.h \
+                 $(CHEMISTRY_DIR)/reaction_network/reaction_network.h \
+                 $(CHEMISTRY_DIR)/reaction_network/reaction_rates.h \
+                 $(CHEMISTRY_DIR)/reaction_network/shielding.h \
+                 $(CHEMISTRY_DIR)/solver/chemistry_solver.h \
+                 $(CHEMISTRY_DIR)/solver/saha.h \
+                 $(CHEMISTRY_DIR)/initialization/chemistry_init.h \
+                 $(CHEMISTRY_DIR)/tables/chemistry_tables.h
+CHEMISTRY_INCLUDE_FLAGS = -I$(CHEMISTRY_DIR) \
+                          -I$(CHEMISTRY_DIR)/common \
+                          -I$(CHEMISTRY_DIR)/cooling \
+                          -I$(CHEMISTRY_DIR)/driver \
+                          -I$(CHEMISTRY_DIR)/initialization \
+                          -I$(CHEMISTRY_DIR)/reaction_network \
+                          -I$(CHEMISTRY_DIR)/solver \
+                          -I$(CHEMISTRY_DIR)/thermodynamics \
+                          -I$(CHEMISTRY_DIR)/tables
 endif
 
 OBJS   = main.o allvars.o timescales.o \
-	 $(CHEMISTRY_DIR)/H2cooling.o $(CHEMISTRY_DIR)/dust_cooling.o \
-	 $(CHEMISTRY_OBJS) \
-         $(CHEMISTRY_DIR)/saha.o $(CHEMISTRY_DIR)/partition.o
+	 $(CHEMISTRY_SUPPORT_OBJS) \
+	 $(CHEMISTRY_OBJS)
 
 INCL   = allvars.h proto.h tags.h $(CHEMISTRY_INCL)
 

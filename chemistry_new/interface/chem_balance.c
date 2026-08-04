@@ -5,9 +5,10 @@
 
 #include <mpi.h>
 
-#include "../allvars.h"
-#include "../proto.h"
-#include "../tags.h"
+#include "allvars.h"
+#include "proto.h"
+#include "tags.h"
+#include "chemistry_constants.h"
 
 #define LOCK_NEXPORT
 #define UNLOCK_NEXPORT

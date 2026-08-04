@@ -1,17 +1,18 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
-#include "../allvars.h"
-#include "../proto.h"
+#include "allvars.h"
+#include "proto.h"
 #include "chemistry.h"
+#include "chemistry_constants.h"
+#include "chemistry_diagnostics.h"
+#include "H2cooling.h"
 
 double H2line_LTE(double T);
 double H2cool_LTEfit(double T);
 
-double H2_cooling_GP12(double xnH,double T_K,double y_H,double y_H2,double y_e,double y_Hp,double y_He);
 double H2cool_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,double y_Hp);
 double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,double y_Hp,double y_He);
-double fesc_fit(double T_K, double NH2);
 
 /*-----------------------------------------------------------------------
   ! LTE H2 cooling fit by Glover(2015) and fesc fit by Omukai-san
@@ -29,7 +30,7 @@ double H2_cooling_G15(double nH, double T_K,double yHI,double yH2,double yHeI,do
 
   //lineがthickになった後に、opt-thin low-density cooling rateが現れないように場合分け
   if(nH < 1.e8){
-    //double xLdH2_GP12 = H2_cooling_GP12(nH, T_K, yHI, yH2, y_e, yHII, yHeI);
+    //double xLdH2_GP12 = H2_cooling_GP12(nH, T_K, yHI, yH2, yHeI, yHII, y_e);
     double xLdH2_n0  = H2cool_LowD_G15(nH, T_K, yHI, yH2, y_e, yHII, yHeI);
 
     //if(FlagPrint)
@@ -149,7 +150,7 @@ double fesc_unity(double T_K, double xNc_H2){
 }
 
 
-double H2_cooling_GP12(double xnH,double T_K,double y_H,double y_H2,double y_e,double y_Hp,double y_He)
+double H2_cooling_GP12(double xnH,double T_K,double y_H,double y_H2,double y_He,double y_Hp,double y_e)
 {
   double cool_rate_G08_H2H, cool_rate_G08_H2H2, cool_rate_G08_H2He, cool_rate_G08_H2p, cool_rate_G08_H2e;
   double cool_rate_LOW_H2, cool_rate_LTE_H2, cool_rate_H2;
@@ -620,7 +621,3 @@ double fesc_HD_fit(double T_K, double xNc_HD){
 }
 
 #endif
-
-
-
-

@@ -1,8 +1,6 @@
 #pragma once
 
-#ifndef CHEM_RATE_COUNT
-#define CHEM_RATE_COUNT k_MAX
-#endif
+#include "chemistry_config.h"
 
 typedef struct {
   double rho_cgs;       /* g cm^-3 */

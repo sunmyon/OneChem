@@ -10,10 +10,15 @@
 
 #define TGCHEM_NUM_ABUNDANCES N_SPECIES
 
+#ifdef CHEMISTRY_OLD
 #ifndef METAL
-#define  k_MAX      60
+#define k_MAX 60
 #else
-#define  k_MAX     200
+#define k_MAX 200
+#endif
+#else
+#include "chemistry_new/chemistry_config.h"
+#define k_MAX CHEM_RATE_COUNT
 #endif
 
 #ifndef LONGIDS

@@ -3,13 +3,15 @@
 #include <string.h>
 #include <math.h>
 
-#include "../allvars.h"
-#include "../proto.h"
+#include "allvars.h"
+#include "proto.h"
 #include "chemistry.h"
-#include "chemistry_internal.h"
+#include "chemistry_constants.h"
+#include "chemistry_tables.h"
+#include "saha.h"
+#include "chemistry_models.h"
+#include "partition.h"
 
-double partition_H(double T_gas);
-void correct_initial_abundances(double *yi, double *y_init);
 int dgesv_(int *n, int *nrhs, double *a, int *lda, int *ipiv, double *b, int *ldb, int *info);
 
 
@@ -33,7 +35,7 @@ double chem_saha(double xnH,double T_K,double *y_H,double *y_H2,double *y_e,doub
   int itr;
 
   z_H  = partition_H(T_K);
-  z_H2 = partition_H2(T_K);
+  z_H2 = chemistry_models.h2_partition(T_K);
   m_H = m_Hp = m_Hm = PROTONMASS;
   m_H2 = 2 * m_H;
   T_erg = xk_B*T_K;
@@ -149,7 +151,7 @@ double chem_saha_5sp(double xnH, double T_K, double *y){
   Ene   = 2.*M_PI*T_erg/PLANCK/PLANCK;
 
   z_H   = partition_H(T_K);
-  z_H2  = partition_H2(T_K);
+  z_H2  = chemistry_models.h2_partition(T_K);
   z_e   = 2.;
   z_Hp  = 1.;
   z_Hm  = 1.;
@@ -292,5 +294,3 @@ int heap_sort(unsigned long n, double ra[])
   
   return (ifunc);
 }
-
-

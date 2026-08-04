@@ -5,10 +5,13 @@
 #include <fenv.h>
 #include <mpi.h>
 
-#include "../allvars.h"
-#include "../proto.h"
+#include "allvars.h"
+#include "proto.h"
 //#include "tags.h"
-#include "chemistry_internal.h"
+#include "chemistry_constants.h"
+#include "chemistry_diagnostics.h"
+#include "chemistry_tables.h"
+#include "cooling_func.h"
 
 #ifdef CHEMISTRY_SC
 
