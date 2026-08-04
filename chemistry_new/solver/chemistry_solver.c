@@ -29,7 +29,6 @@
 
 static void correct_initial_abundances(double *yi);
 static void give_initial_guess(double temperature, double nH, double dt, double *yi, double *initial_guess, double *rates);
-static void bound_ddy(double *yi, double *delta, double *upper_bound, int iteration, int reset, double *max_error);
 int dgesv_(int *n, int *nrhs, double *a, int *lda, int *ipiv, double *b, int *ldb, int *info);
 
 #ifdef ENERGY_IMPLICIT
@@ -494,16 +493,297 @@ double solve_bisection(const ChemEnvironment *environment, const ChemStepData *s
 #endif
 
 
+static const enum SPECIES intermediate_equilibrium_species[] = {sHM};
+#ifdef CHEM_INTERMEDIATE_EQUILIBRIUM
+static const size_t intermediate_equilibrium_species_count = sizeof(intermediate_equilibrium_species) / sizeof(intermediate_equilibrium_species[0]);
+#else
+static const size_t intermediate_equilibrium_species_count = 0;
+#endif
+
+static int chemistry_species_is_intermediate_equilibrium(enum SPECIES species)
+{
+  for(size_t i = 0; i < intermediate_equilibrium_species_count; i++)
+    if(intermediate_equilibrium_species[i] == species)
+      return 1;
+  return 0;
+}
+
+static int chemistry_update_intermediate_equilibrium_species(unsigned char mode, double nH, double *abundance, const ChemRates *rates)
+{
+  double previous[N_SP];
+  double updated[sizeof(intermediate_equilibrium_species) / sizeof(intermediate_equilibrium_species[0])];
+
+  if(intermediate_equilibrium_species_count == 0)
+    return 1;
+
+  if(intermediate_equilibrium_species_count == 1) {
+    enum SPECIES species = intermediate_equilibrium_species[0];
+    if(!chemistry_network_intermediate_equilibrium_abundance(species, mode, nH, abundance, rates->forward, rates->inverse, &updated[0], NULL))
+      return 0;
+    abundance[species] = updated[0];
+    return 1;
+  }
+
+  for(int iteration = 0; iteration < 32; iteration++) {
+    memcpy(previous, abundance, sizeof(previous));
+    double max_change = 0.0;
+
+    for(size_t i = 0; i < intermediate_equilibrium_species_count; i++) {
+      enum SPECIES species = intermediate_equilibrium_species[i];
+      if(!chemistry_network_intermediate_equilibrium_abundance(species, mode, nH, previous, rates->forward, rates->inverse, &updated[i], NULL))
+        return 0;
+      double change = fabs(updated[i] - previous[species]) / (fabs(updated[i]) + 1.e-80);
+      if(change > max_change)
+        max_change = change;
+    }
+
+    for(size_t i = 0; i < intermediate_equilibrium_species_count; i++)
+      abundance[intermediate_equilibrium_species[i]] = updated[i];
+
+    if(max_change < 1.e-12)
+      return 1;
+  }
+  return 0;
+}
+
+#define CHEM_MAX_CONSERVATION_CONSTRAINTS 4
+
+typedef struct {
+  int count;
+  double coefficient[CHEM_MAX_CONSERVATION_CONSTRAINTS][N_SP];
+  double total[CHEM_MAX_CONSERVATION_CONSTRAINTS];
+  enum SPECIES dependent_species[CHEM_MAX_CONSERVATION_CONSTRAINTS];
+  double dependent_inverse[CHEM_MAX_CONSERVATION_CONSTRAINTS * CHEM_MAX_CONSERVATION_CONSTRAINTS];
+  unsigned char is_dependent[N_SP];
+} ChemConservationSystem;
+
+static void chemistry_add_conservation_constraint(ChemConservationSystem *conservation, enum SPECIES dependent_species, double total)
+{
+  int constraint = conservation->count++;
+  conservation->dependent_species[constraint] = dependent_species;
+  conservation->total[constraint] = total;
+  conservation->is_dependent[dependent_species] = 1;
+}
+
+static int chemistry_build_conservation_system(ChemConservationSystem *conservation)
+{
+  memset(conservation, 0, sizeof(*conservation));
+
+  chemistry_add_conservation_constraint(conservation, sHI, 1.0);
+  conservation->coefficient[0][sHI] = 1.0;
+  conservation->coefficient[0][sHII] = 1.0;
+  conservation->coefficient[0][sH2I] = 2.0;
+
+#ifdef HELIUM
+  int helium_constraint = conservation->count;
+  chemistry_add_conservation_constraint(conservation, sHeI, XHe / XH);
+  conservation->coefficient[helium_constraint][sHeI] = 1.0;
+  conservation->coefficient[helium_constraint][sHeII] = 1.0;
+  conservation->coefficient[helium_constraint][sHeIII] = 1.0;
+#endif
+
+#ifdef HD
+  int deuterium_constraint = conservation->count;
+  chemistry_add_conservation_constraint(conservation, sDI, D_number_fraction / XH);
+  conservation->coefficient[deuterium_constraint][sDI] = 1.0;
+  conservation->coefficient[deuterium_constraint][sDII] = 1.0;
+  conservation->coefficient[deuterium_constraint][sHDI] = 1.0;
+#endif
+
+  int charge_constraint = conservation->count;
+  chemistry_add_conservation_constraint(conservation, sELEC, 0.0);
+  conservation->coefficient[charge_constraint][sELEC] = -1.0;
+  conservation->coefficient[charge_constraint][sHII] = 1.0;
+#ifdef HELIUM
+  conservation->coefficient[charge_constraint][sHeII] = 1.0;
+  conservation->coefficient[charge_constraint][sHeIII] = 2.0;
+#endif
+
+  for(int constraint = 0; constraint < conservation->count; constraint++) {
+    enum SPECIES dependent = conservation->dependent_species[constraint];
+    double diagonal = conservation->coefficient[constraint][dependent];
+    if(diagonal == 0.0)
+      return 0;
+    conservation->dependent_inverse[constraint * conservation->count + constraint] = 1.0 / diagonal;
+  }
+  return 1;
+}
+
+static int chemistry_species_is_conservation_dependent(enum SPECIES species, const ChemConservationSystem *conservation)
+{
+  return conservation->is_dependent[species];
+}
+
+static int chemistry_species_is_algebraic(enum SPECIES species, const ChemConservationSystem *conservation)
+{
+  return chemistry_species_is_intermediate_equilibrium(species) || chemistry_species_is_conservation_dependent(species, conservation);
+}
+
+static int chemistry_update_implicit_algebraic_species(double nH, double *abundance, const ChemRates *rates, const ChemConservationSystem *conservation)
+{
+  abundance[sHI] = 1.0 - abundance[sHII] - 2.0 * abundance[sH2I];
+#ifdef HELIUM
+  abundance[sHeI] = XHe / XH - abundance[sHeII] - abundance[sHeIII];
+#endif
+#ifdef HD
+  abundance[sDI] = D_number_fraction / XH - abundance[sDII] - abundance[sHDI];
+#endif
+  abundance[sELEC] = abundance[sHII];
+#ifdef HELIUM
+  abundance[sELEC] += abundance[sHeII] + 2.0 * abundance[sHeIII];
+#endif
+
+  if(!isfinite(abundance[sHI]) || !isfinite(abundance[sELEC])
+#ifdef HELIUM
+     || !isfinite(abundance[sHeI])
+#endif
+#ifdef HD
+     || !isfinite(abundance[sDI])
+#endif
+    )
+    return 0;
+
+  return chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_IMPLICIT, nH, abundance, rates);
+}
+
+static int chemistry_apply_implicit_newton_step(double nH, double *abundance, double *delta, const double *upper_bound, const ChemRates *rates, const ChemConservationSystem *conservation)
+{
+  double initial[N_SP];
+  memcpy(initial, abundance, sizeof(initial));
+
+  double step_scale = 1.0;
+  for(int attempt = 0; attempt < 24; attempt++) {
+    double trial[N_SP];
+    for(int species = 0; species < N_SP; species++)
+      trial[species] = initial[species] + step_scale * delta[species];
+
+    int valid = chemistry_update_implicit_algebraic_species(nH, trial, rates, conservation);
+    for(int species = 0; valid && species < N_SP; species++)
+      if(!isfinite(trial[species]) || trial[species] < 0.0 || trial[species] > upper_bound[species])
+        valid = 0;
+
+    if(valid) {
+      for(int species = 0; species < N_SP; species++) {
+        delta[species] = trial[species] - initial[species];
+        abundance[species] = trial[species];
+      }
+      return 1;
+    }
+    step_scale *= 0.5;
+  }
+  return 0;
+}
+
+static int chemistry_reduce_jacobian_for_algebraic_species(double nH, const double *abundance, const ChemRates *rates, const enum SPECIES *solver_species, int n_solver_species, const ChemConservationSystem *conservation, double drfdy[N_SP][N_SP])
+{
+  int n_intermediate = (int)intermediate_equilibrium_species_count;
+  int n_algebraic = n_intermediate + conservation->count;
+  if(n_algebraic == 0)
+    return 1;
+
+  enum SPECIES algebraic_species[N_SP];
+  for(int intermediate = 0; intermediate < n_intermediate; intermediate++)
+    algebraic_species[intermediate] = intermediate_equilibrium_species[intermediate];
+  for(int dependent = 0; dependent < conservation->count; dependent++)
+    algebraic_species[n_intermediate + dependent] = conservation->dependent_species[dependent];
+
+  for(int algebraic = 0; algebraic < n_algebraic; algebraic++) {
+    enum SPECIES species = algebraic_species[algebraic];
+    chemistry_network_jacobian_column(species, nH, abundance, rates->forward, rates->inverse, drfdy[species]);
+  }
+
+  double algebraic_response[N_SP * N_SP];
+  memset(algebraic_response, 0, sizeof(algebraic_response));
+
+  for(int solver_j = 0; solver_j < n_solver_species; solver_j++) {
+    enum SPECIES column_species = solver_species[solver_j];
+    for(int dependent = 0; dependent < conservation->count; dependent++)
+      for(int constraint = 0; constraint < conservation->count; constraint++)
+        algebraic_response[solver_j * n_algebraic + n_intermediate + dependent] +=
+            conservation->dependent_inverse[constraint * conservation->count + dependent] *
+            conservation->coefficient[constraint][column_species];
+  }
+
+  if(n_intermediate > 0) {
+    double intermediate_jacobian[N_SP * N_SP];
+    double intermediate_response[N_SP * N_SP];
+    int intermediate_pivots[N_SP];
+
+    for(int intermediate_j = 0; intermediate_j < n_intermediate; intermediate_j++) {
+      enum SPECIES column_species = intermediate_equilibrium_species[intermediate_j];
+      for(int intermediate_i = 0; intermediate_i < n_intermediate; intermediate_i++) {
+        enum SPECIES row_species = intermediate_equilibrium_species[intermediate_i];
+        intermediate_jacobian[intermediate_j * n_intermediate + intermediate_i] = drfdy[column_species][row_species];
+      }
+    }
+
+    for(int solver_j = 0; solver_j < n_solver_species; solver_j++) {
+      enum SPECIES column_species = solver_species[solver_j];
+      for(int intermediate_i = 0; intermediate_i < n_intermediate; intermediate_i++) {
+        enum SPECIES row_species = intermediate_equilibrium_species[intermediate_i];
+        double response = drfdy[column_species][row_species];
+        for(int dependent = 0; dependent < conservation->count; dependent++) {
+          enum SPECIES dependent_species = conservation->dependent_species[dependent];
+          response -= drfdy[dependent_species][row_species] *
+              algebraic_response[solver_j * n_algebraic + n_intermediate + dependent];
+        }
+        intermediate_response[solver_j * n_intermediate + intermediate_i] = response;
+      }
+    }
+
+    int info;
+    dgesv_(&n_intermediate, &n_solver_species, intermediate_jacobian, &n_intermediate, intermediate_pivots, intermediate_response, &n_intermediate, &info);
+    if(info != 0)
+      return 0;
+
+    for(int solver_j = 0; solver_j < n_solver_species; solver_j++)
+      for(int intermediate = 0; intermediate < n_intermediate; intermediate++)
+        algebraic_response[solver_j * n_algebraic + intermediate] = intermediate_response[solver_j * n_intermediate + intermediate];
+  }
+
+  for(int solver_j = 0; solver_j < n_solver_species; solver_j++) {
+    enum SPECIES column_species = solver_species[solver_j];
+    for(int solver_i = 0; solver_i < n_solver_species; solver_i++) {
+      enum SPECIES row_species = solver_species[solver_i];
+      for(int algebraic_k = 0; algebraic_k < n_algebraic; algebraic_k++)
+        drfdy[column_species][row_species] -= drfdy[algebraic_species[algebraic_k]][row_species] * algebraic_response[solver_j * n_algebraic + algebraic_k];
+    }
+  }
+
+  return 1;
+}
+
 static void chemistry_explicit_update_species(enum SPECIES species, double nH, double dt, const double *initial_abundance, double *abundance, const ChemRates *rates)
 {
-  double production[N_SP];
-  double destruction[N_SP];
-  chemistry_network_production_destruction(nH, abundance, rates->forward, rates->inverse, production, destruction);
-  abundance[species] = (initial_abundance[species] + production[species] * dt) /
-                       (1.0 + destruction[species] * dt);
+  double production;
+  double destruction;
+  chemistry_network_species_production_destruction(species, nH, abundance, rates->forward, rates->inverse, &production, &destruction);
+  abundance[species] = (initial_abundance[species] + production * dt) /
+                       (1.0 + destruction * dt);
   if(abundance[species] < 0.0)
     abundance[species] = 0.0;
 }
+
+static const enum SPECIES explicit_species_order[] = {
+  sHI, sHII,
+#ifdef HELIUM
+  sHeI, sHeII, sHeIII,
+#endif
+  sELEC, sHM,
+#ifdef H2_PLUS
+  sH2II,
+#endif
+  sH2I,
+#ifdef HD
+  sDI, sDII, sHDI,
+#ifdef HD_PLUS
+  sHDII,
+#endif
+#ifdef DMINUS
+  sDM,
+#endif
+#endif
+};
 
 static void chemistry_explicit_enforce_constraints(ChemState *state)
 {
@@ -591,34 +871,62 @@ int chemistry_noneq_exp_nometal(const ChemEnvironment *environment, const ChemSt
     abundance[species] = initial_abundance[species];
   }
 
-  chemistry_explicit_update_species(sHI, nH, dt, initial_abundance, abundance, &work->rates);
-  chemistry_explicit_update_species(sHII, nH, dt, initial_abundance, abundance, &work->rates);
-#ifdef HELIUM
-  chemistry_explicit_update_species(sHeI, nH, dt, initial_abundance, abundance, &work->rates);
-  chemistry_explicit_update_species(sHeII, nH, dt, initial_abundance, abundance, &work->rates);
-  chemistry_explicit_update_species(sHeIII, nH, dt, initial_abundance, abundance, &work->rates);
+  if(!chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_EXPLICIT, nH, abundance, &work->rates))
+    return 2;
+
+#ifdef CHEM_EXPLICIT_SIMULTANEOUS
+  double production[N_SP];
+  double destruction[N_SP];
+  chemistry_network_production_destruction(nH, abundance, work->rates.forward, work->rates.inverse, production, destruction);
+  for(int species = 0; species < N_SP; species++) {
+    if(chemistry_species_is_intermediate_equilibrium(species))
+      continue;
+    abundance[species] = (initial_abundance[species] + production[species] * dt) /
+                         (1.0 + destruction[species] * dt);
+    if(abundance[species] < 0.0)
+      abundance[species] = 0.0;
+  }
+#else
+  for(size_t order_index = 0; order_index < sizeof(explicit_species_order) / sizeof(explicit_species_order[0]); order_index++) {
+    enum SPECIES species = explicit_species_order[order_index];
+    if(chemistry_species_is_intermediate_equilibrium(species)) {
+      if(!chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_EXPLICIT, nH, abundance, &work->rates))
+        return 2;
+    } else {
+      chemistry_explicit_update_species(species, nH, dt, initial_abundance, abundance, &work->rates);
+    }
+  }
 #endif
-  chemistry_explicit_update_species(sELEC, nH, dt, initial_abundance, abundance, &work->rates);
-  chemistry_explicit_update_species(sHM, nH, dt, initial_abundance, abundance, &work->rates);
-#ifdef H2_PLUS
-  chemistry_explicit_update_species(sH2II, nH, dt, initial_abundance, abundance, &work->rates);
-#endif
-  chemistry_explicit_update_species(sH2I, nH, dt, initial_abundance, abundance, &work->rates);
-#ifdef HD
-  chemistry_explicit_update_species(sDI, nH, dt, initial_abundance, abundance, &work->rates);
-  chemistry_explicit_update_species(sDII, nH, dt, initial_abundance, abundance, &work->rates);
-  chemistry_explicit_update_species(sHDI, nH, dt, initial_abundance, abundance, &work->rates);
-#ifdef HD_PLUS
-  chemistry_explicit_update_species(sHDII, nH, dt, initial_abundance, abundance, &work->rates);
-#endif
-#ifdef DMINUS
-  chemistry_explicit_update_species(sDM, nH, dt, initial_abundance, abundance, &work->rates);
-#endif
-#endif
+
+  if(!chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_EXPLICIT, nH, abundance, &work->rates))
+    return 2;
 
   for(int species = 0; species < N_SP; species++)
     state->abund[species] = abundance[species] * XH;
-  chemistry_explicit_enforce_constraints(state);
+
+  for(int iteration = 0; iteration < 16; iteration++) {
+    double previous_intermediate_equilibrium[sizeof(intermediate_equilibrium_species) / sizeof(intermediate_equilibrium_species[0])];
+    for(size_t i = 0; i < intermediate_equilibrium_species_count; i++)
+      previous_intermediate_equilibrium[i] = state->abund[intermediate_equilibrium_species[i]];
+
+    chemistry_explicit_enforce_constraints(state);
+    for(int species = 0; species < N_SP; species++)
+      abundance[species] = state->abund[species] / XH;
+    if(!chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_EXPLICIT, nH, abundance, &work->rates))
+      return 2;
+    for(size_t i = 0; i < intermediate_equilibrium_species_count; i++)
+      state->abund[intermediate_equilibrium_species[i]] = abundance[intermediate_equilibrium_species[i]] * XH;
+
+    double max_change = 0.0;
+    for(size_t i = 0; i < intermediate_equilibrium_species_count; i++) {
+      double value = state->abund[intermediate_equilibrium_species[i]];
+      double change = fabs(value - previous_intermediate_equilibrium[i]) / (fabs(value) + 1.e-80);
+      if(change > max_change)
+        max_change = change;
+    }
+    if(max_change < 1.e-12)
+      break;
+  }
 
   if(isnan(state->abund[sHI])) {
     printf("[task%03d]HI is nan (ID=%d, dt=%g, rho_gas=%g, T_gas=%g)\n",
@@ -638,7 +946,6 @@ int chemistry_noneq_exp_nometal(const ChemEnvironment *environment, const ChemSt
 
 #define MAX_ITER_CHEM 1000
 #define ITER_RESET 40
-#define BETA 1.0
 
 #ifdef SAHA
 int chemistry_saha(const ChemEnvironment *environment, ChemState *state, ChemWorkspace *workspace, double dt)
@@ -727,13 +1034,21 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 #endif
 #endif
 
+  if(!chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_IMPLICIT, nH, yi, &work->rates)) {
+    *state = state_old;
+    return 0;
+  }
+
   int err_flag = 0, ipiv[n_sp];
   double drfdy[n_sp][n_sp],dy[n_sp];
   double y_init[n_sp], abund_init[n_sp];
   double y_mean[n_sp],y_max[n_sp],y_min[n_sp];
   double yi_ion;
   double rf_tot[n_sp];
-  double AA[n_sp*n_sp],ddy[n_sp];
+  double AA[n_sp*n_sp],ddy[n_sp], solver_rhs[n_sp];
+  enum SPECIES solver_species[n_sp];
+  int n_solver_species = 0;
+  ChemConservationSystem conservation;
 
   y_min[sELEC] = 1.e-80,  y_mean[sELEC]  = 1.e-15   ,  y_max[sELEC]  = 2.0;
 
@@ -777,6 +1092,14 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   }
 
   correct_initial_abundances(yi);
+  if(!chemistry_build_conservation_system(&conservation) ||
+     !chemistry_update_implicit_algebraic_species(nH, yi, &work->rates, &conservation)) {
+    *state = state_old;
+    return 0;
+  }
+  for(int i_sp = 0; i_sp < n_sp; i_sp++)
+    if(!chemistry_species_is_algebraic(i_sp, &conservation))
+      solver_species[n_solver_species++] = i_sp;
   for(int i_sp=0;i_sp<n_sp;i_sp++){
     y_init[i_sp] = yi[i_sp];
     abund_init[i_sp] = y_init[i_sp] * XH;
@@ -789,6 +1112,9 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
   double err_max= 100.0;
   int flag_conv = 0, flag_reset = 0, itr = 1;
+#if defined(CHEM_DIFF_ANALYTIC) && !defined(CHEM_DIFF_NUMERICAL)
+  int use_numerical_jacobian = 0;
+#endif
 
  chem_START:
   if(flag_reset){
@@ -828,13 +1154,15 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   if(FlagPrint)
     printf("T_gas=%g y=%g %g %g %g %g\n", T_gas, yi[sELEC], yi[sHI], yi[sHII], yi[sH2I], yi[sHM]);
 
-  while(itr<=MAX_ITER_CHEM && flag_conv < 2) {  // iteration
-#ifdef HMINUS_EQ
-    yi[sHM] =
-      (work->rates.forward[7]*yi[sHI]*yi[sELEC]+k_inverse[8]*yi[sH2I]*yi[sELEC]+k_inverse[18]*yi[sHI]*yi[sHI])
-      /(k_inverse[7]+work->rates.forward[8]*yi[sHI]+work->rates.forward[18]*yi[sHII]+work->rates.forward[25]);
-#endif
+  if(!chemistry_update_implicit_algebraic_species(nH, yi, &work->rates, &conservation)) {
+    *state = state_old;
+    return 0;
+  }
+  for(int i_sp = 0; i_sp < n_sp; i_sp++)
+    if(chemistry_species_is_algebraic(i_sp, &conservation))
+      dy[i_sp] = 0.0;
 
+  while(itr<=MAX_ITER_CHEM && flag_conv < 2) {  // iteration
     chemistry_network_rhs(nH, yi, work->rates.forward, work->rates.inverse, rf_tot);
 
     if(FlagPrint){
@@ -853,38 +1181,61 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
     }
 #endif
 
-    for(int j_sp=0;j_sp<n_sp;j_sp++) {
-#ifdef CHEM_DIFF_ANALYTIC
-      chemistry_network_jacobian_column(j_sp, nH, yi, work->rates.forward, work->rates.inverse, drfdy[j_sp]);
-#else
-      double Dyi, epsilon_y = 1.0e-10, epsilon = 1.0e-4;
-      if(fabs(yi[j_sp])<1.0e-100) Dyi = epsilon_y;
-      else                       Dyi = epsilon*yi[j_sp];
-
-      double y_tmp[n_sp];
-      for(int i_sp=0;i_sp<n_sp;i_sp++){
-	if(i_sp==j_sp) y_tmp[i_sp]=yi[i_sp]+0.5*Dyi;
-	else           y_tmp[i_sp]=yi[i_sp];
+    memset(drfdy, 0, sizeof(drfdy));
+    int use_analytic_jacobian = 0;
+#if defined(CHEM_DIFF_ANALYTIC) && !defined(CHEM_DIFF_NUMERICAL)
+    use_analytic_jacobian = !use_numerical_jacobian;
+    if(use_analytic_jacobian) {
+      for(int solver_j=0;solver_j<n_solver_species;solver_j++) {
+        int j_sp = solver_species[solver_j];
+        chemistry_network_jacobian_column(j_sp, nH, yi, work->rates.forward, work->rates.inverse, drfdy[j_sp]);
       }
-
-      double rf_f[n_sp],rf_b[n_sp];
-      chemistry_network_rhs(nH, y_tmp, work->rates.forward, work->rates.inverse, rf_f);
-
-      y_tmp[j_sp]=yi[j_sp]-0.5*Dyi;
-      chemistry_network_rhs(nH, y_tmp, work->rates.forward, work->rates.inverse, rf_b);
-
-      for(int i_sp=0;i_sp<n_sp;i_sp++) {
-	double drf, rf_big;
-	drfdy[j_sp][i_sp]=(rf_f[i_sp]-rf_b[i_sp])/Dyi;
-	if(fabs(rf_f[i_sp])>fabs(rf_b[i_sp])) rf_big=fabs(rf_f[i_sp]);
-	else                                rf_big=fabs(rf_b[i_sp]);
-	if(rf_big!=0.0) {
-	  drf=fabs(rf_f[i_sp]-rf_b[i_sp]);
-	  if(drf/rf_big<1.0e-15)
-	    drfdy[j_sp][i_sp]=0.0;
-	}
+      if(!chemistry_reduce_jacobian_for_algebraic_species(nH, yi, &work->rates, solver_species, n_solver_species, &conservation, drfdy)) {
+        use_numerical_jacobian = 1;
+        use_analytic_jacobian = 0;
       }
+    }
 #endif
+
+    if(!use_analytic_jacobian) {
+      for(int solver_j=0;solver_j<n_solver_species;solver_j++) {
+        int j_sp = solver_species[solver_j];
+        double Dyi, epsilon_y = 1.0e-10, epsilon = 1.0e-4;
+        if(fabs(yi[j_sp])<1.0e-100) Dyi = epsilon_y;
+        else                       Dyi = epsilon*yi[j_sp];
+
+        double y_tmp[n_sp];
+        for(int i_sp=0;i_sp<n_sp;i_sp++){
+          if(i_sp==j_sp) y_tmp[i_sp]=yi[i_sp]+0.5*Dyi;
+          else           y_tmp[i_sp]=yi[i_sp];
+        }
+
+        double rf_f[n_sp],rf_b[n_sp];
+        if(!chemistry_update_implicit_algebraic_species(nH, y_tmp, &work->rates, &conservation)) {
+          *state = state_old;
+          return 0;
+        }
+        chemistry_network_rhs(nH, y_tmp, work->rates.forward, work->rates.inverse, rf_f);
+
+        y_tmp[j_sp]=yi[j_sp]-0.5*Dyi;
+        if(!chemistry_update_implicit_algebraic_species(nH, y_tmp, &work->rates, &conservation)) {
+          *state = state_old;
+          return 0;
+        }
+        chemistry_network_rhs(nH, y_tmp, work->rates.forward, work->rates.inverse, rf_b);
+
+        for(int i_sp=0;i_sp<n_sp;i_sp++) {
+          double drf, rf_big;
+          drfdy[j_sp][i_sp]=(rf_f[i_sp]-rf_b[i_sp])/Dyi;
+          if(fabs(rf_f[i_sp])>fabs(rf_b[i_sp])) rf_big=fabs(rf_f[i_sp]);
+          else                                rf_big=fabs(rf_b[i_sp]);
+          if(rf_big!=0.0) {
+            drf=fabs(rf_f[i_sp]-rf_b[i_sp]);
+            if(drf/rf_big<1.0e-15)
+              drfdy[j_sp][i_sp]=0.0;
+          }
+        }
+      }
     }
 
 #ifdef ID_CHEM_DEBUG
@@ -896,34 +1247,37 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
     }
 #endif
 
-    for(int j_sp=0;j_sp<n_sp;j_sp++) {
-      for(int i_sp=0;i_sp<n_sp;i_sp++) {
-	if(i_sp!=j_sp) AA[j_sp * n_sp + i_sp] =    -dt*drfdy[j_sp][i_sp];
-	else           AA[j_sp * n_sp + i_sp] = 1.0-dt*drfdy[j_sp][i_sp];
+    for(int solver_j=0;solver_j<n_solver_species;solver_j++) {
+      int j_sp = solver_species[solver_j];
+      for(int solver_i=0;solver_i<n_solver_species;solver_i++) {
+        int i_sp = solver_species[solver_i];
+	if(solver_i!=solver_j) AA[solver_j * n_solver_species + solver_i] =    -dt*drfdy[j_sp][i_sp];
+	else                   AA[solver_j * n_solver_species + solver_i] = 1.0-dt*drfdy[j_sp][i_sp];
       }
     }
 
-    for(int i_sp=0;i_sp<n_sp;i_sp++)
-      ddy[i_sp]=rf_tot[i_sp]*dt - dy[i_sp];
-
-    dgesv_(&n_sp, &inc, AA, &n_sp, ipiv, ddy, &n_sp, &info);    //compile with -llapack -lblas
-
-    /****************************************/
-    for(int i_sp=0;i_sp<n_sp;i_sp++)
-      ddy[i_sp] *= BETA;
-
-    err_max=0.0;
-    bound_ddy(yi, ddy, y_max, itr, flag_reset, &err_max);
-
-    for(int i_sp=0;i_sp<n_sp;i_sp++) {
-      dy[i_sp] += ddy[i_sp]; //dy[] is recalculated at the end of the loop
-      yi[i_sp] += ddy[i_sp];
+    for(int solver_i=0;solver_i<n_solver_species;solver_i++) {
+      int i_sp = solver_species[solver_i];
+      solver_rhs[solver_i] = rf_tot[i_sp]*dt - dy[i_sp];
     }
 
+    dgesv_(&n_solver_species, &inc, AA, &n_solver_species, ipiv, solver_rhs, &n_solver_species, &info);    //compile with -llapack -lblas
+
+    memset(ddy, 0, sizeof(ddy));
+    for(int solver_i=0;solver_i<n_solver_species;solver_i++)
+      ddy[solver_species[solver_i]] = solver_rhs[solver_i];
+
+    err_max=0.0;
+    if(!chemistry_apply_implicit_newton_step(nH, yi, ddy, y_max, &work->rates, &conservation)) {
+      *state = state_old;
+      return 0;
+    }
+
+    for(int i_sp=0;i_sp<n_sp;i_sp++)
+      dy[i_sp] += ddy[i_sp]; //dy[] is recalculated at the end of the loop
+
     for(int i_sp=0;i_sp<n_sp;i_sp++) {
-#ifdef HMINUS_EQ
-      if(i_sp == sHM) continue;
-#endif
+      if(chemistry_species_is_algebraic(i_sp, &conservation)) continue;
       double err = 0.;
       if(yi[i_sp]!=0.0) err=fabs(ddy[i_sp]/yi[i_sp]);
       if(err>err_max && yi[i_sp] > 1.0e-10) err_max=err, err_flag = i_sp;
@@ -931,8 +1285,15 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
     for(int i_sp=0;i_sp<n_sp;i_sp++)
       dy[i_sp] = yi[i_sp] - y_init[i_sp];
+    for(int i_sp = 0; i_sp < n_sp; i_sp++)
+      if(chemistry_species_is_algebraic(i_sp, &conservation))
+        dy[i_sp] = 0.0;
 
     if(itr >= 20) ErrMaxCrit = 1.e-4;
+#if defined(CHEM_DIFF_ANALYTIC) && !defined(CHEM_DIFF_NUMERICAL)
+    if(intermediate_equilibrium_species_count > 0 && itr >= 20 && err_max > ErrMaxCrit)
+      use_numerical_jacobian = 1;
+#endif
     if(err_max < ErrMaxCrit) flag_conv++;
     else flag_conv = 0;
 
@@ -944,9 +1305,16 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
     itr++;
   }   // iteration
 
+  if(!chemistry_update_implicit_algebraic_species(nH, yi, &work->rates, &conservation)) {
+    *state = state_old;
+    return 0;
+  }
+
   if(err_max<1.0e-6) {
     double t_chem1 = 1.0e20;
     for(int i_sp=0;i_sp<n_sp;i_sp++) {
+      if(chemistry_species_is_algebraic(i_sp, &conservation))
+        continue;
       if(yi[i_sp]-y_init[i_sp]!=0.0) {
 	double t_chem2 = fabs((yi[i_sp]+y_init[i_sp])/2.0 / (yi[i_sp]-y_init[i_sp])) * dt;
 	if(t_chem2<t_chem1) t_chem1 = t_chem2;
@@ -1011,6 +1379,8 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
     }else{
       double t_chem1 = 1.0e20;
       for(int i_sp=0;i_sp<n_sp;i_sp++) {
+	if(chemistry_species_is_algebraic(i_sp, &conservation))
+	  continue;
 	if(yi[i_sp]-y_init[i_sp]!=0.0) {
 	  double t_chem2 = fabs((yi[i_sp]+y_init[i_sp])/2.0 / (yi[i_sp]-y_init[i_sp])) * dt;
 	  if(t_chem2<t_chem1) t_chem1 = t_chem2;
@@ -1055,6 +1425,8 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   chemical_cooling(environment, state, work, dt, abund_init);
 
   for(int i_sp=0;i_sp<n_sp;i_sp++){
+    if(chemistry_species_is_algebraic(i_sp, &conservation))
+      continue;
     if(yi[i_sp] < y_min[i_sp]){
       yi[i_sp] = y_min[i_sp];
       state->abund[i_sp] = yi[i_sp] * XH;
@@ -1194,19 +1566,23 @@ static void correct_initial_abundances(double *yi){
           }
         }
 #ifdef HELIUM
-      else if(yi[sHI] + yi[sHeI] > 1.05*diff){
+      else if(yi[sHI] + yi[sHeI] > 1.05*minus_charge){
+        double diff1, diff2;
+
         diff1 = 0.97*yi[sHI];
-        diff2 = diff - diff1;
+        diff2 = minus_charge - diff1;
 
 	yi[sHI]  -= diff1;
         yi[sHeI] -= diff2;
 
 	yi[sHII]  += diff1;
         yi[sHeII] += diff2;
-      }else if(yi[sHI] + 2*yi[sHeI] + yi[sHeII] > 1.05*diff){
+      }else if(yi[sHI] + 2*yi[sHeI] + yi[sHeII] > 1.05*minus_charge){
+        double diff1, diff2, diff3;
+
         diff1 = 0.97*yi[sHI];
-        diff2 = dmin(0.9*yi[sHeI], 0.5*(diff - diff1)) ;
-        diff3 = diff - diff1 - 2*diff2;
+        diff2 = dmin(0.9*yi[sHeI], 0.5*(minus_charge - diff1)) ;
+        diff3 = minus_charge - diff1 - 2*diff2;
 
 	yi[sHI]   -= diff1;
         yi[sHeI]  -= diff2;
@@ -1215,8 +1591,10 @@ static void correct_initial_abundances(double *yi){
 	yi[sHII]   += diff1;
         yi[sHeIII] += (diff3+diff2);
       }else{
+        double diff1, diff2, diff3;
+
         diff1 = 0.97 * (yi[sHI] + 2*yi[sHeI] + yi[sHeII]);
-        diff2 = diff - diff1;
+        diff2 = minus_charge - diff1;
 
 	yi[sELEC] -= diff2;
 
@@ -1322,17 +1700,5 @@ static void give_initial_guess(double T_gas, double nH, double dt, double *yi, d
 #endif
 }
 
-
-static void bound_ddy(double *yi, double *ddy, double *y_max, int itr, int flag_reset, double *err_max){
-  for(int i_sp=0;i_sp<N_SP;i_sp++) {
-    if(yi[i_sp] + ddy[i_sp] < 0.1 * yi[i_sp]){
-      ddy[i_sp] = -0.9 * yi[i_sp];
-      *err_max += (double) (i_sp + 1);
-    }else if(yi[i_sp]+ddy[i_sp] > y_max[i_sp]){
-      ddy[i_sp] = dmin(0.9*yi[i_sp], 0.9 * (y_max[i_sp] - yi[i_sp]));
-      *err_max += 100. * (double) (i_sp + 1);
-    }
-  }
-}
 
 #endif /* CHEMISTRY_SC */

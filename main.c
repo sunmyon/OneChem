@@ -1,6 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include<errno.h>
 #include<limits.h>
 #include<math.h>
 #include<time.h>
@@ -507,6 +508,15 @@ static FILE *fpout, *fcool, *fchem, *fchem_inv, *fH2, *fHM, *fS, *felec, *fHI;
 static int flag_file_open = 0;
 static int f_count = 0;
 
+static FILE *open_output_file(const char *path, const char *mode){
+  FILE *file = fopen(path, mode);
+  if(file == NULL){
+    fprintf(stderr, "Failed to open output file '%s': %s\n", path, strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  return file;
+}
+
 void dump_data(int idump, char *outname, int mode){
 
   int i;
@@ -541,59 +551,59 @@ void dump_data(int idump, char *outname, int mode){
   
   if(idump != f_count) printf("something wrong in dump_data!\n");
   if(f_count == 0){
-    fpout = fopen(outname,"w");
+    fpout = open_output_file(outname,"w");
 		
     sprintf(output_cool,"%s_cool",outname);
-    fcool = fopen(output_cool,"w");
+    fcool = open_output_file(output_cool,"w");
 
     sprintf(output_chem,"%s_chem",outname);
-    fchem = fopen(output_chem,"w");
+    fchem = open_output_file(output_chem,"w");
 
     sprintf(output_chem_inv,"%s_chem_inv",outname);
-    fchem_inv = fopen(output_chem_inv,"w");
+    fchem_inv = open_output_file(output_chem_inv,"w");
 
     sprintf(output_H2I,"%s_H2I",outname);
-    fH2 = fopen(output_H2I,"w");
+    fH2 = open_output_file(output_H2I,"w");
 
     sprintf(output_HI,"%s_HI",outname);
-    fHI = fopen(output_HI,"w");
+    fHI = open_output_file(output_HI,"w");
 
     sprintf(output_HM,"%s_HM",outname);
-    fHM = fopen(output_HM,"w");
+    fHM = open_output_file(output_HM,"w");
 
     sprintf(output_HM,"%s_elec",outname);
-    felec = fopen(output_HM,"w");
+    felec = open_output_file(output_HM,"w");
 
     sprintf(output_HM,"%s_S",outname);
-    fS = fopen(output_HM,"w");
+    fS = open_output_file(output_HM,"w");
 
     flag_file_open = 1;
   }else if(flag_file_open == 0){
-    fpout = fopen(outname,"a");
+    fpout = open_output_file(outname,"a");
 		
     sprintf(output_cool,"%s_cool",outname);
-    fcool = fopen(output_cool,"a");
+    fcool = open_output_file(output_cool,"a");
 
     sprintf(output_chem,"%s_chem",outname);
-    fchem = fopen(output_chem,"a");
+    fchem = open_output_file(output_chem,"a");
 
     sprintf(output_chem_inv,"%s_chem_inv",outname);
-    fchem_inv = fopen(output_chem_inv,"a");
+    fchem_inv = open_output_file(output_chem_inv,"a");
 
     sprintf(output_H2I,"%s_H2I",outname);
-    fH2 = fopen(output_H2I,"a");
+    fH2 = open_output_file(output_H2I,"a");
 
     sprintf(output_HI,"%s_HI",outname);
-    fHI = fopen(output_HI,"a");
+    fHI = open_output_file(output_HI,"a");
 
     sprintf(output_HM,"%s_HM",outname);
-    fHM = fopen(output_HM,"a");
+    fHM = open_output_file(output_HM,"a");
 
     sprintf(output_HM,"%s_elec",outname);
-    felec = fopen(output_HM,"a");
+    felec = open_output_file(output_HM,"a");
 
     sprintf(output_HM,"%s_S",outname);
-    fS = fopen(output_HM,"a");
+    fS = open_output_file(output_HM,"a");
 
     flag_file_open = 1;
   }

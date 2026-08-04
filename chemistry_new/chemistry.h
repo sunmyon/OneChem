@@ -1,5 +1,7 @@
 #pragma once
 
+#include "species_definitions.h"
+
 #ifdef CHEMISTRY_SC
 /* ----- chemistry part ------- */
 #define H_number_fraction  0.76
@@ -21,33 +23,15 @@ extern const double XHD;
 
 extern int count_print;
 
+#define CHEM_DECLARE_SPECIES(symbol, name, charge, h, he, d, c, o) s##symbol,
 enum SPECIES{
-  sELEC,
-  sHI,
-  sHII,
-#ifdef HELIUM
-  sHeI,
-  sHeII,
-  sHeIII,
-#endif
-  sH2I,
-#ifdef H2_PLUS
-  sH2II,
-#endif
-  sHM,
-#ifdef HD
-  sDI,
-  sDII,
-  sHDI,
-#ifdef HD_PLUS
-  sHDII,
-#endif
-#ifdef DMINUS
-  sDM,
-#endif
-#endif
+  CHEM_SPECIES_LIST(CHEM_DECLARE_SPECIES)
   sEND
 };
+#undef CHEM_DECLARE_SPECIES
+
+#define N_SP sEND
+#define TGCHEM_NUM_ABUNDANCES sEND
 
 typedef struct chemdata_in
 {

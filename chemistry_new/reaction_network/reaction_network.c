@@ -1,98 +1,369 @@
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "allvars.h"
+#include "chemistry_tables.h"
 #include "reaction_network.h"
+#include "species.h"
 
-#define TERM(species_, order_, change_) {species_, order_, change_}
-#define REACTION(source_, rate_, modes_, count_, ...) {source_, rate_, modes_, count_, {__VA_ARGS__}}
-#define FORWARD(rate_, count_, ...) REACTION(CHEM_RATE_FORWARD, rate_, CHEM_REACTION_IMPLICIT | CHEM_REACTION_EXPLICIT, count_, __VA_ARGS__)
-#define INVERSE(rate_, count_, ...) REACTION(CHEM_RATE_INVERSE, rate_, CHEM_REACTION_IMPLICIT | CHEM_REACTION_EXPLICIT, count_, __VA_ARGS__)
+static ChemReaction *reactions;
+static size_t reaction_count;
 
-static const ChemReaction reactions[] = {
-  FORWARD(1, 3, TERM(sHI, 1, -1), TERM(sELEC, 1, 1), TERM(sHII, 0, 1)),
-  FORWARD(2, 3, TERM(sHII, 1, -1), TERM(sELEC, 1, -1), TERM(sHI, 0, 1)),
+typedef struct {
+  size_t num_reactant_reactions;
+  size_t *reactant_reactions;
+  size_t num_affected_reactions;
+  size_t *affected_reactions;
+} ChemSpeciesReactionIndex;
+
+static ChemSpeciesReactionIndex species_reaction_index[sEND];
+
+static void free_species_reaction_index(void)
+{
+  for(int species = 0; species < sEND; species++) {
+    free(species_reaction_index[species].reactant_reactions);
+    free(species_reaction_index[species].affected_reactions);
+    species_reaction_index[species] = (ChemSpeciesReactionIndex){0};
+  }
+}
+
+static int build_species_reaction_index(void)
+{
+  size_t reactant_counts[sEND];
+  size_t affected_counts[sEND];
+  memset(reactant_counts, 0, sizeof(reactant_counts));
+  memset(affected_counts, 0, sizeof(affected_counts));
+
+  for(size_t reaction_index = 0; reaction_index < reaction_count; reaction_index++) {
+    const ChemReaction *reaction = &reactions[reaction_index];
+    for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+      const ChemReactionTerm *term = &reaction->terms[term_index];
+      if(term->reactant_order > 0)
+        reactant_counts[term->species]++;
+      if(term->net_change != 0)
+        affected_counts[term->species]++;
+    }
+  }
+
+  for(int species = 0; species < sEND; species++) {
+    ChemSpeciesReactionIndex *index = &species_reaction_index[species];
+    if(reactant_counts[species] > 0) {
+      index->reactant_reactions = malloc(reactant_counts[species] * sizeof(*index->reactant_reactions));
+      if(index->reactant_reactions == NULL)
+        goto failure;
+    }
+    if(affected_counts[species] > 0) {
+      index->affected_reactions = malloc(affected_counts[species] * sizeof(*index->affected_reactions));
+      if(index->affected_reactions == NULL)
+        goto failure;
+    }
+  }
+
+  for(size_t reaction_index = 0; reaction_index < reaction_count; reaction_index++) {
+    const ChemReaction *reaction = &reactions[reaction_index];
+    for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+      const ChemReactionTerm *term = &reaction->terms[term_index];
+      ChemSpeciesReactionIndex *index = &species_reaction_index[term->species];
+      if(term->reactant_order > 0)
+        index->reactant_reactions[index->num_reactant_reactions++] = reaction_index;
+      if(term->net_change != 0)
+        index->affected_reactions[index->num_affected_reactions++] = reaction_index;
+    }
+  }
+  return 1;
+
+failure:
+  free_species_reaction_index();
+  return 0;
+}
+
+static char *trim(char *text)
+{
+  while(isspace((unsigned char)*text))
+    text++;
+
+  char *end = text + strlen(text);
+  while(end > text && isspace((unsigned char)end[-1]))
+    end--;
+  *end = '\0';
+  return text;
+}
+
+static int compiled_option_enabled(const char *name)
+{
+  if(strcmp(name, "always") == 0)
+    return 1;
 #ifdef HELIUM
-  FORWARD(3, 3, TERM(sHeI, 1, -1), TERM(sELEC, 1, 1), TERM(sHeII, 0, 1)),
-  FORWARD(4, 3, TERM(sHeII, 1, -1), TERM(sELEC, 1, -1), TERM(sHeI, 0, 1)),
-  FORWARD(5, 3, TERM(sHeII, 1, -1), TERM(sELEC, 1, 1), TERM(sHeIII, 0, 1)),
-  FORWARD(6, 3, TERM(sHeIII, 1, -1), TERM(sELEC, 1, -1), TERM(sHeII, 0, 1)),
+  if(strcmp(name, "HELIUM") == 0) return 1;
 #endif
-  FORWARD(7, 3, TERM(sHI, 1, -1), TERM(sELEC, 1, -1), TERM(sHM, 0, 1)),
-  FORWARD(8, 4, TERM(sHM, 1, -1), TERM(sHI, 1, -1), TERM(sH2I, 0, 1), TERM(sELEC, 0, 1)),
 #ifdef H2_PLUS
-  FORWARD(9, 3, TERM(sHI, 1, -1), TERM(sHII, 1, -1), TERM(sH2II, 0, 1)),
-  FORWARD(10, 4, TERM(sHI, 1, -1), TERM(sH2II, 1, -1), TERM(sH2I, 0, 1), TERM(sHII, 0, 1)),
+  if(strcmp(name, "H2_PLUS") == 0) return 1;
 #endif
-  FORWARD(11, 2, TERM(sH2I, 1, -1), TERM(sHI, 1, 2)),
-#ifdef H2_PLUS
-  FORWARD(12, 4, TERM(sH2I, 1, -1), TERM(sHII, 1, -1), TERM(sH2II, 0, 1), TERM(sHI, 0, 1)),
+#ifdef HD
+  if(strcmp(name, "HD") == 0) return 1;
 #endif
-  FORWARD(13, 3, TERM(sH2I, 1, -1), TERM(sELEC, 1, 0), TERM(sHI, 0, 2)),
-#ifdef HELIUM
-  FORWARD(14, 4, TERM(sHeII, 1, -1), TERM(sHI, 1, -1), TERM(sHeI, 0, 1), TERM(sHII, 0, 1)),
-  FORWARD(15, 4, TERM(sHeI, 1, -1), TERM(sHII, 1, -1), TERM(sHeII, 0, 1), TERM(sHI, 0, 1)),
+#if defined(HD) && defined(HD_PLUS)
+  if(strcmp(name, "HD_PLUS") == 0) return 1;
 #endif
-  FORWARD(16, 3, TERM(sHM, 1, -1), TERM(sELEC, 1, 1), TERM(sHI, 0, 1)),
-  FORWARD(17, 3, TERM(sHM, 1, -1), TERM(sHI, 1, 1), TERM(sELEC, 0, 1)),
-  FORWARD(18, 3, TERM(sHM, 1, -1), TERM(sHII, 1, -1), TERM(sHI, 0, 2)),
-#ifdef H2_PLUS
-  FORWARD(19, 4, TERM(sHM, 1, -1), TERM(sHII, 1, -1), TERM(sH2II, 0, 1), TERM(sELEC, 0, 1)),
-  FORWARD(20, 3, TERM(sH2II, 1, -1), TERM(sELEC, 1, -1), TERM(sHI, 0, 2)),
-  FORWARD(21, 4, TERM(sH2II, 1, -1), TERM(sHM, 1, -1), TERM(sHI, 0, 1), TERM(sH2I, 0, 1)),
+#if defined(HD) && defined(DMINUS)
+  if(strcmp(name, "DMINUS") == 0) return 1;
 #endif
 #ifdef IONIZATION_PHOTON
-  FORWARD(22, 3, TERM(sHI, 1, -1), TERM(sHII, 0, 1), TERM(sELEC, 0, 1)),
+  if(strcmp(name, "IONIZATION_PHOTON") == 0) return 1;
 #endif
 #ifdef LYMANWERNER
-  FORWARD(25, 3, TERM(sHM, 1, -1), TERM(sHI, 0, 1), TERM(sELEC, 0, 1)),
-  FORWARD(29, 2, TERM(sH2I, 1, -1), TERM(sHI, 0, 2)),
-#endif
-  FORWARD(30, 3, TERM(sHI, 2, -1), TERM(sELEC, 0, 1), TERM(sHII, 0, 1)),
-#ifdef HD
-  FORWARD(32, 4, TERM(sDI, 1, -1), TERM(sHII, 1, -1), TERM(sDII, 0, 1), TERM(sHI, 0, 1)),
-  FORWARD(33, 4, TERM(sDII, 1, -1), TERM(sHI, 1, -1), TERM(sDI, 0, 1), TERM(sHII, 0, 1)),
-  FORWARD(35, 4, TERM(sDI, 1, -1), TERM(sH2I, 1, -1), TERM(sHI, 0, 1), TERM(sHDI, 0, 1)),
-  FORWARD(37, 4, TERM(sDII, 1, -1), TERM(sH2I, 1, -1), TERM(sHII, 0, 1), TERM(sHDI, 0, 1)),
-  FORWARD(38, 4, TERM(sHDI, 1, -1), TERM(sHI, 1, -1), TERM(sH2I, 0, 1), TERM(sDI, 0, 1)),
-  FORWARD(39, 4, TERM(sHDI, 1, -1), TERM(sHII, 1, -1), TERM(sH2I, 0, 1), TERM(sDII, 0, 1)),
-#ifdef HD_PLUS
-  FORWARD(36, 4, TERM(sHDII, 1, -1), TERM(sHI, 1, -1), TERM(sHII, 0, 1), TERM(sHDI, 0, 1)),
-  FORWARD(40, 3, TERM(sDI, 1, -1), TERM(sHII, 1, -1), TERM(sHDII, 0, 1)),
-  FORWARD(41, 3, TERM(sDII, 1, -1), TERM(sHI, 1, -1), TERM(sHDII, 0, 1)),
-  FORWARD(42, 4, TERM(sHDII, 1, -1), TERM(sELEC, 1, -1), TERM(sHI, 0, 1), TERM(sDI, 0, 1)),
-#endif
-#ifdef DMINUS
-  FORWARD(43, 3, TERM(sDI, 1, -1), TERM(sELEC, 1, -1), TERM(sDM, 0, 1)),
-  FORWARD(44, 3, TERM(sDII, 1, -1), TERM(sDM, 1, -1), TERM(sDI, 0, 2)),
-  FORWARD(45, 4, TERM(sHII, 1, -1), TERM(sDM, 1, -1), TERM(sHI, 0, 1), TERM(sDI, 0, 1)),
-  FORWARD(46, 4, TERM(sHM, 1, -1), TERM(sDI, 1, -1), TERM(sHI, 0, 1), TERM(sDM, 0, 1)),
-  FORWARD(47, 4, TERM(sDM, 1, -1), TERM(sHI, 1, -1), TERM(sHM, 0, 1), TERM(sDI, 0, 1)),
-  FORWARD(48, 4, TERM(sDM, 1, -1), TERM(sHI, 1, -1), TERM(sHDI, 0, 1), TERM(sELEC, 0, 1)),
-#endif
-#ifdef LYMANWERNER
-  FORWARD(53, 3, TERM(sHDI, 1, -1), TERM(sHI, 0, 1), TERM(sDI, 0, 1)),
-#endif
+  if(strcmp(name, "LYMANWERNER") == 0) return 1;
 #endif
 #ifdef H2_FORMATION_ON_DUST
-  FORWARD(51, 2, TERM(sHI, 1, -2), TERM(sH2I, 0, 1)),
+  if(strcmp(name, "H2_FORMATION_ON_DUST") == 0) return 1;
 #endif
 #ifdef THREEBODY
-  FORWARD(55, 2, TERM(sHI, 3, -2), TERM(sH2I, 0, 1)),
-  FORWARD(57, 2, TERM(sHI, 2, -2), TERM(sH2I, 1, 1)),
-  FORWARD(58, 2, TERM(sH2I, 2, -1), TERM(sHI, 0, 2)),
+  if(strcmp(name, "THREEBODY") == 0) return 1;
 #endif
 #ifdef INVERSE_REACTIONS
-  INVERSE(1, 3, TERM(sHII, 1, -1), TERM(sELEC, 2, -1), TERM(sHI, 0, 1)),
-  INVERSE(2, 3, TERM(sHI, 1, -1), TERM(sHII, 0, 1), TERM(sELEC, 0, 1)),
-  INVERSE(7, 3, TERM(sHM, 1, -1), TERM(sHI, 0, 1), TERM(sELEC, 0, 1)),
-  INVERSE(8, 4, TERM(sH2I, 1, -1), TERM(sELEC, 1, -1), TERM(sHI, 0, 1), TERM(sHM, 0, 1)),
-  INVERSE(13, 3, TERM(sHI, 2, -2), TERM(sELEC, 1, 0), TERM(sH2I, 0, 1)),
-  INVERSE(16, 3, TERM(sHI, 1, -1), TERM(sELEC, 2, -1), TERM(sHM, 0, 1)),
-  INVERSE(17, 3, TERM(sHI, 2, -1), TERM(sELEC, 1, -1), TERM(sHM, 0, 1)),
-  INVERSE(18, 3, TERM(sHI, 2, -2), TERM(sHII, 0, 1), TERM(sHM, 0, 1)),
-  INVERSE(30, 3, TERM(sHI, 1, 1), TERM(sHII, 1, -1), TERM(sELEC, 1, -1)),
+  if(strcmp(name, "INVERSE_REACTIONS") == 0) return 1;
 #endif
-};
+
+  static const char *known_options[] = {
+    "HELIUM", "H2_PLUS", "HD", "HD_PLUS", "DMINUS", "IONIZATION_PHOTON",
+    "LYMANWERNER", "H2_FORMATION_ON_DUST", "THREEBODY", "INVERSE_REACTIONS"
+  };
+  for(size_t i = 0; i < sizeof(known_options) / sizeof(known_options[0]); i++)
+    if(strcmp(name, known_options[i]) == 0)
+      return 0;
+  return -1;
+}
+
+static int requirements_enabled(char *requirements)
+{
+  int all_enabled = 1;
+  char *saveptr = NULL;
+  for(char *name = strtok_r(requirements, ",", &saveptr); name != NULL; name = strtok_r(NULL, ",", &saveptr)) {
+    int enabled = compiled_option_enabled(trim(name));
+    if(enabled < 0)
+      return -1;
+    if(!enabled)
+      all_enabled = 0;
+  }
+  return all_enabled;
+}
+
+static ChemReactionTerm *find_or_add_term(ChemReaction *reaction, enum SPECIES species)
+{
+  for(int i = 0; i < reaction->num_terms; i++)
+    if(reaction->terms[i].species == species)
+      return &reaction->terms[i];
+
+  if(reaction->num_terms == CHEM_MAX_REACTION_TERMS)
+    return NULL;
+
+  ChemReactionTerm *term = &reaction->terms[reaction->num_terms++];
+  term->species = species;
+  term->reactant_order = 0;
+  term->net_change = 0;
+  return term;
+}
+
+static int parse_reaction_side(char *side, int reactant_side, ChemReaction *reaction)
+{
+  char *saveptr = NULL;
+  for(char *token = strtok_r(side, "+", &saveptr); token != NULL; token = strtok_r(NULL, "+", &saveptr)) {
+    token = trim(token);
+    long coefficient = 1;
+    char *species_name = token;
+
+    if(isdigit((unsigned char)*token)) {
+      char *end;
+      errno = 0;
+      coefficient = strtol(token, &end, 10);
+      while(isspace((unsigned char)*end)) end++;
+      if(errno != 0 || coefficient <= 0 || coefficient > SCHAR_MAX || *end != '*')
+        return 0;
+      species_name = trim(end + 1);
+    }
+
+    long reactant_order = coefficient;
+    char *order_separator = strchr(species_name, '@');
+    if(order_separator != NULL) {
+      if(!reactant_side)
+        return 0;
+      *order_separator = '\0';
+      char *order_end;
+      errno = 0;
+      reactant_order = strtol(trim(order_separator + 1), &order_end, 10);
+      if(errno != 0 || *trim(order_end) != '\0' || reactant_order <= 0 || reactant_order > UCHAR_MAX)
+        return 0;
+      species_name = trim(species_name);
+    }
+
+    enum SPECIES species;
+    if(!chemistry_species_from_name(species_name, &species))
+      return 0;
+
+    ChemReactionTerm *term = find_or_add_term(reaction, species);
+    if(term == NULL)
+      return 0;
+
+    if(reactant_side) {
+      if(term->reactant_order + reactant_order > UCHAR_MAX || term->net_change - coefficient < SCHAR_MIN)
+        return 0;
+      term->reactant_order += reactant_order;
+      term->net_change -= coefficient;
+    } else {
+      if(term->net_change + coefficient > SCHAR_MAX)
+        return 0;
+      term->net_change += coefficient;
+    }
+  }
+  return 1;
+}
+
+static int parse_rate_source(const char *text, ChemRateSource *source)
+{
+  if(strcmp(text, "forward") == 0) *source = CHEM_RATE_FORWARD;
+  else if(strcmp(text, "inverse") == 0) *source = CHEM_RATE_INVERSE;
+  else if(strcmp(text, "photo") == 0) *source = CHEM_RATE_PHOTO;
+  else return 0;
+  return 1;
+}
+
+static int parse_modes(char *text, unsigned char *modes)
+{
+  *modes = 0;
+  char *saveptr = NULL;
+  for(char *mode = strtok_r(text, ",", &saveptr); mode != NULL; mode = strtok_r(NULL, ",", &saveptr)) {
+    mode = trim(mode);
+    if(strcmp(mode, "implicit") == 0) *modes |= CHEM_REACTION_IMPLICIT;
+    else if(strcmp(mode, "explicit") == 0) *modes |= CHEM_REACTION_EXPLICIT;
+    else return 0;
+  }
+  return *modes != 0;
+}
+
+static int append_reaction(const ChemReaction *reaction)
+{
+  ChemReaction *new_reactions = realloc(reactions, (reaction_count + 1) * sizeof(*reactions));
+  if(new_reactions == NULL)
+    return 0;
+  reactions = new_reactions;
+  reactions[reaction_count++] = *reaction;
+  return 1;
+}
+
+static int reaction_conserves_species_properties(const ChemReaction *reaction)
+{
+  int element_change[CHEM_ELEMENT_COUNT] = {0};
+  int charge_change = 0;
+
+  for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+    const ChemReactionTerm *term = &reaction->terms[term_index];
+    const ChemSpeciesDefinition *definition = chemistry_species_definition(term->species);
+    if(definition == NULL)
+      return 0;
+    charge_change += term->net_change * definition->charge;
+    for(int element = 0; element < CHEM_ELEMENT_COUNT; element++)
+      element_change[element] += term->net_change * definition->nuclei[element];
+  }
+
+  if(charge_change != 0)
+    return 0;
+  for(int element = 0; element < CHEM_ELEMENT_COUNT; element++)
+    if(element_change[element] != 0)
+      return 0;
+  return 1;
+}
+
+int chemistry_network_init(void)
+{
+  if(reactions != NULL)
+    return 1;
+
+  FILE *table = open_chemistry_table("reaction_network.tsv");
+  if(table == NULL)
+    return 0;
+
+  char line[2048];
+  int line_number = 0;
+  while(fgets(line, sizeof(line), table) != NULL) {
+    line_number++;
+    char *record = trim(line);
+    if(*record == '\0' || *record == '#')
+      continue;
+
+    char *fields[6];
+    for(int field = 0; field < 6; field++) {
+      fields[field] = record;
+      char *tab = strchr(record, '\t');
+      if(field < 5) {
+        if(tab == NULL) goto malformed;
+        *tab = '\0';
+        record = tab + 1;
+      } else if(tab != NULL) {
+        goto malformed;
+      }
+      fields[field] = trim(fields[field]);
+    }
+
+    if(strcmp(fields[0], "rate_source") == 0)
+      continue;
+
+    int enabled = requirements_enabled(fields[3]);
+    if(enabled < 0) {
+      fprintf(stderr, "Unknown requirement in reaction_network.tsv:%d.\n", line_number);
+      goto failure;
+    }
+    if(!enabled)
+      continue;
+
+    ChemReaction reaction = {0};
+    if(!parse_rate_source(fields[0], &reaction.rate_source))
+      goto malformed;
+
+    char *rate_end;
+    errno = 0;
+    long rate_index = strtol(fields[1], &rate_end, 10);
+    if(errno != 0 || *trim(rate_end) != '\0' || rate_index < 0 || rate_index >= CHEM_RATE_COUNT || rate_index > USHRT_MAX)
+      goto malformed;
+    reaction.rate_index = rate_index;
+
+    if(!parse_modes(fields[2], &reaction.modes) ||
+       !parse_reaction_side(fields[4], 1, &reaction) ||
+       !parse_reaction_side(fields[5], 0, &reaction) ||
+       reaction.num_terms == 0)
+      goto malformed;
+    if(!reaction_conserves_species_properties(&reaction)) {
+      fprintf(stderr, "Reaction does not conserve elements or charge in reaction_network.tsv:%d.\n", line_number);
+      goto failure;
+    }
+    if(!append_reaction(&reaction))
+      goto failure;
+    continue;
+
+malformed:
+    fprintf(stderr, "Malformed reaction in reaction_network.tsv:%d.\n", line_number);
+failure:
+    fclose(table);
+    free(reactions);
+    reactions = NULL;
+    reaction_count = 0;
+    return 0;
+  }
+
+  fclose(table);
+  if(reaction_count == 0 || !build_species_reaction_index()) {
+    free_species_reaction_index();
+    free(reactions);
+    reactions = NULL;
+    reaction_count = 0;
+    return 0;
+  }
+  return 1;
+}
 
 static double integer_power(double value, unsigned char exponent)
 {
@@ -104,13 +375,65 @@ static double integer_power(double value, unsigned char exponent)
 
 static double reaction_coefficient(const ChemReaction *reaction, const double *forward_rates, const double *inverse_rates)
 {
-  return reaction->rate_source == CHEM_RATE_FORWARD ?
-      forward_rates[reaction->rate_index] : inverse_rates[reaction->rate_index];
+  return reaction->rate_source == CHEM_RATE_INVERSE ?
+      inverse_rates[reaction->rate_index] : forward_rates[reaction->rate_index];
 }
 
 size_t chemistry_network_reaction_count(void)
 {
-  return sizeof(reactions) / sizeof(reactions[0]);
+  return reaction_count;
+}
+
+int chemistry_network_intermediate_equilibrium_abundance(enum SPECIES species, unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *equilibrium_abundance, double *relaxation_time)
+{
+  double production = 0.0;
+  double destruction = 0.0;
+
+  const ChemSpeciesReactionIndex *index = &species_reaction_index[species];
+  for(size_t affected_index = 0; affected_index < index->num_affected_reactions; affected_index++) {
+    size_t reaction_index = index->affected_reactions[affected_index];
+    const ChemReaction *reaction = &reactions[reaction_index];
+    const ChemReactionTerm *equilibrium_term = NULL;
+
+    if(!(reaction->modes & mode))
+      continue;
+
+    for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+      if(reaction->terms[term_index].species == species) {
+        equilibrium_term = &reaction->terms[term_index];
+        break;
+      }
+    }
+
+    if(equilibrium_term == NULL || equilibrium_term->net_change == 0)
+      continue;
+
+    if((equilibrium_term->net_change > 0 && equilibrium_term->reactant_order != 0) ||
+       (equilibrium_term->net_change < 0 && equilibrium_term->reactant_order != 1))
+      return 0;
+
+    double rate = reaction_coefficient(reaction, forward_rates, inverse_rates);
+    for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+      const ChemReactionTerm *term = &reaction->terms[term_index];
+      if(term->species == species)
+        continue;
+      rate *= integer_power(abund[term->species] * nH, term->reactant_order);
+    }
+
+    if(equilibrium_term->net_change > 0) {
+      production += equilibrium_term->net_change * rate / nH;
+    } else {
+      destruction += -equilibrium_term->net_change * rate;
+    }
+  }
+
+  if(!(destruction > 0.0) || !isfinite(production) || !isfinite(destruction))
+    return 0;
+
+  *equilibrium_abundance = production / destruction;
+  if(relaxation_time != NULL)
+    *relaxation_time = 1.0 / destruction;
+  return isfinite(*equilibrium_abundance) && *equilibrium_abundance >= 0.0;
 }
 
 void chemistry_network_rhs(double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *rhs)
@@ -148,7 +471,9 @@ void chemistry_network_jacobian_column(int differentiated_species, double nH, co
     column[species] = 0.0;
   }
 
-  for(size_t reaction_index = 0; reaction_index < chemistry_network_reaction_count(); reaction_index++) {
+  const ChemSpeciesReactionIndex *index = &species_reaction_index[differentiated_species];
+  for(size_t reactant_index = 0; reactant_index < index->num_reactant_reactions; reactant_index++) {
+    size_t reaction_index = index->reactant_reactions[reactant_index];
     const ChemReaction *reaction = &reactions[reaction_index];
     if(!(reaction->modes & CHEM_REACTION_IMPLICIT))
       continue;
@@ -206,6 +531,36 @@ void chemistry_network_production_destruction(double nH, const double *abund, co
       } else if(term->net_change < 0 && abund[term->species] > 0.0) {
         destruction[term->species] += -term->net_change * rate / abund[term->species];
       }
+    }
+  }
+}
+
+void chemistry_network_species_production_destruction(enum SPECIES species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction)
+{
+  *production = 0.0;
+  *destruction = 0.0;
+
+  const ChemSpeciesReactionIndex *index = &species_reaction_index[species];
+  for(size_t affected_index = 0; affected_index < index->num_affected_reactions; affected_index++) {
+    size_t reaction_index = index->affected_reactions[affected_index];
+    const ChemReaction *reaction = &reactions[reaction_index];
+    if(!(reaction->modes & CHEM_REACTION_EXPLICIT))
+      continue;
+
+    const ChemReactionTerm *affected_term = NULL;
+    double rate = reaction_coefficient(reaction, forward_rates, inverse_rates);
+    for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+      const ChemReactionTerm *term = &reaction->terms[term_index];
+      rate *= integer_power(abund[term->species] * nH, term->reactant_order);
+      if(term->species == species)
+        affected_term = term;
+    }
+    rate /= nH;
+
+    if(affected_term->net_change > 0) {
+      *production += affected_term->net_change * rate;
+    } else if(affected_term->net_change < 0 && abund[species] > 0.0) {
+      *destruction += -affected_term->net_change * rate / abund[species];
     }
   }
 }

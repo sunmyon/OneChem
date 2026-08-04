@@ -28,7 +28,7 @@
 double dln_T;
 double chem_e[15];
 int FlagPrint = 0;
-int N_SP, N_RE;
+int N_RE;
 int count_print;
 
 const double XH = 0.76;
@@ -84,6 +84,11 @@ int InitChem(void)
 {
   enum SPECIES species;
 
+  if(!chemistry_network_init()) {
+    fprintf(stderr, "Failed to initialize the chemical reaction network.\n");
+    endrun();
+  }
+
   /* ----- cross-sections, etc ... */
   int ifunc = chem_tabulate();
 
@@ -127,7 +132,6 @@ int InitChem(void)
 #endif
 #endif
 
-  N_SP = sEND - sELEC;
   N_RE = (int)chemistry_network_reaction_count();
 
   return(ifunc);

@@ -1335,6 +1335,23 @@ int n_T, n_rho;
 char fname_Rossland[]="opacities_Rossland.dat";
 char fname_Planck[]="opacities_Planck.dat";
 
+static int opacity_upper_index(const double *grid, int size, double value)
+{
+  if(value <= grid[0]) return 0;
+  if(value >= grid[size-1]) return size-1;
+
+  int left = 0;
+  int right = size - 1;
+  while(right - left > 1) {
+    int middle = left + (right - left) / 2;
+    if(value > grid[middle])
+      left = middle;
+    else
+      right = middle;
+  }
+  return right;
+}
+
 void lntrim(char *str) {  
   char *p;  
   p = strchr(str, '\n');  
@@ -1491,27 +1508,13 @@ void read_opacity_tables(void){
 
 void get_opacities(double T_gas, double rho_cgs, double *kappa_Rossland, double *kappa_Planck){
   int i_T, i_rho;
-  double T_new, rho_new;
 
   if(flag_read_opacities == 0){
     read_opacity_tables();
   }
 
-  i_T=0, T_new = Kappa_Tgas[0];
-  while(T_gas > T_new){
-    i_T++;
-    T_new = Kappa_Tgas[i_T];
-
-    if(i_T == n_T-1) break;
-  }
-
-  i_rho=0, rho_new = Kappa_rho[0];
-  while(rho_cgs > rho_new){
-    i_rho++;
-    rho_new = Kappa_rho[i_rho];
-
-    if(i_rho == n_rho-1) break;
-  }
+  i_T = opacity_upper_index(Kappa_Tgas, n_T, T_gas);
+  i_rho = opacity_upper_index(Kappa_rho, n_rho, rho_cgs);
 
   int i_T_left, i_rho_left;
 
@@ -1558,27 +1561,13 @@ void get_opacities(double T_gas, double rho_cgs, double *kappa_Rossland, double 
 
 void get_opacities_log(double T_gas, double rho_cgs, double *kappa_Rossland, double *kappa_Planck){
   int i_T, i_rho;
-  double T_new, rho_new;
 
   if(flag_read_opacities == 0){
     read_opacity_tables();
   }
 
-  i_T=0, T_new = Kappa_Tgas[0];
-  while(T_gas > T_new){
-    i_T++;
-    T_new = Kappa_Tgas[i_T];
-
-    if(i_T == n_T-1) break;
-  }
-  
-  i_rho=0, rho_new = Kappa_rho[0];
-  while(rho_cgs > rho_new){
-    i_rho++;
-    rho_new = Kappa_rho[i_rho];
-
-    if(i_rho == n_rho-1) break;
-  }
+  i_T = opacity_upper_index(Kappa_Tgas, n_T, T_gas);
+  i_rho = opacity_upper_index(Kappa_rho, n_rho, rho_cgs);
 
   int i_T_left, i_rho_left;
 

@@ -2,13 +2,14 @@
 #include <stdlib.h>
 #include <math.h>
 
+#ifdef CHEMISTRY_OLD
 #ifdef HD
 #define N_SPECIES 14
 #else
 #define N_SPECIES 9
 #endif
-
 #define TGCHEM_NUM_ABUNDANCES N_SPECIES
+#endif
 
 #ifdef CHEMISTRY_OLD
 #ifndef METAL
@@ -228,7 +229,11 @@ extern double Lambda_frac[3][20][3][20], Lambda_frac_thick[3][20][3][20];
 extern double alpha[3][20][3][20], n_pop_dummy[3][20][3][20], alpha_h2[3][20][3][20];
 
 
+#ifdef CHEMISTRY_OLD
 extern int N_SP, N_RE;
+#else
+extern int N_RE;
+#endif
 
 /* ----- Tables for the old chemistry module ------- */
 #ifdef CHEMISTRY_OLD

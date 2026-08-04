@@ -16,8 +16,20 @@ OPT1  +=  -DCHEMISTRY_OLD
 endif
 ENABLE_LW ?= 0
 UPDATE_L_CORE ?= 0
+EXPLICIT_CHEMISTRY_UPDATE ?= SEQUENTIAL
+INTERMEDIATE_EQUILIBRIUM ?= 0
 EXTRA_OPT ?=
 OPT1 += $(EXTRA_OPT)
+ifeq ($(EXPLICIT_CHEMISTRY_UPDATE),SIMULTANEOUS)
+OPT1 += -DCHEM_EXPLICIT_SIMULTANEOUS
+else ifneq ($(EXPLICIT_CHEMISTRY_UPDATE),SEQUENTIAL)
+$(error EXPLICIT_CHEMISTRY_UPDATE must be SEQUENTIAL or SIMULTANEOUS)
+endif
+ifeq ($(INTERMEDIATE_EQUILIBRIUM),1)
+OPT1 += -DCHEM_INTERMEDIATE_EQUILIBRIUM
+else ifneq ($(INTERMEDIATE_EQUILIBRIUM),0)
+$(error INTERMEDIATE_EQUILIBRIUM must be 0 or 1)
+endif
 ifeq ($(UPDATE_L_CORE),1)
 OPT1 += -DUPDATE_L_CORE_IN_SOLVER
 endif
@@ -143,6 +155,7 @@ else
 OPT1 += -DCHEMISTRY_SC
 CHEMISTRY_DIR  = chemistry_new
 CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/driver/chemistry_driver.o \
+                 $(CHEMISTRY_DIR)/species.o \
                  $(CHEMISTRY_DIR)/initialization/chemistry_init.o \
                  $(CHEMISTRY_DIR)/solver/chemistry_solver.o \
                  $(CHEMISTRY_DIR)/solver/saha.o \
@@ -160,6 +173,8 @@ CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/driver/chemistry_driver.o \
                  $(CHEMISTRY_DIR)/thermodynamics/thermodynamics.o
 CHEMISTRY_SUPPORT_OBJS =
 CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h \
+                 $(CHEMISTRY_DIR)/species.h \
+                 $(CHEMISTRY_DIR)/species_definitions.h \
                  $(CHEMISTRY_DIR)/chemistry_config.h \
                  $(CHEMISTRY_DIR)/chemistry_types.h \
                  $(CHEMISTRY_DIR)/common/chemistry_constants.h \

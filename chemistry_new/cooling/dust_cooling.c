@@ -15,9 +15,89 @@
 #ifdef CHEMISTRY_SC
 #ifdef DUST_COOLING
 static int flag_dust_init=0;
+static double dust_log_T_min;
+static double dust_inv_dlog_T;
 
 void get_dust_opacities(double T_dust, double *kappa_Rossland, double *kappa_Planck);
 void read_dust_opacity_tables(void);
+static void get_dust_opacities_with_derivative(double T_dust, double *kappa_Rossland, double *kappa_Planck, double *kappa_Planck_derivative);
+extern int n_Tdust;
+extern double *Kappa_Tdust;
+extern double *Kappa_Dust_Planck;
+
+typedef struct {
+  double kappa_P;
+  double kappa_R;
+  double tau;
+  double beta_esc;
+  double Lambda_coll;
+  double Lambda_dust;
+  double residual_derivative;
+} DustBalance;
+
+static double dust_collision_factor(double T_dust, double *derivative)
+{
+  static const double boundaries[] = {159., 275., 425., 680.};
+  static const double levels[] = {5.33e-3, 4.04e-3, 3.438e-3, 1.085e-3, 9.67e-4};
+  const double relative_width = 1.e-3;
+
+  double factor = levels[0];
+  *derivative = 0.;
+  for(int i = 0; i < 4; i++){
+    double width = relative_width * boundaries[i];
+    double x = (T_dust - boundaries[i]) / width;
+    double transition;
+    double transition_derivative;
+    if(x <= -20.){
+      transition = 0.;
+      transition_derivative = 0.;
+    } else if(x >= 20.){
+      transition = 1.;
+      transition_derivative = 0.;
+    } else {
+      double tanh_x = tanh(x);
+      transition = 0.5 * (1. + tanh_x);
+      transition_derivative = 0.5 * (1. - tanh_x * tanh_x) / width;
+    }
+    double level_change = levels[i + 1] - levels[i];
+    factor += level_change * transition;
+    *derivative += level_change * transition_derivative;
+  }
+
+  return factor;
+}
+
+static double evaluate_dust_balance(double T_dust, double T_gas, double rho_cgs, double metallicity, double l_Jeans, double stellar_flux, double tau_g, double tcoll_inv, DustBalance *balance)
+{
+  double kappa_P_derivative;
+  get_dust_opacities_with_derivative(T_dust, &balance->kappa_R, &balance->kappa_P, &kappa_P_derivative);
+
+  balance->kappa_P /= DUST_TO_GAS_MASS_RATIO;
+  balance->kappa_R /= DUST_TO_GAS_MASS_RATIO;
+  kappa_P_derivative /= DUST_TO_GAS_MASS_RATIO;
+
+  balance->tau = tau_g + balance->kappa_P * rho_cgs * metallicity * DUST_TO_GAS_MASS_RATIO * l_Jeans;
+  balance->beta_esc = 1. / (1. + balance->tau * balance->tau);
+  double tau_derivative = kappa_P_derivative * rho_cgs * metallicity * DUST_TO_GAS_MASS_RATIO * l_Jeans;
+  double beta_derivative = -2. * balance->tau * tau_derivative * balance->beta_esc * balance->beta_esc;
+
+  double f_over_rho_g_derivative;
+  double f_over_rho_g = dust_collision_factor(T_dust, &f_over_rho_g_derivative);
+
+  balance->Lambda_coll = tcoll_inv * f_over_rho_g * (T_gas - T_dust);
+
+  double T4_minus_TCMB4 = (T_dust - All.T_CMB) * (T_dust + All.T_CMB)
+    * (T_dust * T_dust + All.T_CMB * All.T_CMB);
+  double radiative_flux = 4. * STEFAN * T4_minus_TCMB4 - stellar_flux;
+  balance->Lambda_dust = radiative_flux * balance->kappa_P * balance->beta_esc;
+  balance->residual_derivative = 16. * STEFAN * T_dust * T_dust * T_dust * balance->kappa_P * balance->beta_esc
+    + radiative_flux * kappa_P_derivative * balance->beta_esc
+    + radiative_flux * balance->kappa_P * beta_derivative
+    + tcoll_inv * f_over_rho_g
+    - tcoll_inv * f_over_rho_g_derivative * (T_gas - T_dust);
+
+  return balance->Lambda_dust - balance->Lambda_coll;
+}
 
 double dust_cross_section(double *S){
   double sigma_eff, S_eff;
@@ -71,66 +151,70 @@ double dust_temperature(double rho_cgs, double T_gas, double metallicity, double
   
   double tcoll_inv = rho_cgs / PROTONMASS * 1.1e-5 / DUST_TO_GAS_MASS_RATIO * sqrt(T_gas / 1000.) * (1. - 0.8 * exp(-75./T_gas));  
 
-  double T_dust;
-  double Td_L, Td_S;
-  double kappa_P, kappa_R;
-  double tau, beta_esc;
-  double Lambda_coll, Lambda_dust, resid;
-
-
-  Td_L = 2000.0;
-  Td_S = 0.;
-  T_dust = (Td_S+Td_L)/2.0;
+  double T_radiation = pow(pow(All.T_CMB, 4) + stellar_flux / (4. * STEFAN), 0.25);
+  double Td_S = fmin(2000., fmax(0., fmin(T_gas, T_radiation)));
+  double Td_L = fmin(2000., fmax(T_gas, T_radiation));
+  double T_dust = fmin(Td_L, fmax(Td_S, T_radiation));
+  double previous_step = Td_L - Td_S;
+  DustBalance balance;
 
   //printf("T_gas=%g n=%g\n", T_gas, rho_cgs/PROTONMASS);
 
   int itr;
   for(itr=0;itr<30;itr++){
-    get_dust_opacities(T_dust, &kappa_R, &kappa_P);
-    
-    kappa_P /= DUST_TO_GAS_MASS_RATIO; //kappa for unit dust mass (independent of metallicity)
-    kappa_R /= DUST_TO_GAS_MASS_RATIO; //kappa for unit dust mass (independent of metallicity)
+    double resid = evaluate_dust_balance(T_dust, T_gas, rho_cgs, metallicity, l_Jeans, stellar_flux, tau_g, tcoll_inv, &balance);
+    double residual_scale = fabs(balance.Lambda_dust) + fabs(balance.Lambda_coll);
 
-    tau = tau_g + kappa_P * rho_cgs *  metallicity * DUST_TO_GAS_MASS_RATIO * l_Jeans;
-    beta_esc = 1./(1 + tau*tau);
-
-    double f_over_rho_g = 9.67e-4;
-    if(T_dust < 159.)
-      f_over_rho_g = 5.33e-3;
-    else if(T_dust < 275.)
-      f_over_rho_g = 4.04e-3;
-    else if(T_dust < 425.)
-      f_over_rho_g = 3.438e-3;
-    else if(T_dust < 680.)
-      f_over_rho_g = 1.085e-3;
-    else if(T_dust < 1230.)
-      f_over_rho_g = 9.67e-4;
+    if(fabs(resid) <= 1.e-5 * residual_scale)
+      break;
     
-    Lambda_coll = tcoll_inv * f_over_rho_g * (T_gas - T_dust); //Lambda_coll for unit dust mass
-    Lambda_dust = (4 * STEFAN * (pow(T_dust,4) - pow(All.T_CMB,4)) - stellar_flux) * kappa_P * beta_esc;
-    //Lambda_cust for unit dust mass    
-
-    resid = Lambda_dust - Lambda_coll;
-    
-    if(resid > 0.) 
+    if(resid > 0.){
       Td_L = T_dust;
-    else
+    } else {
       Td_S = T_dust;
+    }
+
+    double temperature_tolerance = fmax(1.e-4, 1.e-5 * fmax(T_dust, 1.));
+    if(Td_L - Td_S <= temperature_tolerance){
+      T_dust = 0.5 * (Td_S + Td_L);
+      break;
+    }
     
     if(itr%2000==1999 || FlagPrint)
       printf("[%02d] T_dust=%g dT=%g T_CMB=%g Trad=%G L_coll=%g L_dust=%g kapa=%g beta_esc=%g\n"
-	     ,itr , T_dust, T_gas - T_dust, All.T_CMB, pow(stellar_flux/4./STEFAN, 0.25), Lambda_coll, Lambda_dust, kappa_P, beta_esc);
+	     ,itr , T_dust, T_gas - T_dust, All.T_CMB, pow(stellar_flux/4./STEFAN, 0.25), balance.Lambda_coll, balance.Lambda_dust, balance.kappa_P, balance.beta_esc);
 
-    T_dust = (Td_S+Td_L)/2.0;
+    double T_next = 0.5 * (Td_S + Td_L);
+    int use_newton = 0;
+
+    if(itr >= 0){
+      double derivative = balance.residual_derivative;
+      if(isfinite(derivative) && derivative != 0.){
+        double T_newton = T_dust - resid / derivative;
+        double newton_step = fabs(T_newton - T_dust);
+        if(isfinite(T_newton) && T_newton > Td_S && T_newton < Td_L && newton_step < 0.5 * previous_step){
+          T_next = T_newton;
+          previous_step = newton_step;
+          use_newton = 1;
+        }
+      }
+    }
+
+    if(!use_newton)
+      previous_step = 0.5 * (Td_L - Td_S);
+
+    T_dust = T_next;
   }
 
-  opac -> kappa_dust_Rossland = kappa_R * DUST_TO_GAS_MASS_RATIO * metallicity;
-  opac -> kappa_dust_Planck = kappa_P * DUST_TO_GAS_MASS_RATIO * metallicity;
-  
-  opac -> tau = tau;
-  opac -> f_reduce = 1./(1. + tau*tau);
+  evaluate_dust_balance(T_dust, T_gas, rho_cgs, metallicity, l_Jeans, stellar_flux, tau_g, tcoll_inv, &balance);
 
-  *edot_dust = -Lambda_dust * rho_cgs * metallicity * DUST_TO_GAS_MASS_RATIO; 
+  opac -> kappa_dust_Rossland = balance.kappa_R * DUST_TO_GAS_MASS_RATIO * metallicity;
+  opac -> kappa_dust_Planck = balance.kappa_P * DUST_TO_GAS_MASS_RATIO * metallicity;
+  
+  opac -> tau = balance.tau;
+  opac -> f_reduce = balance.beta_esc;
+
+  *edot_dust = -balance.Lambda_coll * rho_cgs * metallicity * DUST_TO_GAS_MASS_RATIO;
   
   return T_dust;
 }
@@ -302,35 +386,40 @@ void read_dust_opacity_tables(void){
     MPI_Bcast(Kappa_Dust_Planck  , n_Tdust, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   }
 #endif
-  
+
   flag_dust_init = 1;
+  dust_log_T_min = log(Kappa_Tdust[0]);
+  dust_inv_dlog_T = (n_Tdust - 1) / (log(Kappa_Tdust[n_Tdust - 1]) - dust_log_T_min);
 }
 
-void get_dust_opacities(double T_dust, double *kappa_Rossland, double *kappa_Planck){
-  int i_T;
-  double T_new;
+static void get_dust_opacities_with_derivative(double T_dust, double *kappa_Rossland, double *kappa_Planck, double *kappa_Planck_derivative){
+  int i_T, i_T_left;
 
-  i_T=0, T_new = Kappa_Tdust[0];
-  while(T_dust > T_new){
-    i_T++;
-    T_new = Kappa_Tdust[i_T];
+  if(T_dust <= Kappa_Tdust[0]) {
+    i_T = i_T_left = 0;
+  } else if(T_dust >= Kappa_Tdust[n_Tdust-1]) {
+    i_T = i_T_left = n_Tdust-1;
+  } else {
+    i_T_left = (int)((log(T_dust) - dust_log_T_min) * dust_inv_dlog_T);
+    if(i_T_left < 0) i_T_left = 0;
+    if(i_T_left > n_Tdust - 2) i_T_left = n_Tdust - 2;
 
-    if(i_T == n_Tdust-1) break;
+    while(i_T_left > 0 && T_dust <= Kappa_Tdust[i_T_left])
+      i_T_left--;
+    while(i_T_left < n_Tdust - 2 && T_dust > Kappa_Tdust[i_T_left + 1])
+      i_T_left++;
+
+    i_T = i_T_left + 1;
+    if(i_T == n_Tdust-1){
+      i_T_left = i_T;
+    }
   }
 
-  int i_T_left;
-
-  i_T_left   = i_T - 1;
-  if(i_T_left < 0) i_T_left = 0;
-  if(i_T == n_Tdust - 1) i_T_left = n_Tdust-1;
-
-  double c_T;
+  double c_T = 0.;
   double kappa_r, kappa_p;
 
-  c_T   = (Kappa_Tdust[i_T]-T_dust)    / (Kappa_Tdust[i_T] -Kappa_Tdust[i_T_left]);
-
-  if(i_T == i_T_left)
-    c_T = 0.;
+  if(i_T != i_T_left)
+    c_T = (Kappa_Tdust[i_T]-T_dust) / (Kappa_Tdust[i_T] - Kappa_Tdust[i_T_left]);
 
   kappa_r = 
     c_T       * Kappa_Dust_Rossland[i_T_left] + 
@@ -342,11 +431,20 @@ void get_dust_opacities(double T_dust, double *kappa_Rossland, double *kappa_Pla
 
   *kappa_Rossland = kappa_r;
   *kappa_Planck   = kappa_p;
+  *kappa_Planck_derivative = 0.;
+  if(i_T != i_T_left)
+    *kappa_Planck_derivative = (Kappa_Dust_Planck[i_T] - Kappa_Dust_Planck[i_T_left])
+      / (Kappa_Tdust[i_T] - Kappa_Tdust[i_T_left]);
 
   /*printf("[T=%g] kappa_r=%g k=%g %g\n"
 	 , T_dust, kappa_r
 	 , Kappa_Dust_Rossland[i_T_left], Kappa_Dust_Rossland[i_T]
 	 );*/
+}
+
+void get_dust_opacities(double T_dust, double *kappa_Rossland, double *kappa_Planck){
+  double derivative;
+  get_dust_opacities_with_derivative(T_dust, kappa_Rossland, kappa_Planck, &derivative);
 }
 
 #endif

@@ -1,0 +1,58 @@
+# Chemical reaction network. Use 2*HI for a coefficient of two and 2*HI@1 when its rate-law order is one.
+# Species are defined by enum SPECIES in chemistry.h.
+rate_source	rate_index	modes	requires	reactants	products
+forward	1	implicit,explicit	always	HI + ELEC	HII + 2*ELEC
+forward	2	implicit,explicit	always	HII + ELEC	HI
+forward	3	implicit,explicit	HELIUM	HeI + ELEC	HeII + 2*ELEC
+forward	4	implicit,explicit	HELIUM	HeII + ELEC	HeI
+forward	5	implicit,explicit	HELIUM	HeII + ELEC	HeIII + 2*ELEC
+forward	6	implicit,explicit	HELIUM	HeIII + ELEC	HeII
+forward	7	implicit,explicit	always	HI + ELEC	HM
+forward	8	implicit,explicit	always	HM + HI	H2I + ELEC
+forward	9	implicit,explicit	H2_PLUS	HI + HII	H2II
+forward	10	implicit,explicit	H2_PLUS	HI + H2II	H2I + HII
+forward	11	implicit,explicit	always	H2I + HI	3*HI
+forward	12	implicit,explicit	H2_PLUS	H2I + HII	H2II + HI
+forward	13	implicit,explicit	always	H2I + ELEC	2*HI + ELEC
+forward	14	implicit,explicit	HELIUM	HeII + HI	HeI + HII
+forward	15	implicit,explicit	HELIUM	HeI + HII	HeII + HI
+forward	16	implicit,explicit	always	HM + ELEC	HI + 2*ELEC
+forward	17	implicit,explicit	always	HM + HI	2*HI + ELEC
+forward	18	implicit,explicit	always	HM + HII	2*HI
+forward	19	implicit,explicit	H2_PLUS	HM + HII	H2II + ELEC
+forward	20	implicit,explicit	H2_PLUS	H2II + ELEC	2*HI
+forward	21	implicit,explicit	H2_PLUS	H2II + HM	HI + H2I
+photo	22	implicit,explicit	IONIZATION_PHOTON	HI	HII + ELEC
+photo	25	implicit,explicit	LYMANWERNER	HM	HI + ELEC
+photo	29	implicit,explicit	LYMANWERNER	H2I	2*HI
+forward	30	implicit,explicit	always	2*HI	HI + HII + ELEC
+forward	32	implicit,explicit	HD	DI + HII	DII + HI
+forward	33	implicit,explicit	HD	DII + HI	DI + HII
+forward	35	implicit,explicit	HD	DI + H2I	HI + HDI
+forward	37	implicit,explicit	HD	DII + H2I	HII + HDI
+forward	38	implicit,explicit	HD	HDI + HI	H2I + DI
+forward	39	implicit,explicit	HD	HDI + HII	H2I + DII
+forward	36	implicit,explicit	HD_PLUS	HDII + HI	HII + HDI
+forward	40	implicit,explicit	HD_PLUS	DI + HII	HDII
+forward	41	implicit,explicit	HD_PLUS	DII + HI	HDII
+forward	42	implicit,explicit	HD_PLUS	HDII + ELEC	HI + DI
+forward	43	implicit,explicit	DMINUS	DI + ELEC	DM
+forward	44	implicit,explicit	DMINUS	DII + DM	2*DI
+forward	45	implicit,explicit	DMINUS	HII + DM	HI + DI
+forward	46	implicit,explicit	DMINUS	HM + DI	HI + DM
+forward	47	implicit,explicit	DMINUS	DM + HI	HM + DI
+forward	48	implicit,explicit	DMINUS	DM + HI	HDI + ELEC
+photo	53	implicit,explicit	HD,LYMANWERNER	HDI	HI + DI
+forward	51	implicit,explicit	H2_FORMATION_ON_DUST	2*HI@1	H2I
+forward	55	implicit,explicit	THREEBODY	3*HI	H2I + HI
+forward	57	implicit,explicit	THREEBODY	2*HI + H2I	2*H2I
+forward	58	implicit,explicit	THREEBODY	2*H2I	2*HI + H2I
+inverse	1	implicit,explicit	INVERSE_REACTIONS	HII + 2*ELEC	HI + ELEC
+inverse	2	implicit,explicit	INVERSE_REACTIONS	HI	HII + ELEC
+inverse	7	implicit,explicit	INVERSE_REACTIONS	HM	HI + ELEC
+inverse	8	implicit,explicit	INVERSE_REACTIONS	H2I + ELEC	HI + HM
+inverse	13	implicit,explicit	INVERSE_REACTIONS	2*HI + ELEC	H2I + ELEC
+inverse	16	implicit,explicit	INVERSE_REACTIONS	HI + 2*ELEC	HM + ELEC
+inverse	17	implicit,explicit	INVERSE_REACTIONS	2*HI + ELEC	HI + HM
+inverse	18	implicit,explicit	INVERSE_REACTIONS	2*HI	HII + HM
+inverse	30	implicit,explicit	INVERSE_REACTIONS	HI + HII + ELEC	2*HI
