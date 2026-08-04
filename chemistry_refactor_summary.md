@@ -125,6 +125,32 @@ HI、HeI、DI、electron を従属変数として Newton 系から外し、独�
 
 positivity と上限を満たすため、Newton step 全体に減衰係数を適用する。ただし常に強く減衰するのではなく、trial state が制約を満たす最大限の step を使う。
 
+### 保存則へ全speciesを含めた場合の速度低下
+
+保存則の一般化を試した段階では、元素を含む全speciesと中間生成物を保存式へ入れた。しかし、この方法では計算速度が大幅に低下した。
+
+原因は保存式の加算回数ではない。保存則へ中間生成物を含めると、平衡中間体と保存則の従属speciesが代数的に結合する。その結果、独立変数を一つ更新するたびに、次の連鎖をJacobianへ反映する必要が生じる。
+
+```text
+independent species
+  -> conservation-dependent species
+  -> intermediate-equilibrium abundance
+  -> reaction production/destruction
+```
+
+これにより、本来は関係するreactionだけを読めばよかったJacobian columnの結合範囲が広がり、縮約行列が密になる。また、Newtonのtrial step、line search、numerical Jacobianへのfallbackでも、保存則と中間体平衡を繰り返し再構成する必要がある。したがって、保存式自体が数個の加算であっても、solver全体の評価回数と一回当たりの処理量が増える。
+
+一方、現在のnetworkでは、次の項は主要な保存量に対して十分小さい。
+
+- H保存に対するHDは約 `1e-5` 程度
+- H保存に対するHMなどの中間生成物はさらに小さい
+- charge neutralityに対するD+はH+より十分小さい
+- charge neutralityに対する負イオンなどの中間生成物も小さい
+
+これらを保存則へ含めても物理精度の改善はほとんど得られず、計算コストだけが増える。そのため現在は、H保存からHDと中間生成物を外し、charge neutralityからD+と中間生成物を外している。D保存ではD、D+、HDを保持する。
+
+この経験から、C/O chemistry追加時にも「元素を含む全speciesを自動的に保存式へ入れる」方針は採用しない。主要reservoirだけで従属speciesを再構成し、trace speciesと平衡中間体はreaction network側で扱う。C/O abundanceが支配的になり、無視した項が必要な精度を超える場合に限って保存式へ追加する。
+
 ## opacity table の改善
 
 ### continuum opacity
