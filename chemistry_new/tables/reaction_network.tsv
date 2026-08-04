@@ -56,3 +56,40 @@ inverse	16	implicit,explicit	INVERSE_REACTIONS	HI + 2*ELEC	HM + ELEC
 inverse	17	implicit,explicit	INVERSE_REACTIONS	2*HI + ELEC	HI + HM
 inverse	18	implicit,explicit	INVERSE_REACTIONS	2*HI	HII + HM
 inverse	30	implicit,explicit	INVERSE_REACTIONS	HI + HII + ELEC	2*HI
+# Omukai (2005) Table 1 C/O network. Forward-rate slot = 100 + Z number.
+forward	101	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	OII + HI	HII + OI
+forward	102	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HII + OI	OII + HI
+forward	103	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	OII + H2I	OHII + HI
+forward	104	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	OHII + H2I	H2OII + HI
+forward	105	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H2OII + H2I	H3OII + HI
+forward	106	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H2OII + ELEC	OI + H2I
+forward	107	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H2OII + ELEC	OH + HI
+forward	108	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H3OII + ELEC	OH + 2*HI
+forward	109	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H3OII + ELEC	H2O + HI
+forward	110	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	OI + HI	OH
+forward	111	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	OI + H2I	OH + HI
+forward	112	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H2I + OH	H2O + HI
+forward	113	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	2*OH	H2O + OI
+forward	114	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HII + OH	OHII + HI
+forward	115	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HII + H2O	H2OII + HI
+forward	116	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HI + OH	H2I + OI
+forward	117	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HI + H2O	OH + H2I
+forward	118	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	2*OI	O2
+forward	119	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	OI + OH	O2 + HI
+forward	120	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HI + O2	OH + OI
+forward	121	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HII + O2	O2II + HI
+forward	122	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	O2II + ELEC	2*OI
+forward	123	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	OI + CH	CO + HI
+forward	124	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	CI + OH	CO + HI
+forward	125	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	CI + O2	CO + OI
+forward	126	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	CII + O2	OII + CO
+forward	127	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	OH + CO	CO2 + HI
+forward	128	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	CII + ELEC	CI
+forward	129	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	CII + OH	COII + HI
+forward	130	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	COII + HI	HII + CO
+forward	131	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	CI + HI	CH
+forward	132	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	CI + H2I	CH + HI
+forward	133	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HI + CH	CI + H2I
+forward	134	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H2I + CH	CH2 + HI
+forward	135	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HI + CH2	CH + H2I
+forward	140	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H2I + CI	CH2

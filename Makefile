@@ -3,6 +3,7 @@ EXEC   = 1ZONE
 #.KEEP_STATE:
 
 OPT1  += -DOMUKAI05
+OPT1  += -DONEZONE
 #OPT1  += -DSHR_ITER
 #OPT1  += -DHIGH_TEMP
 #OPT1  += -DFULLY_MOLECULAR
@@ -17,13 +18,32 @@ endif
 ENABLE_LW ?= 0
 UPDATE_L_CORE ?= 0
 EXPLICIT_CHEMISTRY_UPDATE ?= SEQUENTIAL
-INTERMEDIATE_EQUILIBRIUM ?= 0
+INTERMEDIATE_EQUILIBRIUM ?= 1
+CARBON_OXYGEN_CHEMISTRY ?= 1
+CARBON_OXYGEN_CONSERVATION ?= 0
+MOLECULAR_LINE_COOLING ?= 1
 EXTRA_OPT ?=
+OPTIMIZATION ?= -O2
 OPT1 += $(EXTRA_OPT)
 ifeq ($(EXPLICIT_CHEMISTRY_UPDATE),SIMULTANEOUS)
 OPT1 += -DCHEM_EXPLICIT_SIMULTANEOUS
 else ifneq ($(EXPLICIT_CHEMISTRY_UPDATE),SEQUENTIAL)
 $(error EXPLICIT_CHEMISTRY_UPDATE must be SEQUENTIAL or SIMULTANEOUS)
+endif
+ifeq ($(CARBON_OXYGEN_CHEMISTRY),1)
+OPT1 += -DCARBON_OXYGEN_CHEMISTRY
+ifeq ($(CARBON_OXYGEN_CONSERVATION),0)
+OPT1 += -DCHEM_DISABLE_CARBON_OXYGEN_CONSERVATION
+else ifneq ($(CARBON_OXYGEN_CONSERVATION),1)
+$(error CARBON_OXYGEN_CONSERVATION must be 0 or 1)
+endif
+ifeq ($(MOLECULAR_LINE_COOLING),1)
+OPT1 += -DMOLECULAR_LINE_COOLING
+else ifneq ($(MOLECULAR_LINE_COOLING),0)
+$(error MOLECULAR_LINE_COOLING must be 0 or 1)
+endif
+else ifneq ($(CARBON_OXYGEN_CHEMISTRY),0)
+$(error CARBON_OXYGEN_CHEMISTRY must be 0 or 1)
 endif
 ifeq ($(INTERMEDIATE_EQUILIBRIUM),1)
 OPT1 += -DCHEM_INTERMEDIATE_EQUILIBRIUM
@@ -134,7 +154,7 @@ else
 LAPACK_LIBS = -llapack -lblas -lgfortran
 endif
 
-CFLAGS =  $(OPT1) -g -O0 $(GSL_INCL) -I. $(CHEMISTRY_INCLUDE_FLAGS) -Wformat
+CFLAGS =  $(OPT1) -g $(OPTIMIZATION) $(GSL_INCL) -I. $(CHEMISTRY_INCLUDE_FLAGS) -Wformat
 
 LIBS   =  $(GSL_INCL) $(GSL_LIBS) -lm $(LAPACK_LIBS) -lgsl -lgslcblas
 
@@ -160,6 +180,7 @@ CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/driver/chemistry_driver.o \
                  $(CHEMISTRY_DIR)/solver/chemistry_solver.o \
                  $(CHEMISTRY_DIR)/solver/saha.o \
                  $(CHEMISTRY_DIR)/common/chemistry_models.o \
+                 $(CHEMISTRY_DIR)/common/chemistry_profile.o \
                  $(CHEMISTRY_DIR)/reaction_network/forward_rates.o \
                  $(CHEMISTRY_DIR)/reaction_network/reaction_rates.o \
                  $(CHEMISTRY_DIR)/reaction_network/reaction_network.o \
@@ -168,6 +189,7 @@ CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/driver/chemistry_driver.o \
                  $(CHEMISTRY_DIR)/cooling/H2cooling.o \
                  $(CHEMISTRY_DIR)/cooling/chemistry_cooling.o \
                  $(CHEMISTRY_DIR)/cooling/cooling_func.o \
+                 $(CHEMISTRY_DIR)/cooling/molecular_cooling.o \
                  $(CHEMISTRY_DIR)/cooling/dust_cooling.o \
                  $(CHEMISTRY_DIR)/thermodynamics/partition.o \
                  $(CHEMISTRY_DIR)/thermodynamics/thermodynamics.o
@@ -180,8 +202,10 @@ CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h \
                  $(CHEMISTRY_DIR)/common/chemistry_constants.h \
                  $(CHEMISTRY_DIR)/common/chemistry_diagnostics.h \
                  $(CHEMISTRY_DIR)/common/chemistry_models.h \
+                 $(CHEMISTRY_DIR)/common/chemistry_profile.h \
                  $(CHEMISTRY_DIR)/cooling/chemistry_cooling.h \
                  $(CHEMISTRY_DIR)/cooling/cooling_func.h \
+                 $(CHEMISTRY_DIR)/cooling/molecular_cooling.h \
                  $(CHEMISTRY_DIR)/cooling/dust_cooling.h \
                  $(CHEMISTRY_DIR)/cooling/H2cooling.h \
                  $(CHEMISTRY_DIR)/thermodynamics/partition.h \

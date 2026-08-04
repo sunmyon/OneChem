@@ -14,6 +14,7 @@
 #include "chemistry_cooling.h"
 #include "chemistry_diagnostics.h"
 #include "chemistry_models.h"
+#include "chemistry_profile.h"
 #include "chemistry_types.h"
 #include "cooling_func.h"
 #include "forward_rates.h"
@@ -177,7 +178,8 @@ static void import_environment(const chemdata_in *input, ChemEnvironment *enviro
 
 static void import_state(const chemdata_out *output, ChemState *state)
 {
-  memcpy(state->abund, output->Abund, sizeof(state->abund));
+  memset(state->abund, 0, sizeof(state->abund));
+  memcpy(state->abund, output->Abund, sizeof(output->Abund));
   state->utherm_cgs = output->Utherm *
                       (All.UnitEnergy_in_cgs / All.UnitMass_in_g);
   state->gamma = output->Gamma;
@@ -185,7 +187,7 @@ static void import_state(const chemdata_out *output, ChemState *state)
 
 static void export_state(const ChemState *state, chemdata_out *output)
 {
-  memcpy(output->Abund, state->abund, sizeof(state->abund));
+  memcpy(output->Abund, state->abund, sizeof(output->Abund));
   output->Utherm = state->utherm_cgs /
                    (All.UnitEnergy_in_cgs / All.UnitMass_in_g);
   output->Gamma = state->gamma;
@@ -198,10 +200,20 @@ static void export_workspace(const ChemWorkspace *workspace, chemdata_out *outpu
   output->t_chem = fabs(workspace->evaluation.t_chem);
   output->Tdust = workspace->continuum.dust_temperature;
   output->kappa_dust = workspace->continuum.dust_kappa_planck;
+#ifdef ONEZONE
+  output->tau_cont = workspace->continuum.tau;
+  output->continuum_reduction_factor = workspace->continuum.reduction_factor;
+  memcpy(output->forward_rates, workspace->rates.forward, sizeof(output->forward_rates));
+  memcpy(output->inverse_rates, workspace->rates.inverse, sizeof(output->inverse_rates));
+  output->diagnostics = workspace->diagnostics;
+#endif
 }
 
 int compute_abundances_d(int mode, const chemdata_in *input, chemdata_out *output, double dtime)
 {
+#ifdef CHEMISTRY_PROFILE
+  double profile_start = chemistry_profile_time();
+#endif
   ChemEnvironment environment = {0};
   ChemState state;
   ChemWorkspace workspace = {0};
@@ -217,6 +229,9 @@ int compute_abundances_d(int mode, const chemdata_in *input, chemdata_out *outpu
   export_state(&state, output);
   export_workspace(&workspace, output);
 
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_TOTAL, chemistry_profile_time() - profile_start);
+#endif
   return status;
 }
 
@@ -357,7 +372,7 @@ int chemistry_advance(int mode, const ChemEnvironment *environment, double durat
 	    status = 1;
 	}else
 	  {
-	    ifunc = chemistry_noneq_exp_nometal(environment, &step, state, workspace, dt);
+	    ifunc = chemistry_noneq_explicit(environment, &step, state, workspace, dt);
 	    if(ifunc == 2){
 	      isnan_flag = 1;
 	      status = 1;

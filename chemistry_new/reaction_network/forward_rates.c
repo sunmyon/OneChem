@@ -21,6 +21,46 @@ static double rate_zero(double T)
   return 0.;
 }
 
+#ifdef CARBON_OXYGEN_CHEMISTRY
+/* Omukai (2005), Table 1.  Metal-network rates use table slots 100 + Z. */
+static double rate_Z1(double T)  { (void)T; return 6.80e-10; }
+static double rate_Z2(double T)  { return 7.00e-10 * exp(-232.0 / T); }
+static double rate_Z3(double T)  { (void)T; return 1.70e-9; }
+static double rate_Z4(double T)  { (void)T; return 1.01e-9; }
+static double rate_Z5(double T)  { (void)T; return 8.30e-10; }
+static double rate_Z6(double T)  { return 2.00e-7 * pow(T / 300.0, -0.50); }
+static double rate_Z7(double T)  { return 1.60e-7 * pow(T / 300.0, -0.50); }
+static double rate_Z8(double T)  { return 6.50e-7 * pow(T / 300.0, -0.50); }
+static double rate_Z9(double T)  { return 3.50e-7 * pow(T / 300.0, -0.50); }
+static double rate_Z10(double T) { return 9.90e-19 * pow(T / 300.0, -0.38); }
+static double rate_Z11(double T) { return 3.43e-13 * pow(T / 300.0, 2.67) * exp(-3160.0 / T); }
+static double rate_Z12(double T) { return 1.55e-12 * pow(T / 300.0, 1.60) * exp(-1660.0 / T); }
+static double rate_Z13(double T) { return 1.65e-12 * pow(T / 300.0, 1.14) * exp(-50.0 / T); }
+static double rate_Z14(double T) { (void)T; return 2.10e-9; }
+static double rate_Z15(double T) { (void)T; return 6.90e-9; }
+static double rate_Z16(double T) { return 7.00e-14 * pow(T / 300.0, 2.80) * exp(-1950.0 / T); }
+static double rate_Z17(double T) { return 6.83e-12 * pow(T / 300.0, 1.60) * exp(-9720.0 / T); }
+static double rate_Z18(double T) { return 4.90e-20 * pow(T / 300.0, 1.58); }
+static double rate_Z19(double T) { return 4.34e-11 * pow(T / 300.0, -0.50) * exp(-30.0 / T); }
+static double rate_Z20(double T) { return 3.30e-10 * exp(-8460.0 / T); }
+static double rate_Z21(double T) { (void)T; return 2.00e-9; }
+static double rate_Z22(double T) { return 1.95e-7 * pow(T / 300.0, -0.70); }
+static double rate_Z23(double T) { (void)T; return 6.60e-11; }
+static double rate_Z24(double T) { return 1.10e-10 * pow(T / 300.0, 0.50); }
+static double rate_Z25(double T) { (void)T; return 3.30e-11; }
+static double rate_Z26(double T) { (void)T; return 6.20e-10; }
+static double rate_Z27(double T) { (void)T; return 1.00e-13; }
+static double rate_Z28(double T) { return 4.40e-12 * pow(T / 300.0, -0.61); }
+static double rate_Z29(double T) { (void)T; return 7.70e-10; }
+static double rate_Z30(double T) { (void)T; return 7.50e-10; }
+static double rate_Z31(double T) { (void)T; return 1.00e-17; }
+static double rate_Z32(double T) { return 6.64e-10 * exp(-11700.0 / T); }
+static double rate_Z33(double T) { (void)T; return 4.98e-11; }
+static double rate_Z34(double T) { return 2.38e-10 * exp(-1760.0 / T); }
+static double rate_Z35(double T) { (void)T; return 2.70e-10; }
+static double rate_Z40(double T) { (void)T; return 1.00e-17; }
+#endif
+
 static double rate_1(double T)
 {
   double x, x2, x3, x4, x5, x6, x7, x8;
@@ -578,4 +618,42 @@ const ForwardRateFunction forward_rate_table[k_MAX] = {
   [56] = rate_56,
   [57] = rate_57,
   [58] = rate_58,
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  [101] = rate_Z1,
+  [102] = rate_Z2,
+  [103] = rate_Z3,
+  [104] = rate_Z4,
+  [105] = rate_Z5,
+  [106] = rate_Z6,
+  [107] = rate_Z7,
+  [108] = rate_Z8,
+  [109] = rate_Z9,
+  [110] = rate_Z10,
+  [111] = rate_Z11,
+  [112] = rate_Z12,
+  [113] = rate_Z13,
+  [114] = rate_Z14,
+  [115] = rate_Z15,
+  [116] = rate_Z16,
+  [117] = rate_Z17,
+  [118] = rate_Z18,
+  [119] = rate_Z19,
+  [120] = rate_Z20,
+  [121] = rate_Z21,
+  [122] = rate_Z22,
+  [123] = rate_Z23,
+  [124] = rate_Z24,
+  [125] = rate_Z25,
+  [126] = rate_Z26,
+  [127] = rate_Z27,
+  [128] = rate_Z28,
+  [129] = rate_Z29,
+  [130] = rate_Z30,
+  [131] = rate_Z31,
+  [132] = rate_Z32,
+  [133] = rate_Z33,
+  [134] = rate_Z34,
+  [135] = rate_Z35,
+  [140] = rate_Z40,
+#endif
 };

@@ -34,8 +34,10 @@ typedef struct {
 
 int chemistry_network_init(void);
 size_t chemistry_network_reaction_count(void);
-void chemistry_network_rhs(double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *rhs);
-void chemistry_network_jacobian_column(int differentiated_species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *column);
+void chemistry_network_rhs(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *rhs);
+void chemistry_network_jacobian_column(unsigned char mode, int differentiated_species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *column);
+void chemistry_network_jacobian(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double jacobian[N_SP][N_SP]);
+void chemistry_network_intermediate_system(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, const enum SPECIES *intermediate_species, int n_intermediate, double *rhs, double *matrix);
 void chemistry_network_production_destruction(double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction);
 void chemistry_network_species_production_destruction(enum SPECIES species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction);
 int chemistry_network_intermediate_equilibrium_abundance(enum SPECIES species, unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *equilibrium_abundance, double *relaxation_time);

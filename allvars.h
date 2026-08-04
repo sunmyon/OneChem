@@ -140,6 +140,15 @@ extern struct sph_particle_data
 #endif
 #endif
 
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double CI, CII, CO, CO2;
+  double OI, OH, H2O, O2;
+#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+  double COII, CH, CH2;
+  double OII, OHII, H2OII, H3OII, O2II;
+#endif
+#endif
+
   double t_col, t_cool, t_chem;   
   double tcool_rad, tcool_chem;
   
@@ -154,6 +163,9 @@ extern struct sph_particle_data
   double edot_radHI, edot_radHeI, edot_radHeII;
   double edot_cont, edot_2ph;
   double edot_CI, edot_CII, edot_OI;
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double edot_CO, edot_OH, edot_H2O;
+#endif
   double edot_dust, edot_PE;
   double edot_rad;
 
@@ -162,7 +174,7 @@ extern struct sph_particle_data
   
   double f_reduce;
 
-  double k[70], k_inv[70];
+  double k[k_MAX], k_inv[k_MAX];
 
   double n_crit;
   double Jeans_Length;
@@ -175,6 +187,10 @@ extern struct sph_particle_data
   double DelV[3];
 #endif
   double tau_cont;
+  double fesc_H2;
+#ifdef HD
+  double fesc_HD;
+#endif
 
 #ifdef LYMANWERNER
   FLOAT rate_Hminus_pd;

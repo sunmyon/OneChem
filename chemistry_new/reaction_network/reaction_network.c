@@ -128,10 +128,14 @@ static int compiled_option_enabled(const char *name)
 #ifdef INVERSE_REACTIONS
   if(strcmp(name, "INVERSE_REACTIONS") == 0) return 1;
 #endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  if(strcmp(name, "CARBON_OXYGEN_CHEMISTRY") == 0) return 1;
+#endif
 
   static const char *known_options[] = {
     "HELIUM", "H2_PLUS", "HD", "HD_PLUS", "DMINUS", "IONIZATION_PHOTON",
-    "LYMANWERNER", "H2_FORMATION_ON_DUST", "THREEBODY", "INVERSE_REACTIONS"
+    "LYMANWERNER", "H2_FORMATION_ON_DUST", "THREEBODY", "INVERSE_REACTIONS",
+    "CARBON_OXYGEN_CHEMISTRY"
   };
   for(size_t i = 0; i < sizeof(known_options) / sizeof(known_options[0]); i++)
     if(strcmp(name, known_options[i]) == 0)
@@ -436,7 +440,7 @@ int chemistry_network_intermediate_equilibrium_abundance(enum SPECIES species, u
   return isfinite(*equilibrium_abundance) && *equilibrium_abundance >= 0.0;
 }
 
-void chemistry_network_rhs(double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *rhs)
+void chemistry_network_rhs(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *rhs)
 {
   double number_density[sEND];
   for(int species = 0; species < sEND; species++) {
@@ -446,7 +450,7 @@ void chemistry_network_rhs(double nH, const double *abund, const double *forward
 
   for(size_t reaction_index = 0; reaction_index < chemistry_network_reaction_count(); reaction_index++) {
     const ChemReaction *reaction = &reactions[reaction_index];
-    if(!(reaction->modes & CHEM_REACTION_IMPLICIT))
+    if(!(reaction->modes & mode))
       continue;
     double rate = reaction_coefficient(reaction, forward_rates, inverse_rates);
 
@@ -463,7 +467,7 @@ void chemistry_network_rhs(double nH, const double *abund, const double *forward
   }
 }
 
-void chemistry_network_jacobian_column(int differentiated_species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *column)
+void chemistry_network_jacobian_column(unsigned char mode, int differentiated_species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *column)
 {
   double number_density[sEND];
   for(int species = 0; species < sEND; species++) {
@@ -475,7 +479,7 @@ void chemistry_network_jacobian_column(int differentiated_species, double nH, co
   for(size_t reactant_index = 0; reactant_index < index->num_reactant_reactions; reactant_index++) {
     size_t reaction_index = index->reactant_reactions[reactant_index];
     const ChemReaction *reaction = &reactions[reaction_index];
-    if(!(reaction->modes & CHEM_REACTION_IMPLICIT))
+    if(!(reaction->modes & mode))
       continue;
     unsigned char differentiated_order = 0;
 
@@ -499,6 +503,97 @@ void chemistry_network_jacobian_column(int differentiated_species, double nH, co
     for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
       const ChemReactionTerm *term = &reaction->terms[term_index];
       column[term->species] += term->net_change * derivative;
+    }
+  }
+}
+
+void chemistry_network_jacobian(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double jacobian[N_SP][N_SP])
+{
+  double number_density[sEND];
+  for(int species = 0; species < sEND; species++) {
+    number_density[species] = abund[species] * nH;
+    memset(jacobian[species], 0, N_SP * sizeof(jacobian[species][0]));
+  }
+
+  for(size_t reaction_index = 0; reaction_index < chemistry_network_reaction_count(); reaction_index++) {
+    const ChemReaction *reaction = &reactions[reaction_index];
+    if(!(reaction->modes & mode))
+      continue;
+
+    double coefficient = reaction_coefficient(reaction, forward_rates, inverse_rates);
+    for(int differentiated_index = 0; differentiated_index < reaction->num_terms; differentiated_index++) {
+      const ChemReactionTerm *differentiated = &reaction->terms[differentiated_index];
+      if(differentiated->reactant_order == 0)
+        continue;
+
+      double derivative = coefficient * differentiated->reactant_order;
+      for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+        const ChemReactionTerm *term = &reaction->terms[term_index];
+        unsigned char exponent = term->reactant_order;
+        if(term->species == differentiated->species)
+          exponent--;
+        derivative *= integer_power(number_density[term->species], exponent);
+      }
+
+      for(int affected_index = 0; affected_index < reaction->num_terms; affected_index++) {
+        const ChemReactionTerm *affected = &reaction->terms[affected_index];
+        jacobian[differentiated->species][affected->species] += affected->net_change * derivative;
+      }
+    }
+  }
+}
+
+void chemistry_network_intermediate_system(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, const enum SPECIES *intermediate_species, int n_intermediate, double *rhs, double *matrix)
+{
+  double number_density[sEND];
+  int intermediate_position[sEND];
+  for(int species = 0; species < sEND; species++) {
+    number_density[species] = abund[species] * nH;
+    intermediate_position[species] = -1;
+  }
+  for(int intermediate = 0; intermediate < n_intermediate; intermediate++) {
+    intermediate_position[intermediate_species[intermediate]] = intermediate;
+    rhs[intermediate] = 0.0;
+  }
+  memset(matrix, 0, n_intermediate * n_intermediate * sizeof(*matrix));
+
+  for(int row = 0; row < n_intermediate; row++) {
+    enum SPECIES row_species = intermediate_species[row];
+    const ChemSpeciesReactionIndex *index = &species_reaction_index[row_species];
+    for(size_t affected_index = 0; affected_index < index->num_affected_reactions; affected_index++) {
+      const ChemReaction *reaction = &reactions[index->affected_reactions[affected_index]];
+      if(!(reaction->modes & mode))
+        continue;
+
+      const ChemReactionTerm *row_term = NULL;
+      double coefficient = reaction_coefficient(reaction, forward_rates, inverse_rates);
+      double rate = coefficient;
+      for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+        const ChemReactionTerm *term = &reaction->terms[term_index];
+        rate *= integer_power(number_density[term->species], term->reactant_order);
+        if(term->species == row_species)
+          row_term = term;
+      }
+      if(row_term == NULL || row_term->net_change == 0)
+        continue;
+      rhs[row] += row_term->net_change * rate / nH;
+
+      for(int differentiated_index = 0; differentiated_index < reaction->num_terms; differentiated_index++) {
+        const ChemReactionTerm *differentiated = &reaction->terms[differentiated_index];
+        int column = intermediate_position[differentiated->species];
+        if(differentiated->reactant_order == 0 || column < 0)
+          continue;
+
+        double derivative = coefficient * differentiated->reactant_order;
+        for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
+          const ChemReactionTerm *term = &reaction->terms[term_index];
+          unsigned char exponent = term->reactant_order;
+          if(term->species == differentiated->species)
+            exponent--;
+          derivative *= integer_power(number_density[term->species], exponent);
+        }
+        matrix[column * n_intermediate + row] += row_term->net_change * derivative;
+      }
     }
   }
 }

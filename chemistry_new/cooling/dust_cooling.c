@@ -11,6 +11,7 @@
 #include "chemistry_diagnostics.h"
 #include "chemistry_tables.h"
 #include "dust_cooling.h"
+#include "chemistry_profile.h"
 
 #ifdef CHEMISTRY_SC
 #ifdef DUST_COOLING
@@ -86,9 +87,10 @@ static double evaluate_dust_balance(double T_dust, double T_gas, double rho_cgs,
 
   balance->Lambda_coll = tcoll_inv * f_over_rho_g * (T_gas - T_dust);
 
-  double T4_minus_TCMB4 = (T_dust - All.T_CMB) * (T_dust + All.T_CMB)
-    * (T_dust * T_dust + All.T_CMB * All.T_CMB);
-  double radiative_flux = 4. * STEFAN * T4_minus_TCMB4 - stellar_flux;
+  double T_radiation = pow(pow(All.T_CMB, 4) + stellar_flux / (4. * STEFAN), 0.25);
+  double T4_minus_Tradiation4 = (T_dust - T_radiation) * (T_dust + T_radiation)
+    * (T_dust * T_dust + T_radiation * T_radiation);
+  double radiative_flux = 4. * STEFAN * T4_minus_Tradiation4;
   balance->Lambda_dust = radiative_flux * balance->kappa_P * balance->beta_esc;
   balance->residual_derivative = 16. * STEFAN * T_dust * T_dust * T_dust * balance->kappa_P * balance->beta_esc
     + radiative_flux * kappa_P_derivative * balance->beta_esc
@@ -144,6 +146,9 @@ double dust_cross_section(double *S){
 
 
 double dust_temperature(double rho_cgs, double T_gas, double metallicity, double l_Jeans, double stellar_flux, struct opacities *opac, double *edot_dust){
+#ifdef CHEMISTRY_PROFILE
+  double profile_start = chemistry_profile_time();
+#endif
   double tau_g = opac -> tau;
 
   if(flag_dust_init == 0)
@@ -164,7 +169,6 @@ double dust_temperature(double rho_cgs, double T_gas, double metallicity, double
   for(itr=0;itr<30;itr++){
     double resid = evaluate_dust_balance(T_dust, T_gas, rho_cgs, metallicity, l_Jeans, stellar_flux, tau_g, tcoll_inv, &balance);
     double residual_scale = fabs(balance.Lambda_dust) + fabs(balance.Lambda_coll);
-
     if(fabs(resid) <= 1.e-5 * residual_scale)
       break;
     
@@ -176,7 +180,6 @@ double dust_temperature(double rho_cgs, double T_gas, double metallicity, double
 
     double temperature_tolerance = fmax(1.e-4, 1.e-5 * fmax(T_dust, 1.));
     if(Td_L - Td_S <= temperature_tolerance){
-      T_dust = 0.5 * (Td_S + Td_L);
       break;
     }
     
@@ -214,8 +217,14 @@ double dust_temperature(double rho_cgs, double T_gas, double metallicity, double
   opac -> tau = balance.tau;
   opac -> f_reduce = balance.beta_esc;
 
-  *edot_dust = -balance.Lambda_coll * rho_cgs * metallicity * DUST_TO_GAS_MASS_RATIO;
-  
+  double delta_coll = fabs(T_gas - T_dust);
+  double delta_rad = fabs(T_dust - T_radiation);
+  double Lambda_gas_dust = delta_coll >= delta_rad ? balance.Lambda_coll : balance.Lambda_dust;
+
+  *edot_dust = -Lambda_gas_dust * rho_cgs * metallicity * DUST_TO_GAS_MASS_RATIO;
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_DUST_TEMPERATURE, chemistry_profile_time() - profile_start);
+#endif
   return T_dust;
 }
 

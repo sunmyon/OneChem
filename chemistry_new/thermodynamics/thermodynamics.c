@@ -40,6 +40,13 @@ double compute_gamma_from_abund(const double *abund, double T_gas)
   double y_H2   = abund[sH2I]  /n_H;
   double y_elec = abund[sELEC] /n_H;
 
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double y_metal = (abund[sCI] + abund[sCII] + abund[sCO] + abund[sCO2] +
+                    abund[sOI] + abund[sOH] + abund[sH2O] + abund[sO2]) / n_H;
+#else
+  double y_metal = 0.0;
+#endif
+
   double x = 6100.0/T_gas;
 
   double gamma_H2_minus1_inv;
@@ -57,8 +64,8 @@ double compute_gamma_from_abund(const double *abund, double T_gas)
     gamma_H2_minus1_inv = 0.5*(5.0 + 2.0*x*x * exp(x)/(exp(x)-1.0)/(exp(x)-1.0));
 #endif
 
-  double sum_y= y_HI + y_HII + y_HM + y_He + y_elec + y_H2;
-  double denominator=1.5*(y_HI + y_HII + y_HM + y_He + y_elec) + gamma_H2_minus1_inv * y_H2;
+  double sum_y= y_HI + y_HII + y_HM + y_He + y_elec + y_H2 + y_metal;
+  double denominator=1.5*(y_HI + y_HII + y_HM + y_He + y_elec + y_metal) + gamma_H2_minus1_inv * y_H2;
 
   double gamma = 1.0+sum_y/denominator;
 
@@ -89,6 +96,10 @@ double chemistry_molecular_weight(const double *abund){
     + abund[sHeI] + abund[sHeII] + abund[sHeIII]
 #else
     + XHe
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+    + abund[sCI] + abund[sCII] + abund[sCO] + abund[sCO2]
+    + abund[sOI] + abund[sOH] + abund[sH2O] + abund[sO2]
 #endif
     ;
 

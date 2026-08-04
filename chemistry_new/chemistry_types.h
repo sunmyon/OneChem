@@ -24,7 +24,7 @@ typedef struct {
 } ChemEnvironment;
 
 typedef struct {
-  double abund[TGCHEM_NUM_ABUNDANCES];
+  double abund[N_SP];
   double utherm_cgs; /* erg g^-1 */
   double gamma;
 } ChemState;
@@ -95,46 +95,6 @@ typedef struct {
   int flag_implicit;
   int flag_convergence;
 } ChemEvaluation;
-
-typedef struct {
-  double H2_escape_fraction;
-#ifdef HD
-  double HD_escape_fraction;
-#endif
-  
-#if defined(DEBUG_CHEMISTRY_SC)
-  double edot_H2, edot_comp, edot_ceHI, edot_radHI;
-  double edot_ciHI;
-  double edot_H2form_gas;
-
-#ifdef HELIUM
-  double edot_ceHeI, edot_ceHeII;
-  double edot_ciHeI, edot_ciHeII, edot_ciHeIS;
-  double edot_reHeII1, edot_reHeII2, edot_reHeIII;
-#endif
-  
-#ifdef HD
-  double edot_HD;
-#endif
-#ifdef METALLICITY
-  double edot_CI, edot_CII, edot_OI;
-#endif
-#ifdef DUST_COOLING
-  double edot_dust;
-#ifdef LYMANWERNER
-  double edot_PE;
-#endif
-#endif
-
-#ifdef CONTINUUM_COOLING_MATSUKOBA
-  double edot_cont;
-#else
-  double edot_reHI;
-  double edot_brem;
-  double edot_CIE;
-#endif
-#endif
-} ChemDiagnostics;
 
 typedef struct {
   ChemThermodynamicState thermodynamics;

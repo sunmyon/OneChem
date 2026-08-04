@@ -10,6 +10,9 @@
 
 #include "allvars.h"
 #include "proto.h"
+#ifndef CHEMISTRY_OLD
+#include "chemistry_profile.h"
+#endif
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -56,6 +59,26 @@ double compute_temp(int ithis)
 #endif
 #ifdef DMINUS
   abund[sDM] = SphP[ithis].DM;
+#endif
+#endif
+#if defined(CARBON_OXYGEN_CHEMISTRY)
+  abund[sCI] = SphP[ithis].CI;
+  abund[sCII] = SphP[ithis].CII;
+  abund[sCO] = SphP[ithis].CO;
+  abund[sCO2] = SphP[ithis].CO2;
+  abund[sOI] = SphP[ithis].OI;
+  abund[sOH] = SphP[ithis].OH;
+  abund[sH2O] = SphP[ithis].H2O;
+  abund[sO2] = SphP[ithis].O2;
+#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+  abund[sCOII] = SphP[ithis].COII;
+  abund[sCH] = SphP[ithis].CH;
+  abund[sCH2] = SphP[ithis].CH2;
+  abund[sOII] = SphP[ithis].OII;
+  abund[sOHII] = SphP[ithis].OHII;
+  abund[sH2OII] = SphP[ithis].H2OII;
+  abund[sH3OII] = SphP[ithis].H3OII;
+  abund[sO2II] = SphP[ithis].O2II;
 #endif
 #endif
 
@@ -323,6 +346,26 @@ int main(int argc, char **argv){
 			sph_out.Abund[sDM] = SphP[ithis].DM;
 #endif
 #endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+			sph_out.Abund[sCI] = SphP[ithis].CI;
+			sph_out.Abund[sCII] = SphP[ithis].CII;
+			sph_out.Abund[sCO] = SphP[ithis].CO;
+			sph_out.Abund[sCO2] = SphP[ithis].CO2;
+			sph_out.Abund[sOI] = SphP[ithis].OI;
+			sph_out.Abund[sOH] = SphP[ithis].OH;
+			sph_out.Abund[sH2O] = SphP[ithis].H2O;
+			sph_out.Abund[sO2] = SphP[ithis].O2;
+#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+			sph_out.Abund[sCOII] = SphP[ithis].COII;
+			sph_out.Abund[sCH] = SphP[ithis].CH;
+			sph_out.Abund[sCH2] = SphP[ithis].CH2;
+			sph_out.Abund[sOII] = SphP[ithis].OII;
+			sph_out.Abund[sOHII] = SphP[ithis].OHII;
+			sph_out.Abund[sH2OII] = SphP[ithis].H2OII;
+			sph_out.Abund[sH3OII] = SphP[ithis].H3OII;
+			sph_out.Abund[sO2II] = SphP[ithis].O2II;
+#endif
+#endif
 			sph_out.Gamma = SphP[ithis].Gamma;
 			sph_out.t_chem = SphP[ithis].t_chem;
 			sph_out.t_cool = SphP[ithis].t_cool;
@@ -369,10 +412,93 @@ int main(int argc, char **argv){
 			SphP[ithis].DM = sph_out.Abund[sDM];
 #endif
 #endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+			SphP[ithis].CI = sph_out.Abund[sCI];
+			SphP[ithis].CII = sph_out.Abund[sCII];
+			SphP[ithis].CO = sph_out.Abund[sCO];
+			SphP[ithis].CO2 = sph_out.Abund[sCO2];
+			SphP[ithis].OI = sph_out.Abund[sOI];
+			SphP[ithis].OH = sph_out.Abund[sOH];
+			SphP[ithis].H2O = sph_out.Abund[sH2O];
+			SphP[ithis].O2 = sph_out.Abund[sO2];
+#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+			SphP[ithis].COII = sph_out.Abund[sCOII];
+			SphP[ithis].CH = sph_out.Abund[sCH];
+			SphP[ithis].CH2 = sph_out.Abund[sCH2];
+			SphP[ithis].OII = sph_out.Abund[sOII];
+			SphP[ithis].OHII = sph_out.Abund[sOHII];
+			SphP[ithis].H2OII = sph_out.Abund[sH2OII];
+			SphP[ithis].H3OII = sph_out.Abund[sH3OII];
+			SphP[ithis].O2II = sph_out.Abund[sO2II];
+#endif
+#endif
 			SphP[ithis].Gamma = sph_out.Gamma;
 			SphP[ithis].t_chem = sph_out.t_chem;
 			SphP[ithis].t_cool = sph_out.t_cool;
 			SphP[ithis].Tdust = sph_out.Tdust;
+#ifdef ONEZONE
+			SphP[ithis].tau_cont = sph_out.tau_cont;
+			SphP[ithis].f_reduce = sph_out.continuum_reduction_factor;
+			SphP[ithis].fesc_H2 = sph_out.diagnostics.H2_escape_fraction;
+#ifdef HD
+			SphP[ithis].fesc_HD = sph_out.diagnostics.HD_escape_fraction;
+#endif
+			for(int irate = 0; irate < k_MAX; irate++) {
+			  SphP[ithis].k[irate] = sph_out.forward_rates[irate];
+			  SphP[ithis].k_inv[irate] = sph_out.inverse_rates[irate];
+			}
+			SphP[ithis].edot_rad = sph_out.diagnostics.edot_rad;
+			SphP[ithis].edot_chem = sph_out.diagnostics.edot_chem;
+			SphP[ithis].edot_H2 = sph_out.diagnostics.edot_H2;
+			SphP[ithis].edot_comp = sph_out.diagnostics.edot_comp;
+			SphP[ithis].edot_ceHI = sph_out.diagnostics.edot_ceHI;
+			SphP[ithis].edot_radHI = sph_out.diagnostics.edot_radHI;
+			SphP[ithis].edot_ciHI = sph_out.diagnostics.edot_ciHI;
+			SphP[ithis].edot_H2form_gas = sph_out.diagnostics.edot_H2form_gas;
+			SphP[ithis].edot_H2form = sph_out.diagnostics.edot_H2form_gas;
+			SphP[ithis].edot_HMform = sph_out.diagnostics.edot_HMform;
+			SphP[ithis].edot_H2form_HM = sph_out.diagnostics.edot_H2form_HM;
+			SphP[ithis].edot_H2form_dust = sph_out.diagnostics.edot_H2form_dust;
+			SphP[ithis].edot_H2form_3body = sph_out.diagnostics.edot_H2form_3body;
+			SphP[ithis].n_crit = sph_out.diagnostics.n_crit;
+#ifdef HELIUM
+			SphP[ithis].edot_ceHeI = sph_out.diagnostics.edot_ceHeI;
+			SphP[ithis].edot_ceHeII = sph_out.diagnostics.edot_ceHeII;
+			SphP[ithis].edot_ciHeI = sph_out.diagnostics.edot_ciHeI;
+			SphP[ithis].edot_ciHeII = sph_out.diagnostics.edot_ciHeII;
+			SphP[ithis].edot_ciHeIS = sph_out.diagnostics.edot_ciHeIS;
+			SphP[ithis].edot_reHeII1 = sph_out.diagnostics.edot_reHeII1;
+			SphP[ithis].edot_reHeII2 = sph_out.diagnostics.edot_reHeII2;
+			SphP[ithis].edot_reHeIII = sph_out.diagnostics.edot_reHeIII;
+#endif
+#ifdef HD
+			SphP[ithis].edot_HD = sph_out.diagnostics.edot_HD;
+#endif
+#ifdef METALLICITY
+			SphP[ithis].edot_CI = sph_out.diagnostics.edot_CI;
+			SphP[ithis].edot_CII = sph_out.diagnostics.edot_CII;
+			SphP[ithis].edot_OI = sph_out.diagnostics.edot_OI;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+			SphP[ithis].edot_CO = sph_out.diagnostics.edot_CO;
+			SphP[ithis].edot_OH = sph_out.diagnostics.edot_OH;
+			SphP[ithis].edot_H2O = sph_out.diagnostics.edot_H2O;
+#endif
+#ifdef DUST_COOLING
+			SphP[ithis].edot_dust = sph_out.diagnostics.edot_dust;
+#ifdef LYMANWERNER
+			SphP[ithis].edot_PE = sph_out.diagnostics.edot_PE;
+#endif
+#endif
+#ifdef CONTINUUM_COOLING_MATSUKOBA
+			SphP[ithis].edot_cont = sph_out.diagnostics.edot_cont;
+#else
+			SphP[ithis].edot_reHII = sph_out.diagnostics.edot_reHI;
+			SphP[ithis].edot_brem = sph_out.diagnostics.edot_brem;
+			SphP[ithis].edot_CIE = sph_out.diagnostics.edot_CIE;
+			SphP[ithis].edot_cont = sph_out.diagnostics.edot_cont;
+#endif
+#endif
 			SphP[ithis].Entropy = SphP[ithis].ThermalEnergy * (SphP[ithis].Gamma - 1.0) / pow(SphP[ithis].Density * All.cf_a3inv, SphP[ithis].Gamma - 1.0);
 #endif
 		
@@ -415,6 +541,9 @@ int main(int argc, char **argv){
   double time2 = gettimeofday_sec();
   
   printf("time:%g\n",time2 - time1);
+#if defined(CHEMISTRY_PROFILE) && !defined(CHEMISTRY_OLD)
+  chemistry_profile_report();
+#endif
 }
 
 void give_file_name(char *option){
@@ -534,7 +663,8 @@ void dump_data(int idump, char *outname, int mode){
   static double  cool_reHII, cool_reHeII1, cool_reHeII2, cool_reHeIII;
   static double  cool_comp, cool_brem, coolRad;
   static double  cool_cont, cool_2ph;
-  static double  cool_CI, cool_CII, cool_OI, cool_dust, cool_PE;
+  static double  cool_CI, cool_CII, cool_OI, cool_CO, cool_OH, cool_H2O, cool_dust, cool_PE;
+  static double  heat_radHI, heat_radHeI, heat_radHeII;
   static double  adia, coolH2, coolHD, coolCIE, coolChem;
   static double  Escape, tau_cont;
   static double  gamma;
@@ -715,8 +845,19 @@ void dump_data(int idump, char *outname, int mode){
   cool_CI   = fabs(SphP[0].edot_CI)         / SphP[0].Density * unit;
   cool_CII  = fabs(SphP[0].edot_CII)        / SphP[0].Density * unit;
   cool_OI   = fabs(SphP[0].edot_OI)         / SphP[0].Density * unit;
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  cool_CO   = fabs(SphP[0].edot_CO)         / SphP[0].Density * unit;
+  cool_OH   = fabs(SphP[0].edot_OH)         / SphP[0].Density * unit;
+  cool_H2O  = fabs(SphP[0].edot_H2O)        / SphP[0].Density * unit;
+#else
+  cool_CO = cool_OH = cool_H2O = 0.;
+#endif
   cool_dust = fabs(SphP[0].edot_dust)       / SphP[0].Density * unit;
   cool_PE   = fabs(SphP[0].edot_PE)         / SphP[0].Density * unit;
+
+  heat_radHI = SphP[0].edot_radHI / SphP[0].Density * unit;
+  heat_radHeI = SphP[0].edot_radHeI / SphP[0].Density * unit;
+  heat_radHeII = SphP[0].edot_radHeII / SphP[0].Density * unit;
 	
   coolH2form_HM     = fabs(SphP[0].edot_H2form_HM   ) /SphP[0].Density * unit;
   coolH2form_H2II   = fabs(SphP[0].edot_H2form_H2II ) /SphP[0].Density * unit;
@@ -731,7 +872,7 @@ void dump_data(int idump, char *outname, int mode){
   AdiaIndex_out = SphP[0].Gamma;
   MMolWeigh_out = SphP[0].molecular_weight;
   M_Jeans = JeansMass(Tout,nHout,MMolWeigh_out);
-  //Escape  = SphP[0].EscapeProb;
+  Escape = SphP[0].fesc_H2;
   
   // WRITE OUTPUT FILES //////////////////////////////////////////////////////////////////////////////
   fprintf(fpout,"%20.10e %20.10e %20.10e"
@@ -742,7 +883,7 @@ void dump_data(int idump, char *outname, int mode){
 	  " %20.10e %20.10e %20.10e"
 	  " %20.10e %20.10e %20.10e"
 	  " %20.10e %20.10e %20.10e %20.10e %20.10e %20.10e"
-	  " %20.10e %20.10e %20.10e %20.10e\n",
+	  " %20.10e %20.10e %20.10e %20.10e",
 	  SphP[0].n_nuclei        , Tout                    , adia, // 1 2 3
 	  gamma                   , SHR                     , // 4 5
 	  molecular_weight        , fesc_cont               , tau_cont, // 6 7 8
@@ -752,7 +893,14 @@ void dump_data(int idump, char *outname, int mode){
 	  ab_H2I                  , ab_H2II                 , ab_HM, // 17 18 19 
 	  ab_DI                   , ab_DII                  , ab_HDI, // 20 21 22 
 	  ab_HDII                 , ab_DM                   , 0. , // 23 24 25 
-	  Escape, SHR, t_ff_out   , Tdust); // 26 27 28 29 
+	  Escape, SHR, t_ff_out   , Tdust); // 26 27 28 29
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  fprintf(fpout, " %20.10e %20.10e %20.10e %20.10e"
+                 " %20.10e %20.10e %20.10e %20.10e",
+          SphP[0].CI / XH, SphP[0].CII / XH, SphP[0].CO / XH, SphP[0].CO2 / XH,
+          SphP[0].OI / XH, SphP[0].OH / XH, SphP[0].H2O / XH, SphP[0].O2 / XH); // 30--37
+#endif
+  fputc('\n', fpout);
   
   fprintf(fcool,"%20.10e %20.10e "
 	  "%20.10e %20.10e %20.10e "
@@ -768,7 +916,8 @@ void dump_data(int idump, char *outname, int mode){
 	  "%20.10e %20.10e %20.10e %20.10e %20.10e "
 	  "%20.10e %20.10e %20.10e "
 	  "%20.10e "
-	  "%20.10e %20.10e\n",
+	  "%20.10e %20.10e "
+	  "%20.10e %20.10e %20.10e\n",
 	  SphP[0].n_nuclei, coolRad,  // 1 2
 	  cool_ceHI , cool_ceHeI  , cool_ceHeII , // 3 4 5
 	  cool_ciHI , cool_ciHeI  , cool_ciHeII , cool_ciHeIS , // 6 7 8 9
@@ -781,9 +930,10 @@ void dump_data(int idump, char *outname, int mode){
 	  coolChem        , // 22
 	  cool_2ph  , cool_cont, //23 24
 	  cool_CI, cool_CII  , cool_OI, cool_dust, cool_PE, //25 26 27 28 29
-	  SphP[0].edot_radHI, SphP[0].edot_radHeI, SphP[0].edot_radHeII, // 30 31 32
+	  heat_radHI, heat_radHeI, heat_radHeII, // 30 31 32
 	  adia            ,  // 33 
-	  SphP[0].n_crit  , cool_tot);
+	  SphP[0].n_crit  , cool_tot, // 34 35
+	  cool_CO, cool_OH, cool_H2O); // 36 37 38
 
   fprintf(fchem,
 	  "%20.10e %20.10e %20.10e %20.10e %20.10e %20.10e "
@@ -1100,7 +1250,7 @@ int initialize_cells(double z, double theta){
   int j, ifunc;
   double ab_H, ab_He, ab_elec, ab_HI, ab_HII, ab_HeI, ab_HeII, ab_HeIII, ab_HM, ab_DI, ab_DII, ab_HDI, ab_HDII, ab_DM;
   double ab_H2I, ab_H2II, ab_HD;
-#ifdef METAL
+#if defined(METAL) || defined(CARBON_OXYGEN_CHEMISTRY)
   double ab_CII, ab_OI;
 #endif
   double sum_fraction, egyspec_to_temp;
@@ -1188,7 +1338,7 @@ int initialize_cells(double z, double theta){
 #endif
     ab_HI   = H_number_fraction - 1.0*ab_HII - 2.0*ab_H2I;
 		
-#ifdef METAL 
+#if defined(METAL) || defined(CARBON_OXYGEN_CHEMISTRY)
     ab_CII  = XH * A_C_sun * All.Metallicity;
     ab_OI   = XH * A_O_sun * All.Metallicity;
 #endif
@@ -1235,13 +1385,23 @@ int initialize_cells(double z, double theta){
     SphP[i].OH  = SphP[i].OHII = SphP[i].H2O = SphP[i].H2OII = 1.e-10 * ab_CII;
     SphP[i].H3OII = SphP[i].CH = SphP[i].CH2 = 1.e-10 * ab_CII;
 #endif		
+#ifdef CARBON_OXYGEN_CHEMISTRY
+    SphP[i].CI = SphP[i].CO = SphP[i].CO2 = 0.0;
+    SphP[i].CII = ab_CII;
+    SphP[i].OI = ab_OI;
+    SphP[i].OH = SphP[i].H2O = SphP[i].O2 = 0.0;
+#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+    SphP[i].COII = SphP[i].CH = SphP[i].CH2 = 0.0;
+    SphP[i].OII = SphP[i].OHII = SphP[i].H2OII = SphP[i].H3OII = SphP[i].O2II = 0.0;
+#endif
+#endif
 		
     // compute density
     ab_elec = ab_HII + ab_HeII + 2.0 * ab_HeIII + ab_H2II  - ab_HM 
 #ifdef HD
       + ab_DII + ab_HDII - ab_DM
 #endif
-#ifdef METAL
+#if defined(METAL) || defined(CARBON_OXYGEN_CHEMISTRY)
       + ab_CII
 #endif			
       ;
@@ -1265,6 +1425,10 @@ int initialize_cells(double z, double theta){
 #ifdef DMINUS
       + SphP[i].DM
 #endif
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+      + SphP[i].CI + SphP[i].CII + SphP[i].CO + SphP[i].CO2
+      + SphP[i].OI + SphP[i].OH + SphP[i].H2O + SphP[i].O2
 #endif
       ;
 			
@@ -1299,6 +1463,16 @@ int initialize_cells(double z, double theta){
 #ifdef DMINUS
       abund[sDM] = SphP[i].DM;
 #endif
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+      abund[sCI] = SphP[i].CI;
+      abund[sCII] = SphP[i].CII;
+      abund[sCO] = SphP[i].CO;
+      abund[sCO2] = SphP[i].CO2;
+      abund[sOI] = SphP[i].OI;
+      abund[sOH] = SphP[i].OH;
+      abund[sH2O] = SphP[i].H2O;
+      abund[sO2] = SphP[i].O2;
 #endif
       SphP[i].Gamma = compute_gamma_from_abund(abund, T0);
     }

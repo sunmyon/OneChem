@@ -13,6 +13,7 @@
 #include "chemistry_constants.h"
 #include "chemistry_diagnostics.h"
 #include "chemistry_models.h"
+#include "chemistry_profile.h"
 #include "chemistry_types.h"
 #include "cooling_func.h"
 #include "dust_cooling.h"
@@ -110,6 +111,9 @@ int evaluate_chemistry_timescale(const ChemEnvironment *environment, const ChemS
 }
 
 int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepData *step, const ChemState *state, ChemWorkspace *workspace){
+#ifdef CHEMISTRY_PROFILE
+  double profile_start = chemistry_profile_time();
+#endif
   const double rho_cgs = environment->rho_cgs;
   const double n_nuclei = rho_cgs / PROTONMASS;
   const double nH = XH * n_nuclei;
@@ -166,11 +170,13 @@ int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepDa
 
   const double c_T = (T_gas - T_table[i_T])/(T_table[i_T+1]-T_table[i_T]);
 
-  for(int j=1; j<=21; j++){
-    workspace->rates.forward[j] = k_table[j][i_T] + c_T*(k_table[j][i_T+1] - k_table[j][i_T]);
+  /* Every pure forward rate registered in forward_rate_table is tabulated.
+     Density-, radiation-, and dust-dependent rates are overwritten below. */
+  for(int j = 0; j < k_MAX; j++) {
+    if(forward_rate_table[j] != NULL)
+      workspace->rates.forward[j] = k_table[j][i_T] + c_T * (k_table[j][i_T + 1] - k_table[j][i_T]);
   }
 
-  workspace->rates.forward[30] = k_table[30][i_T] + c_T*(k_table[30][i_T+1] - k_table[30][i_T]);
   workspace->rates.forward[22] = workspace->rates.forward[23] = workspace->rates.forward[24] = 0.;
 
 #ifdef IONIZATION_PHOTON
@@ -246,16 +252,6 @@ int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepDa
 #endif //BACKGROUND_LW_RADIATION
 #endif // LYMANWERNER
 
-#ifdef HD
-  for(int j=31; j<=48; j++)
-    workspace->rates.forward[j] = k_table[j][i_T] + c_T*(k_table[j][i_T+1] - k_table[j][i_T]);
-#endif
-
-#ifdef THREEBODY
-  for(int j=55; j<=58; j++)
-    workspace->rates.forward[j] = k_table[j][i_T] + c_T*(k_table[j][i_T+1] - k_table[j][i_T]);
-#endif
-
   /****************************************************************************************************************/
   /******************************** We evaluate continuum opacities here ******************************************/
   /****************************************************************************************************************/
@@ -265,6 +261,8 @@ int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepDa
 #endif
 
   double tau_cont=0.;
+  workspace->continuum.tau = 0.;
+  workspace->continuum.reduction_factor = 1.;
 #ifdef CONT_OPACITY
   struct opacities opac;
 
@@ -470,6 +468,9 @@ int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepDa
   }
 
   workspace->rates.forward[30] = 0.;
+#endif
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_REACTION_RATES, chemistry_profile_time() - profile_start);
 #endif
   return 0;
 }

@@ -1,0 +1,4 @@
+# model implicit radiative residual_overhead solver_driver energy_trials_per_step newton_per_residual wall_seconds
+"C/O+mol"       97.962 1.687 0.209 0.142 5.3583 4.0376 34.3155
+"C/O; mol off"  98.926 0.715 0.208 0.151 5.0095 4.0591 32.0826
+"fixed CII+OI"  93.789 4.559 1.038 0.614 5.0206 3.2049 4.97227

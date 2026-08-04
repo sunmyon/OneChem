@@ -179,7 +179,7 @@ F(Tdust) = Lambda_dust(Tdust) - Lambda_coll(Tdust) = 0
 
 から求める。
 
-gas の energy exchange には、平衡探索終了時の `Lambda_coll` を使用する。低密度で `Tdust` が CMB 温度に極めて近い場合、有限の温度誤差を持つ `Lambda_dust` をgas heatingへ流用すると、非物理的な加熱が生じるためである。
+gas の energy exchange には、低密度側では `Lambda_coll`、高密度側では `Lambda_dust` を使用する。低密度では `Tdust` が放射温度に、高密度では `Tdust` がgas温度に極めて近づくため、全密度域で片方だけを使うと、近い温度同士の差による丸め誤差が反対側の極限で顕在化する。現在は二つの温度差を比較し、数値的に条件のよい側を選ぶ。
 
 ### 低密度で発生していた false heating
 
@@ -225,7 +225,8 @@ edot_dust = -Lambda_dust * rho * metallicity * dust_to_gas_ratio
    と因数分解し、近接温度での桁落ちを抑える。
 2. residualだけでなくbracket幅でも収束を判定する。
 3. 決定した最終 `Tdust` でbalanceを再評価する。
-4. gasのenergy exchangeには `-Lambda_coll` を使用し、放射residualをgasへ流さない。
+4. gasのenergy exchangeには、低密度側で `-Lambda_coll`、高密度側で `-Lambda_dust` を使用する。
+5. bracket幅で終了するとき、得られたNewton点をbracket中点で上書きしない。
 
 この修正により、根がmachine precisionに近すぎて放射residualを完全にはゼロにできない場合でも、低密度gasへfalse heatingが入らなくなった。
 
@@ -400,3 +401,498 @@ optionを切り替えて比較する場合は、clean buildまたはmodeごと�
 H/He/D networkの一般化、species metadata、reaction index、explicit/implicit更新、中間体平衡、保存則縮約までが一つの枠組みに入った。dust温度計算も、不連続性、bracket、収束判定、table探索、energy exchangeの主要な問題を解消した。
 
 したがって、C/O chemistry追加前のdust部分は現時点で十分であり、次の主作業はC/O speciesとreactionを小さなsubsetから追加し、現在の一般化が実際に機能するか検証することである。
+
+---
+
+## 追記: C/O chemistry導入後の収束・energy・cooling診断（2026-08-04）
+
+この節は、C/O chemistryとCO/OH/H2O line coolingを導入した後に現れた温度のぎざぎざ、chemical failure、dust cooling spikeを調べた記録である。上の「C/O chemistry追加前の残課題」より新しく、dust energy exchangeとC/O networkに関しては本節を現在の結論とする。
+
+### 対象species
+
+非平衡speciesとして次を追加した。
+
+```text
+C, C+, CO, CO2, O, OH, H2O, O2
+```
+
+短寿命中間体として次を扱う。
+
+```text
+HM, CO+, CH, CH2, O+, OH+, H2O+, H3O+, O2+
+```
+
+`INTERMEDIATE_EQUILIBRIUM=1` ではこれらをchemistry内部の代数的平衡speciesとし、Newtonの独立変数から外す。`INTERMEDIATE_EQUILIBRIUM=0` ではHMを含む全speciesを非平衡変数として時間発展させる。
+
+中間体の結合構造は一様ではない。
+
+- `CO+`, `O+`, `OH+`, `H2O+`, `H3O+`, `O2+` は、非平衡speciesを固定すれば逐次的または一意に決まる。
+- `CH` と `CH2` は相互にcoupleするため、小さな連立平衡系になる。
+- `HM` も平衡modeでは他の中間体と同じ代数的speciesとして扱う。
+
+式の本数が少なくても、主要reservoirがほぼCOまたはO2へ移る領域では、解がpositivity boundや元素reservoirの境界に非常に近い。この条件の悪さが、単純な反応式に見えるにもかかわらずNewton収束が悪化した主因である。
+
+### `delta_H2` とchemical heating
+
+implicit chemistry後のH2結合energyは、基本的に
+
+```text
+delta_H2 = abundance_new[H2] - abundance_old[H2]
+edot_H2 = 4.48 eV * delta_H2 * n_nuclei / dt
+```
+
+として評価する。これはH2の生成・破壊を経路ごとに完全分解するのではなく、step全体のH2存在量変化に対応する結合energyをgasへ戻す扱いである。
+
+現在の判断は、最終的にH2が形成されるなら結合energyはdepositされるため、このstate-difference型の評価は基本的に維持する、というものである。低密度側ではcritical densityを使い、HM経路、dust形成、FUV解離、three-body形成のうち放射へ逃げる部分を補正している。高密度側では熱化が支配的として `4.48 eV * delta_H2` を直接使う。
+
+C/O反応を経由した場合に、同じH2変化へ対応する余剰energyの一部がline photonまたは内部励起へ逃げる可能性は残る。ただし、今回観測した温度ぎざぎざについては、chemical solve失敗とabundance jumpが明確に同期していた。C/O経路のenergy partitionを原因と仮定して補正する前に、まず非線形solveを連続にする方針を採った。現時点ではC/O経路のenergy partitionに対する定量的補正は入れていない。
+
+### Newton boundは物理timestepの短縮ではない
+
+この点は実装思想として明確に区別する。
+
+```text
+physical timestep dt: 変更しない
+Newton correction delta: abundance bound内へ成分ごとに補正する
+initial guess: 同じdtのまま変更して再探索する
+```
+
+一時期試したNewton vector全体への `step_scale *= 0.5` は採用しない。全成分を一括縮小すると、支配的reservoirがboundへ近づく問題を解消せず、単にbound付近へゆっくり張り付かせる可能性がある。また、これは化学stepそのものの半減と誤解されやすい。
+
+現在の `chemistry_apply_implicit_newton_step()` は、各非代数speciesについて次の旧来型処理を行う。
+
+```text
+candidate < 0.1 * current
+    -> delta = -0.9 * current
+
+candidate > upper_bound
+    -> そのspeciesのdeltaだけを上限側へclip
+```
+
+bound外のNewton候補は、それ自体をchemical failureとはみなさない。補正した非平衡speciesから保存則従属speciesと平衡中間体を再構成し、その代数的再構成が有限かつbound内に入らない場合に限って、現在のguessを棄却する。物理timestep `dt` は維持する。
+
+診断中に「最初にboundを破るspeciesがCI」と表示されたことは、CIが物理的に負になることや、CI反応だけが誤っていることを直接意味しない。Newton correctionを現在の独立変数順で検査したとき、最初にCIのtrial値が設定上限を越えた、という意味である。C/O保存則を使うmodeでは、低密度側はCI/O、高密度側はCO/O2を従属speciesに切り替え、主要reservoirがほぼCO/O2になる領域で境界変数を直接Newton更新しない構造も用意している。今回の図を作ったbuildは `CARBON_OXYGEN_CONSERVATION=0` であり、この保存則切替の影響は含まない。
+
+### 収束しないstepとguess reset
+
+`Z=10^-3, z=0` の `n ~ 5e6--5e7 cm^-3` で失敗しやすいchemical stepを抜き出し、同じ `dt` に対して元素reservoirを保存するrandom guessを多数与えた。目的はstepを短くすることではなく、そのstepが収束する先を調べることだった。
+
+代表的な収束先は次の通りで、異なるrandom guessからほぼ同じ枝へ到達した。
+
+| n [cm^-3] | T [K] | CO | CO2 | O2 | OH | H2O |
+|---:|---:|---:|---:|---:|---:|---:|
+| 6.9e6 | 119--122 | 3.118e-7 | 4.20e-9 | 1.138e-7 | 2.15e-8 | 5.5e-9 |
+| 1.53e7 | 218 | 3.102e-7 | 5.79e-9 | 1.140e-7 | 3.69e-10 | 2.45e-8 |
+| 2.53e7 | 296--304 | 3.102e-7 | 5.79e-9 | 1.140e-7 | ~2e-14 | 2.52e-8 |
+
+abundanceは `XH` 規格化である。結論は「多数の全く異なるrootがある」のではなく、炭素のほぼ全量がCO、残った酸素の主要部分がO2へ入る境界近傍の一つの枝へ収束する、というものだった。
+
+この結果をdeterministicな `iter_reset` guessへ反映した。
+
+- 炭素をほぼCOへ置くguess。
+- COに使われなかった酸素を主にO2へ置くguess。
+- samplingで得た少量のCO2/H2Oを含むguess。
+- それでも診断対象stepが失敗する場合だけ、compile-time diagnosticとして元素保存random restartを使える。
+
+production runの思想は、同一のphysical timestepで複数guessを試すことである。random restartはroot探索と診断用であり、physical timestep halvingの代替ではない。
+
+### 解析Jacobianと数値Jacobianへのfallback
+
+平衡中間体をNewton変数から外した場合、その応答を無視するとJacobianが不完全になる。現在は複数中間体に一般化した連鎖微分を用い、代数的中間体と保存則従属speciesを縮約した解析Jacobianを作る。
+
+解析Jacobianで20反復以降も `err_max > 1e-4` の場合は、全代数speciesを再構成しながら数値Jacobianへfallbackする。これは「一回でもboundを越えたら数値Jacobianへ移る」という意味ではない。解析近似で停滞した場合にだけ、より完全な微分を評価する保険である。
+
+保存則へtrace speciesと全中間体を入れると、保存式自体は数個の加算でも、代数的連鎖微分が密になり速度が大幅に低下した。そのため現在は主要reservoirだけを保存則へ入れ、C/O保存則を外した診断modeも用意して、network solveと保存則縮約の問題を分離している。
+
+### chemistry収束とenergy residualの結合
+
+energy implicit modeでは、各trial温度について
+
+```text
+chemistry implicit -> chemical heating -> radiative cooling -> energy residual
+```
+
+を評価する。したがって、chemistryが異なるguess枝へ飛ぶ、bound処理後にrollbackする、または中間体平衡が未収束のまま返ると、temperatureだけを変えた一次元energy residualも不連続に見える。今回 `Z=10^-3, z=0` で見えたO/OHと温度の同時spikeは、この結合を示していた。
+
+step halvingでは、同じ不適切なguessからboundへ近づくだけで、目的のchemical rootを保証しない。component-wise boundとCO/O2寄りのreset guessを戻した後、同じphysical timestepのままchemical warningと細かな温度ぎざぎざが消えた。したがって、この領域の主問題はenergy solver単体ではなく、energy residual内部で呼ばれるchemical nonlinear solveのbranch選択だった。
+
+### molecular cooling on/offで変わる進化path
+
+`MOLECULAR_LINE_COOLING=1/0` の二つをclean buildし、同じ36条件を完走させた。ここでoffにするのはCO/OH/H2O line coolingだけであり、C/O chemical networkそのものは両方で有効である。したがって、二つのrunのspecies差はnetworkの有無ではなく、coolingによる温度feedbackから生じる。
+
+![molecular cooling on/off temperature paths](figures/molecular_cooling_on_off_paths.png)
+
+`z=0` の代表値は次の通りだった。
+
+| Z/Zsun | 最大 `|Ton-Toff|/Ton` | 最大差のn [cm^-3] | Ton [K] | Toff [K] | final `(Ton-Toff)/Ton` |
+|---:|---:|---:|---:|---:|---:|
+| 1e-3 | 1.557 | 2.53e7 | 112.8 | 288.4 | -8.38e-4 |
+| 1e-2 | 0.240 | 1.62e5 | 51.8 | 64.2 | -7.68e-2 |
+| 1e-1 | 0.714 | 8.08e3 | 25.8 | 44.3 | -1.57e-1 |
+| 1 | 0.101 | 5.23e15 | 1403 | 1545 | -7.81e-2 |
+
+`Z=10^-3` では `n ~ 1e7--1e8 cm^-3` の温度peakが最も大きく変わる。CO/OH/H2O coolingを入れると、offで約288 Kへ上がる枝が約113 Kへ抑えられる。一方、十分高密度ではdust/continuumと断熱加熱が支配的になり、二つのpathは再び近づく。
+
+### C/O chemistry off + 固定CII/OI coolingとの比較
+
+第三の比較として、C/O chemical networkを完全に外し、CIIとOIのfine-structure coolingだけを固定solar abundanceで残した。
+
+```text
+CARBON_OXYGEN_CHEMISTRY=0
+MOLECULAR_LINE_COOLING=0
+nCII = n_nuclei * XH * Y_C_sun * Z
+nOI  = n_nuclei * XH * Y_O_sun * Z
+nCI  = 0
+```
+
+現行sourceの `CARBON_OXYGEN_CHEMISTRY=0` 分岐は、CIとCIIの両方へ炭素全量を同時に与える。このままでは炭素coolingを二重に数えるため、今回の比較用一時buildだけでCIを0にした。本体sourceは変更していない。
+
+上の温度軌道図には、この第三経路を緑点線で追加した。
+
+完全C/O chemistry + molecular cooling onを基準にした比較は次の通りである。
+
+| Z/Zsun | full C/O + mol. on 対 fixed CII/OI: 最大相対差 | n [cm^-3] | Tfull [K] | Tfixed [K] | final相対差 |
+|---:|---:|---:|---:|---:|---:|
+| 1e-3 | 0.361 | 6.63e2 | 74.7 | 47.7 | -8.73e-4 |
+| 1e-2 | 1.755 | 3.29e2 | 7.39 | 20.4 | -7.68e-2 |
+| 1e-1 | 14.50 | 1.00e-1 | 36.4 | 564 | -1.57e-1 |
+| 1 | 4.007 | 2.03e-3 | 26.3 | 132 | -7.77e-2 |
+
+相対差は `|Tfull-Tfixed|/Tfull`、final相対差は `(Tfull-Tfixed)/Tfull` である。
+
+molecular coolingを切ったC/O chemistry runと固定CII/OI modelを比べると、`Z=10^-3` では `n=2.07e7 cm^-3` で、前者が277 K、後者が102 Kとなる。固定modelは炭素と酸素をCO/O2/H2Oへ移さないため、CII/OI coolingを中密度まで過大に残し、C/O chemistry runに現れる温度peakを強く抑える。
+
+cooling成分の違いを次に示す。
+
+![C/O chemistry cooling comparison](figures/carbon_chemistry_cooling_comparison_Zm3_z0.png)
+
+左はC/O chemistryとmolecular coolingを両方有効、中は同じchemistryでmolecular coolingだけを無効、右はC/O chemistryを外した固定CII/OI modelである。固定modelではCII/OI abundanceが化学的に減らないため、そのcoolingがfull chemistryより広い密度域に残る。
+
+ただし、この第三経路はcooling項だけを差し替えた完全なcontrolled experimentではない。C/O chemistryを切ると次も同時に変わる。
+
+- CIIがcharge neutralityへ寄与しなくなる。
+- metal electronがH/He chemistryとelectron collision coolingへfeedbackしなくなる。
+- C/O reactionがH、H2、electron abundanceへ与える小さなfeedbackも消える。
+- 全炭素・酸素を固定atomic reservoirとして扱い、CO/O2/H2Oへのdepletionを無視する。
+
+特に `Z >= 10^-1` の低密度側で第三経路が大きく高温になるのは、単純にCO coolingがないことだけでは説明できない。固定CIIを仮定しながら、そのionizationに対応する電子をcharge neutralityへ加えていないlegacy近似の影響も含む。したがって第三経路は「旧来の固定metal cooling modelとの比較」と解釈し、C/O reactionだけの純粋な効果とはみなさない。
+
+36条件surveyのwall timeは、同じ `-O0` buildで概ね次の通りだった。
+
+| model | wall time |
+|---|---:|
+| C/O chemistry + molecular cooling | 34.3 s |
+| C/O chemistry + molecular cooling off | 32.1 s |
+| C/O chemistry off + fixed CII/OI | 5.0 s |
+
+C/O networkと中間体平衡が計算時間の大部分を占め、molecular cooling table評価そのものの追加costは比較的小さい。
+
+### 3モデルの計算時間配分と収束反復数
+
+上の3モデルを `CHEMISTRY_PROFILE` 付きでclean buildし、同じ36条件についてcounterを集計した。絶対wall timeはprofileなしのrun、時間割合とcall数はprofile付きrunを使う。
+
+![three-model performance comparison](figures/three_model_performance_comparison.png)
+
+#### 全体時間とstep数
+
+| 指標 | C/O + molecular | C/O + molecular off | C/O off + fixed CII/OI |
+|---|---:|---:|---:|
+| profileなしwall time [s] | 34.32 | 32.08 | 4.97 |
+| fixed CII/OIに対する時間比 | 6.90 | 6.45 | 1.00 |
+| collapse/chemistry step総数 | 54,972 | 54,972 | 54,972 |
+| 1 case当たりcollapse step | 1,527 | 1,527 | 1,527 |
+| energy residual評価総数 | 294,558 | 275,383 | 275,995 |
+| energy trial / collapse step | 5.358 | 5.010 | 5.021 |
+| Newton RHS評価総数 | 1,189,316 | 1,117,803 | 884,543 |
+| Newton反復 / implicit trial（成功・失敗込み） | 4.038 | 4.059 | 3.205 |
+| 全implicit trialのNewton反復中央値 | 4 | 4 | 4 |
+| 全implicit trialの90 percentile | 5 | 5 | 4 |
+| 全implicit trialの95 percentile | 9 | 9 | 4 |
+| 全implicit trialの99 percentile | 24 | 25 | 4 |
+| 全implicit trialの最大値 | 104 | 96 | 18 |
+| 4反復以下で終了したtrial | 89.46% | 88.35% | 99.43% |
+| resetを1回以上通過したtrial | 18,238 (6.19%) | 18,272 (6.64%) | 3 (0.001%) |
+| reset trialが占める全Newton反復 | 23.73% | 25.18% | 0.005% |
+| 70反復後のreset event | 0 | 0 | 0 |
+| `chemistry_status=0` trial | 17,333 (5.88%) | 17,402 (6.32%) | 1 (<0.001%) |
+| status=0 trialが消費したNewton反復 / trial | 14.88 | 14.82 | 13.00 |
+| Newton反復 / collapse step | 21.635 | 20.334 | 16.091 |
+| Newton反復 / case | 33,037 | 31,050 | 24,571 |
+| 36条件の未収束warning | 0 | 0 | 0 |
+
+collapse step数が全モデルで同じなのは、1-zoneのdensity evolution gridが同じだからである。モデル差は主に、一つのcollapse step内でenergy residualを何回評価するかと、一つのchemical trialを何回のNewton反復で解くかに現れる。
+
+ここで「1回のchemistry」をどの階層で数えるかに注意が必要である。energy root探索中のcandidate temperatureを含む全implicit chemistry呼出しを直接計数しても、中央値は4反復だった。前stepのabundanceが初期値になり、1-zoneのcollapse stepが細かいため、C/Oモデルでも約89%のtrialは4反復以下で終了する。
+
+ただし分布には長いtailがある。C/Oモデルの95 percentileは9、99 percentileは24、最大は96--104反復である。約6%のtrialがboundまたはalgebraic reconstructionを契機とするresetを通り、call数としては少数ながら全Newton反復の約24--25%を消費する。このsurveyでは `itr - 70*(flag_reset+1) > 0` による遅延resetは一度も発生せず、観測されたresetはすべてbound/algebraic failure直後の即時経路だった。したがって「resetがなければrunが止まる」ことと「全stepの中央値が4」であることは矛盾しない。runの成否は少数の難しいstepで決まるが、中央値は多数の容易なstepで決まるためである。
+
+外側の一つのcollapse/chemistry stepではenergy root探索が温度を変えてimplicit solveを約5回呼ぶため、合計では20--22 Newton反復となる。またC/Oモデルではcandidate temperatureに対するtrialの約6%が `chemistry_status=0` で戻り、これらは平均約15反復を消費する。
+
+#### 排他的な上位時間配分
+
+次の4分類は重複しないように、chemistry totalから親子関係を差し引いて作った。
+
+| 処理 | C/O + molecular | C/O + molecular off | fixed CII/OI |
+|---|---:|---:|---:|
+| implicit chemistry | 97.96% | 98.93% | 93.79% |
+| radiative cooling | 1.69% | 0.72% | 4.56% |
+| energy residual内のその他 | 0.21% | 0.21% | 1.04% |
+| energy solver + driver overhead | 0.14% | 0.15% | 0.61% |
+
+fixed CII/OIモデルでradiative coolingの割合が増えるのは、radiative coolingの絶対時間が増えたからではない。絶対時間は約0.228 sでmolecular-off C/O modelの約0.229 sとほぼ同じだが、implicit chemistryが大幅に軽くなったため割合が上がっている。
+
+#### implicit chemistry内部のhot spot
+
+以下は親処理を含むinclusive timeであり、例えばintermediate solveはJacobianやNewton stepの内部からも呼ばれる。そのため列を足して100%にはならない。
+
+| 処理 | C/O + molecular | C/O + molecular off | fixed CII/OI |
+|---|---:|---:|---:|
+| Newton Jacobian | 54.34% | 55.06% | 41.34% |
+| intermediate equilibrium | 27.07% | 27.57% | 10.82% |
+| Newton step・algebraic再構成 | 13.47% | 13.50% | 8.95% |
+| Newton RHS | 5.96% | 6.00% | 12.92% |
+| reaction rate評価 | 2.11% | 2.04% | 10.47% |
+| linear solve | 1.91% | 1.91% | 2.74% |
+| molecular cooling table | 0.95% | 0% | 0% |
+| dust温度 | 1.00% | 0.92% | 5.73% |
+
+C/O chemistryを切るとNewton反復数は一trial当たり `4.06 -> 3.20`、約21%減る。しかしwall timeは `32.08 -> 4.97 s`、約6.45倍短くなる。したがって高速化の主因は反復数だけではなく、各反復で扱うspecies数、C/O reactionのJacobian、複数平衡中間体の代数的応答が消えることである。
+
+molecular coolingを有効にすると、table評価自体は0.326 s、chemistry totalの約0.95%に過ぎない。一方でenergy residual評価が19,175回、Newton RHSが71,513回増え、wall timeは約6.96%増えた。追加costの大半はcooling関数そのものではなく、変化したthermal path上でenergy/chemistry solveのtrial数が増えたことによる。
+
+再生成用ファイル:
+
+- `figures/three_model_performance_comparison.dat`
+- `figures/three_model_performance_comparison.gp`
+
+追加の再生成用ファイル:
+
+- `figures/carbon_chemistry_cooling_comparison_Zm3_z0.gp`
+- `figures/no_co_chem_CII_OI_Z*_z0.dat`
+- `figures/no_co_chem_CII_OI_Zm3_z0_cool.dat`
+
+各cooling成分は次の図のようになる。off側でCO/OH/H2O曲線が消える一方、chemical networkは残り、dustと他のradiative coolingがenergy evolutionを担う。
+
+![molecular cooling rate decomposition](figures/molecular_cooling_rates_Zm3_z0.png)
+
+再生成用ファイル:
+
+- `figures/molecular_cooling_on_off_paths.gp`
+- `figures/molecular_cooling_rates_Zm3_z0.gp`
+- `figures/molecular_on_Z*_z0.dat`
+- `figures/molecular_off_Z*_z0.dat`
+
+### C/O species進化
+
+`Z=10^-3, z=0` のC/O species進化を、molecular cooling on/offで比較した。
+
+![C/O species evolution](figures/carbon_oxygen_species_on_off_Zm3_z0.png)
+
+共通する大きな流れは次の通りである。
+
+1. 低密度ではC+とOが主要reservoirである。
+2. 密度上昇とshielding・分子形成により、炭素はC/COへ、酸素はOH/H2O/O2へ再配分される。
+3. `n ~ 1e4--1e7 cm^-3` でCOが主要な炭素reservoirになる。
+4. 高密度では炭素のほぼ全量がCOへ入り、少量のCO2が残る。
+5. 酸素はCOに使われた分を除き、主にO2とH2Oへ入る。
+
+cooling on/offで最終的なreservoir構造は大きくは変わらないが、温度依存rateを通じて遷移密度とOH/H2Oの一時的な分配が変わる。このfeedbackが、温度peak付近で二つのthermal pathを分けている。
+
+再生成用ファイル:
+
+- `figures/carbon_oxygen_species_on_off_Zm3_z0.gp`
+- `figures/molecular_on_Zm3_z0.dat`
+- `figures/molecular_off_Zm3_z0.dat`
+
+### CMB z=20低密度dust spike
+
+`output_MT_HD_ME0_EIMP_CMBz20.dat` の低密度側では、gas温度のぎざぎざと同じ位置にdust coolingの孤立spikeがあった。
+
+代表例:
+
+| n [cm^-3] | 修正前dust cooling | 安定側の値 |
+|---:|---:|---:|
+| 2.60e-3 | 1.86e-4 | 3.33e-10 |
+| 6.38e-2 | 2.02e-4 | 5.29e-9 |
+
+低密度では真の平衡が
+
+```text
+Tdust - Tradiation ~ 1e-11 K
+```
+
+にあり、最初のNewton更新は正しい点へ到達していた。しかしdouble精度で達成できる相対residualが約 `1e-4` なのに、residual条件は `1e-5` だった。その直後にbracket幅条件が働き、Newton点を中点で上書きして `Tdust-Tradiation ~ 1e-7 K` の偽値を返す場合があった。`Lambda_dust` をgas energyへ使うと、この微小温度誤差が大きな放射cooling spikeへ増幅された。
+
+一方、高密度では `Tdust ~ Tgas` となるため、`Lambda_coll` の `Tgas-Tdust` が桁落ちし、`Lambda_dust` の方が安定していた。したがって片方を全密度域で使うのではなく、次の条件数による切替を採用した。
+
+```text
+|Tgas - Tdust| >= |Tdust - Tradiation|
+    -> Lambda_coll   （低密度側）
+otherwise
+    -> Lambda_dust   （高密度側）
+```
+
+正しく収束していれば両者は等しいため、切替自体は物理modelの変更ではない。有限精度でより大きく分離された温度差を使う側を選んでいる。
+
+追加修正:
+
+- `Tdust^4 - TCMB^4 - stellar_flux/(4 sigma)` の差を直接作らず、`Tradiation`を定義して `Tdust^4-Tradiation^4` を因数分解する。
+- bracket幅で終了するとき、現在のNewton点を中点で上書きしない。
+- 一度試した「全反復中の最小相対residual点を採用」は、high-density opacity transitionで別枝を選んだため撤回した。
+- 温度幅許容値は以前の `max(1e-4 K, 1e-5 Tdust)` に戻した。
+
+単一条件で再計算すると、低密度pathは次のように滑らかになった。
+
+```text
+n=1.00e-3  T=277.24 K
+n=1.28e-3  T=175.40 K
+n=1.66e-3  T=105.44 K
+n=2.03e-3  T= 80.40 K
+n=2.60e-3  T= 68.73 K
+n=3.18e-3  T= 65.81 K
+n=4.08e-3  T= 64.70 K
+```
+
+高密度側では `Tdust ~ Tgas` の枝を維持した。dust opacity tableでPlanck opacityが0になる高温sublimation領域では、`Lambda_dust`側がdust coolingを0へ落とす。このため、単純に常時 `Lambda_coll` を使うと、opacity上dustが消えている領域にもgas-dust collision coolingを残す不整合が起きる。
+
+### 今回の診断から得た実装原則
+
+1. chemical failureをphysical timestep halvingで隠さない。同じstepでguessを変えてrootを探す。
+2. Newton candidateのbound越えを即failureとしない。各成分をbound内へ戻し、代数speciesを再構成して続行する。
+3. 中間体平衡は解析的に縮約するが、停滞時だけ数値Jacobianを使う。
+4. chemical heatingのpath依存補正を入れる前に、abundance solveとenergy residualの連続性を確保する。
+5. 平衡式の左右の項が理論上等しくても、低密度・高密度の両極限で同じ側だけを数値的に使わない。
+6. bracket幅が小さいことと、連続なrootへ収束したことを同一視しない。
+7. molecular coolingのon/off比較ではchemical network自体を共通にし、temperature feedbackによるspecies pathの差を分離する。
+
+今後、dust solverをさらに一般化する場合は
+
+```text
+Tdust = Tradiation + x (Tgas - Tradiation), 0 <= x <= 1
+```
+
+の `x` を解く形が候補になる。これなら低密度の `Tdust-Tradiation` と高密度の `Tgas-Tdust` を、それぞれ近い浮動小数点数の直接減算なしに構成できる。ただし現在のhybrid energy exchangeで今回の低密度・高密度の両問題は解消しているため、これは将来の整理項目とする。
+
+## C/O chemistry追加後のJacobian・中間体処理の高速化
+
+### 反応数が約2倍なのに計算時間が約6倍だった理由
+
+C/O chemistryなしでは、平衡中間体はHMのみで、Newtonの独立変数は4、代数変数は4である。C/O chemistryありでは、平衡中間体がHMを含めて9種となり、Newtonの独立変数は12、代数変数も12となる。active reaction数はおよそ30から66への増加（約2.2倍）だが、次元増加により次の処理が同時に増えていた。
+
+- 各Newton iterationにおけるfull reaction Jacobianの構築
+- 9中間体の平衡解を求める9元連立方程式
+- 9中間体の独立変数に対する応答を求める、多右辺の9元連立方程式
+- 12独立変数と12代数変数の縮約（Schur update）
+- 12元Newton行列の線形解法
+
+したがって、Jacobian評価は「反応を足すだけ」では終わらない。反応由来の微分を構築した後に、平衡中間体と保存則による連鎖微分を独立変数空間へ縮約する費用が支配的だった。
+
+最適化前の `-O0` profile（C/O chemistry + molecular cooling、36条件）では、全体35.014 sに対して以下を要していた。各項には包含関係があるので割合を単純加算してはならない。
+
+| 処理 | 時間 [s] | 全体比 |
+|---|---:|---:|
+| implicit chemistry | 34.309 | 98.0% |
+| Newton Jacobian全体 | 19.091 | 54.5% |
+| solver/algebraic column生成 | 6.471 | 18.5% |
+| 中間体平衡solve全体 | 9.533 | 27.2% |
+| 中間体式assembly | 8.169 | 23.3% |
+| 中間体linear solve | 1.007 | 2.9% |
+| algebraic response | 0.476 | 1.4% |
+| 中間体response solve | 0.552 | 1.6% |
+| dense Schur update | 7.184 | 20.5% |
+| main Newton linear solve | 0.664 | 1.9% |
+
+反応率評価そのものはC/Oなしに対して約1.25倍に留まっていた。主因はrate coefficientではなく、平衡中間体を含むJacobian縮約である。
+
+### 採用した変更
+
+1. **full reaction Jacobianを反応ごとの1回の走査で構築**
+
+   以前は微分するspeciesごとにreaction listを走査していた。各反応のrate積を一度評価し、その反応に現れる全reactant columnへ寄与を加える形へ変更した。
+
+2. **中間体平衡系だけを直接assembly**
+
+   full RHSと複数のfull Jacobian columnを構築せず、各中間体に影響するreaction indexから9本の式と9x9行列だけを作る。反応の加算順序は従来と同じに保った。
+
+3. **Schur updateを構造的な非零項だけに限定**
+
+   solver equationごとに、実際にその行へ寄与する代数speciesだけを抽出した。代数変数の応答自体は変えず、明らかなゼロとの積和だけを除いた。
+
+4. **production buildの既定最適化を`-O2`へ変更**
+
+   `OPTIMIZATION ?= -O2` とし、比較時は `OPTIMIZATION=-O0` で従来条件を再現できる。
+
+`-O0`で構造変更だけを比較した結果は次の通りである。
+
+| 項目 | 変更前 [s] | 変更後 [s] | 変化 |
+|---|---:|---:|---:|
+| profile total | 35.014 | 25.003 | -28.6% |
+| Newton Jacobian | 19.091 | 11.624 | -39.1% |
+| 中間体solve | 9.533 | 6.481 | -32.0% |
+| 中間体assembly | 8.169 | 5.107 | -37.5% |
+| Schur update | 7.184 | 2.366 | -67.1% |
+
+36個の標準出力 `.dat` を比較し、`-O0`では出力精度10桁の範囲で温度進化が完全一致した。
+
+### 採用しなかった変更
+
+9中間体の構造依存関係からscalar/2x2 blockへ分解する一般的なblock solveも試した。しかし、小行列管理のoverheadにより中間体response solveが約0.56 sから約2.69 sへ悪化した。さらにhigh-metallicity, z=5の一部で温度が最大約26.7%変化し、有限精度で異なる平衡枝を選択した。この実装は完全に撤回し、現在は従来通りdense 9x9 LAPACK solveを用いている。
+
+### 最終的な3モデル比較
+
+36条件を連続実行した最終`-O2` buildの結果である。wall timeはprofile instrumentationなし、内訳はprofile buildで別に測定した。
+
+| model | wall time [s] | profile total [s] | implicit chemistry [s] | intermediate solve [s] | Newton Jacobian [s] |
+|---|---:|---:|---:|---:|---:|
+| C/O chemistry + molecular cooling | 7.614 | 7.871 | 7.471 | 2.347 | 3.373 |
+| C/O chemistry, molecular cooling off | 6.909 | 7.324 | 7.118 | 2.254 | 3.246 |
+| CO chemistry off, CII/OI coolingのみ | 1.652 | 1.678 | 1.504 | 0.150 | 0.570 |
+
+最適化前のprofileなし`-O0` wall timeは、それぞれ34.32 s、32.08 s、4.97 sだった。したがって最終buildではC/O + molecular modelが約4.51倍、molecular offが約4.64倍、CO chemistry off modelが約3.01倍高速になった。
+
+最終状態でもC/O + molecular modelはCO chemistry off modelの約4.61倍、molecular offは約4.18倍である。molecular line cooling自体の追加費用は約10.2%であり、残りの大半はC/O networkと9中間体の平衡縮約に由来する。C/O + molecular profileでは、中間体平衡solveが全体の29.8%、Newton Jacobianが42.9%を占めた。呼び出し回数は中間体平衡solveが約284.5万回、中間体response solveが約116.9万回であり、小さな連立方程式でも累積費用は大きい。
+
+最終`-O2`と構造変更後`-O0`の36条件比較では、温度の最大相対差は `3.1e-8` で、warningは発生しなかった。この差はcompiler optimizationによる浮動小数点演算順序の差の範囲であり、進化pathは一致している。
+
+今後さらに高速化する場合の主対象は、reaction rate式ではなく、同一評価内での中間体行列factorizationの再利用、または現在の9x9系に特化した低overhead solverである。ただし平衡枝を変えないことが必須であり、一般的なblock分解は今回の検証では不採用となった。
+
+### 中間体block分解の再検証
+
+前回のblock分解で解が変わった原因を確認するため、reaction tableから中間体依存graphを構築し、dense解とblock解を全呼び出しで直接比較した。現在のnetworkの構造は次の通りだった。
+
+```text
+HM                          scalar
+CO+                         scalar
+CH <-> CH2                  2x2 coupled block
+O+ -> OH+ -> H2O+ -> H3O+   directed chain
+O2+                         scalar
+```
+
+この構造は中間体について線形な任意のreaction tableから機械的に抽出できる。ただし、directed chainをscalar SCCへ分解した前進代入は数値的に安全ではなかった。低電子存在量領域ではH3O+ equationの対角成分が実測で約 `4e-31` まで小さくなり、上流のH2O+項と右辺のほぼ完全な相殺からH3O+ responseが決まっていた。
+
+代表的なJacobian response equationは概略
+
+```text
+5.50e-3 d(H2O+)/dx - 4.05e-31 d(H3O+)/dx = -2.11e-9
+```
+
+となっていた。この場合、scalar前進代入とdense LUはどちらも小さなresidualを持ち得るが、丸め誤差により `d(H3O+)/dx` がfactor 2程度異なる例があった。これはgraphの取り違えではなく、平衡中間体response系そのものの極端な悪条件性による。
+
+そこで、無向に結合したreaction familyを一つのpivot可能blockとして
+
+```text
+{HM}, {CO+}, {CH,CH2}, {O+,OH+,H2O+,H3O+}, {O2+}
+```
+
+に分ける方法も検証した。しかし4x4 blockとfull 9x9 LAPACKでは悪条件系における丸め順序が異なり、多右辺responseの一致は得られなかった。
+
+多右辺responseを従来のdense 9x9に残し、平衡abundanceの1右辺solveだけをblock化する構成では、36条件について最大相対温度差は `4.2e-7` まで抑えられた。ただし極微量中間体には数%の相対差が残った。また同一環境でのprofileなしwall timeは
+
+| solve | wall time [s] |
+|---|---:|
+| dense 9x9 | 7.322 |
+| abundanceのみblock | 7.414 |
+
+となり、block版の方が約1.3%遅かった。小blockを複数回呼ぶoverheadが、Accelerate/LAPACKによる9x9 solve一回を上回ったためである。このためblock solver実装は撤回し、production codeはdense 9x9へ戻した。
+
+今後の安全な候補はsparsity分解ではなく、同じ9x9 factorizationを平衡abundance solveと直後のresponse solveで再利用することである。これならglobal pivotingと現在の数値解を維持できる。ただし、両地点で構築される行列がbitwiseに一致することを先に確認する必要がある。もう一つの候補は中間体変数・平衡式のscalingだが、H3O+ responseの数値解自体を変える可能性があるため、性能変更ではなく数値安定性の問題として別に検証する。

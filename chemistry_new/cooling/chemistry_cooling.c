@@ -14,10 +14,12 @@
 #include "chemistry_cooling.h"
 #include "chemistry_diagnostics.h"
 #include "chemistry_models.h"
+#include "chemistry_profile.h"
 #include "chemistry_types.h"
 #include "cooling_func.h"
 #include "dust_cooling.h"
 #include "forward_rates.h"
+#include "molecular_cooling.h"
 #include "partition.h"
 #include "reaction_network.h"
 #include "chemistry_tables.h"
@@ -27,6 +29,28 @@
 
 int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemStepData *step, const ChemState *state, ChemWorkspace *work)
 {
+#ifdef CHEMISTRY_PROFILE
+  double profile_start = chemistry_profile_time();
+#endif
+  work->diagnostics.H2_escape_fraction = 1.0;
+#ifdef HD
+  work->diagnostics.HD_escape_fraction = 1.0;
+#endif
+  work->diagnostics.edot_H2 = 0.0;
+#ifdef HD
+  work->diagnostics.edot_HD = 0.0;
+#endif
+  work->diagnostics.edot_ceHI = 0.0;
+#ifdef METALLICITY
+  work->diagnostics.edot_CI = work->diagnostics.edot_CII = work->diagnostics.edot_OI = 0.0;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  work->diagnostics.edot_CO = work->diagnostics.edot_OH = work->diagnostics.edot_H2O = 0.0;
+#endif
+#ifdef DUST_COOLING
+  work->diagnostics.edot_dust = 0.0;
+#endif
+  work->diagnostics.edot_cont = 0.0;
   const double T_gas = work->thermodynamics.temperature;
   const double rho_gas = environment->rho_cgs;
   const double n_nuclei = rho_gas/PROTONMASS;
@@ -192,9 +216,15 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   if(FlagPrint)
     printf("f_metal=%g\n", metallicity);
 
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double nOI  = n_nuclei * state->abund[sOI];
+  double nCI  = n_nuclei * state->abund[sCI];
+  double nCII = n_nuclei * state->abund[sCII];
+#else
   double nOI  = n_nuclei * XH * Y_O_sun * metallicity;
   double nCI  = n_nuclei * XH * Y_C_sun * metallicity;
   double nCII = n_nuclei * XH * Y_C_sun * metallicity;
+#endif
   double ne   = state->abund[sELEC] * n_nuclei;
 
   double cool_rate_OI  = OxygenI_twolevel_cooling(nOI, ne, nH, T_gas);
@@ -204,6 +234,19 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   double edot_OI  = -1.0 * cool_rate_OI;
   double edot_CI  = -1.0 * cool_rate_CI;
   double edot_CII = -1.0 * cool_rate_CII;
+#endif
+
+#ifdef MOLECULAR_LINE_COOLING
+  double radiation_temperature = 0.0;
+#ifdef CMB_HEATING
+  radiation_temperature = environment->cmb_temperature;
+#endif
+  double cool_rate_CO, cool_rate_OH, cool_rate_H2O;
+  evaluate_molecular_line_cooling(T_gas, radiation_temperature, l_core, n_nuclei, state->abund,
+                                  &cool_rate_CO, &cool_rate_OH, &cool_rate_H2O);
+  double edot_CO = -cool_rate_CO;
+  double edot_OH = -cool_rate_OH;
+  double edot_H2O = -cool_rate_H2O;
 #endif
 
   /******************************************************************************************/
@@ -261,6 +304,11 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   edot_CII  *= exp(-tau_cont);
   edot_OI   *= exp(-tau_cont);
 #endif
+#ifdef MOLECULAR_LINE_COOLING
+  edot_CO   *= exp(-tau_cont);
+  edot_OH   *= exp(-tau_cont);
+  edot_H2O  *= exp(-tau_cont);
+#endif
 
 #ifdef METAL_LINE_COOLING_SD93
   edot_metal_SD93 *= exp(-tau_cont);
@@ -292,11 +340,16 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
 #ifdef METALLICITY
     + edot_CI + edot_CII + edot_OI
 #endif
+#ifdef MOLECULAR_LINE_COOLING
+    + edot_CO + edot_OH + edot_H2O
+#endif
 #ifdef METAL_LINE_COOLING_SD93
     + edot_metal_SD93
 #endif
 #ifdef DUST_COOLING
+#ifndef CHEM_DISABLE_DUST_COOLING_RATE
     + edot_dust
+#endif
 #ifdef LYMANWERNER
     + edot_PE
 #endif
@@ -314,6 +367,11 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
 
 
   if(FlagPrint){
+#ifdef MOLECULAR_LINE_COOLING
+    printf("molecular_cooling: CO=%g OH=%g H2O=%g T=%g Tcmb=%g nH2=%g l_core=%g\n",
+           edot_CO, edot_OH, edot_H2O, T_gas, radiation_temperature,
+           n_nuclei * state->abund[sH2I], l_core);
+#endif
 #ifdef METALLICITY
     printf("cool_rate:tot=%g HI=%g H2=%g HD=%g comp=%g CI=%g CII=%g OI=%g dust=%g cont=%g f_reduce=%g Tdust=%g T_gas=%g radHI=%g\n",
 	   edot, edot_ceHI, edot_H2, edot_HD, edot_comp, edot_CI, edot_CII, edot_OI, edot_dust,  edot_cont,
@@ -333,12 +391,11 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   if(FlagPrint)
     printf("cool_rate:T_gas=%g n=%g tot=%g rad=%g HI=%g H2=%g comp=%g CI=%g CII=%g OI=%g dust=%g cont=%g f_reduce=%g f_line=%g tau=%g Tdust=%g Trad=%g\n",
 	   T_gas, n_nuclei, edot, edot_radHI, edot_ceHI, edot_H2, edot_comp, edot_CI, edot_CII, edot_OI, edot_dust, edot_cont,
-	   f_reduce, work->diagnostics.H2_escape_fraction->EscapeProb, tau_cont,
+	   f_reduce, work->diagnostics.H2_escape_fraction, tau_cont,
 	   work->continuum.dust_temperature, pow(environment->stellar_rad_flux / STEFAN / 4., 0.25));
 #endif
 #endif
 
-#if defined(DEBUG_CHEMISTRY_SC)
   work->diagnostics.edot_ceHI = edot_ceHI;
   work->diagnostics.edot_comp = edot_comp;
   work->diagnostics.edot_H2 = edot_H2;
@@ -361,6 +418,7 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   work->diagnostics.edot_reHI = edot_reHI;
   work->diagnostics.edot_brem = edot_brem;
   work->diagnostics.edot_CIE = edot_CIE;
+  work->diagnostics.edot_cont = edot_reHI + edot_brem + edot_CIE;
 #endif
 
 #ifdef HD
@@ -371,13 +429,19 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   work->diagnostics.edot_CII = edot_CII;
   work->diagnostics.edot_OI  = edot_OI;
 #endif
+#ifdef MOLECULAR_LINE_COOLING
+  work->diagnostics.edot_CO = edot_CO;
+  work->diagnostics.edot_OH = edot_OH;
+  work->diagnostics.edot_H2O = edot_H2O;
+#endif
 #ifdef DUST_COOLING
   work->diagnostics.edot_dust = edot_dust;
 #ifdef LYMANWERNER
   work->diagnostics.edot_PE = edot_PE;
 #endif
 #endif
-#endif
+  work->diagnostics.edot_radHI = edot_radHI;
+  work->diagnostics.edot_rad = edot;
 
   work->evaluation.rhoU_dot_rad = edot;
 
@@ -387,6 +451,9 @@ int evaluate_radiative_cooling(const ChemEnvironment *environment, const ChemSte
   if(fabs(edot) < 1.0e-40)
     work->evaluation.t_cool_rad = MAX_REAL_NUMBER;
 
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_RADIATIVE_COOLING, chemistry_profile_time() - profile_start);
+#endif
   return 0;
 }
 
@@ -458,13 +525,16 @@ int radiative_cooling_high_T(const ChemEnvironment *environment, const ChemStepD
 }
 
 int chemical_cooling(const ChemEnvironment *environment, const ChemState *state, ChemWorkspace *work, double dt, double *abund_old){
+#ifdef CHEMISTRY_PROFILE
+  double profile_start = chemistry_profile_time();
+#endif
   const double T_gas = work->thermodynamics.temperature;
   const double rho_gas = environment->rho_cgs;
   const double n_nuclei = rho_gas / PROTONMASS;
 
-  double edot_H2form,edot_H2form_3body;
+  double edot_H2form = 0., edot_H2form_3body = 0.;
   double edot_ciHI, edot_ciHeI, edot_ciHeII;
-  double edot_HMform;
+  double edot_HMform = 0.;
 
   enum SPECIES species;
   double d_abundance[N_SP];
@@ -493,8 +563,8 @@ int chemical_cooling(const ChemEnvironment *environment, const ChemState *state,
   double n_crit = (1.e6 / sqrt(T_gas))
     / (1.6 * state->abund[sHI] * exp(-(400.0/T_gas)*(400.0/T_gas)) + 1.4 * state->abund[sH2I] * exp(-12000.0/(T_gas + 1200.0)));
 
-  double edot_H2form_HM, edot_H2form_dust, edot_ciHI_EUV;
-  double edot_H2form_HM_loss, edot_H2form_dust_loss, edot_H2diss_FUV, edot_H2form_3body_loss;
+  double edot_H2form_HM = 0., edot_H2form_dust = 0., edot_ciHI_EUV = 0.;
+  double edot_H2form_HM_loss = 0., edot_H2form_dust_loss = 0., edot_H2diss_FUV = 0., edot_H2form_3body_loss = 0.;
 
   if(dt == 0.){
     edot_H2form_HM = eV_to_erg * ( work->rates.forward[8] * n_HM * n_HI * 3.73/ (1. + n_crit/n_HI)
@@ -585,6 +655,18 @@ int chemical_cooling(const ChemEnvironment *environment, const ChemState *state,
   //modified[0814] in case for SphP[ithis].Entropy is not updated.
 
   work->evaluation.t_cool_chem = (rhoU/work->evaluation.rhoU_dot_chem); /* in seconds */
+
+  work->diagnostics.edot_ciHI = edot_ciHI;
+  work->diagnostics.edot_H2form_gas = edot_H2form;
+  work->diagnostics.edot_HMform = edot_HMform;
+  work->diagnostics.edot_H2form_HM = edot_H2form_HM;
+  work->diagnostics.edot_H2form_dust = edot_H2form_dust;
+  work->diagnostics.edot_H2form_3body = edot_H2form_3body;
+  work->diagnostics.edot_chem = work->evaluation.rhoU_dot_chem;
+  work->diagnostics.n_crit = n_crit;
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_CHEMICAL_COOLING, chemistry_profile_time() - profile_start);
+#endif
 
   return 0;
 }

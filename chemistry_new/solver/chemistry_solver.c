@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <signal.h>
+#include <stdint.h>
 
 #include "allvars.h"
 #include "proto.h"
@@ -14,12 +15,14 @@
 #include "chemistry_cooling.h"
 #include "chemistry_diagnostics.h"
 #include "chemistry_models.h"
+#include "chemistry_profile.h"
 #include "chemistry_types.h"
 #include "cooling_func.h"
 #include "forward_rates.h"
 #include "partition.h"
 #include "reaction_network.h"
 #include "reaction_rates.h"
+#include "species.h"
 #include "chemistry_solver.h"
 #include "saha.h"
 #include "chemistry_tables.h"
@@ -42,6 +45,9 @@ static double commit_g(const ChemEnvironment *environment, const ChemStepData *s
 #define BETA_ENERGY 1.0
 
 int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, ChemistrySolver chemistry_solver, double dt){
+#ifdef CHEMISTRY_PROFILE
+  double profile_start = chemistry_profile_time();
+#endif
   const double rho_gas = environment->rho_cgs;
   const double T_gas = work->thermodynamics.temperature;
 
@@ -384,12 +390,20 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
   }
 
   if(err > 1.0e-4){
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_report_energy_warning();
+#endif
     *work = work_old;
     *state = state_old;
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_add(CHEM_PROFILE_ENERGY_SOLVER, chemistry_profile_time() - profile_start);
+#endif
     return 1;
   }
 
-
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_ENERGY_SOLVER, chemistry_profile_time() - profile_start);
+#endif
   return 0;
 }
 #pragma opt
@@ -397,9 +411,13 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 
 static double evaluate_g(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, ChemistrySolver chemistry_solver, double dt, double T_gas_new, double *e_new, double *g, int commit)
 {
+#ifdef CHEMISTRY_PROFILE
+  double profile_start = chemistry_profile_time();
+#endif
   ChemWorkspace work_trial = *work;
   ChemState state_trial = *state;
   double e_old = state_trial.utherm_cgs;
+  int chemistry_status = 1;
 
   work_trial.thermodynamics.temperature = T_gas_new;
 #ifdef SAHA
@@ -407,7 +425,17 @@ static double evaluate_g(const ChemEnvironment *environment, const ChemStepData 
     chemistry_saha(environment, &state_trial, &work_trial, dt);
   else
 #endif
-    chemistry_noneq_chem_implicit(environment, step, &state_trial, &work_trial, dt);
+    {
+#ifdef CHEMISTRY_PROFILE
+      double chemistry_start = chemistry_profile_time();
+#endif
+      chemistry_status = chemistry_noneq_chem_implicit(environment, step, &state_trial, &work_trial, dt);
+#ifdef CHEMISTRY_PROFILE
+      if(!chemistry_status)
+        chemistry_status = -chemistry_profile_last_failure();
+      chemistry_profile_add(CHEM_PROFILE_IMPLICIT_CHEMISTRY, chemistry_profile_time() - chemistry_start);
+#endif
+    }
   evaluate_radiative_cooling(environment, step, &state_trial, &work_trial);
 
   double T_gamma = chemistry_temperature(state_trial.abund, state_trial.gamma, state_trial.utherm_cgs);
@@ -427,6 +455,12 @@ static double evaluate_g(const ChemEnvironment *environment, const ChemStepData 
 #endif
 
   *g  = *e_new - e_old - de;
+
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_record_residual(environment, &state_trial, &work_trial, T_gas_new, dt,
+                                    e_old, *e_new, *g, chemistry_status);
+  chemistry_profile_add(CHEM_PROFILE_ENERGY_RESIDUAL, chemistry_profile_time() - profile_start);
+#endif
 
   if(FlagPrint)
     printf("resid(e_new-e_old-de)=%g e_new=%g old=%g de=%g Tgas=%g rhoU_dot_chem=%g cool=%g rho_gas=%g dt=%g xmu=%g gamma=%g\n"
@@ -493,10 +527,16 @@ double solve_bisection(const ChemEnvironment *environment, const ChemStepData *s
 #endif
 
 
-static const enum SPECIES intermediate_equilibrium_species[] = {sHM};
 #ifdef CHEM_INTERMEDIATE_EQUILIBRIUM
+static const enum SPECIES intermediate_equilibrium_species[] = {
+  sHM,
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  sCOII, sCH, sCH2, sOII, sOHII, sH2OII, sH3OII, sO2II,
+#endif
+};
 static const size_t intermediate_equilibrium_species_count = sizeof(intermediate_equilibrium_species) / sizeof(intermediate_equilibrium_species[0]);
 #else
+static const enum SPECIES intermediate_equilibrium_species[1] = {sEND};
 static const size_t intermediate_equilibrium_species_count = 0;
 #endif
 
@@ -510,43 +550,80 @@ static int chemistry_species_is_intermediate_equilibrium(enum SPECIES species)
 
 static int chemistry_update_intermediate_equilibrium_species(unsigned char mode, double nH, double *abundance, const ChemRates *rates)
 {
-  double previous[N_SP];
+#ifdef CHEMISTRY_PROFILE
+  double profile_start = chemistry_profile_time();
+#define INTERMEDIATE_RETURN(value) do { chemistry_profile_add(CHEM_PROFILE_INTERMEDIATES, chemistry_profile_time() - profile_start); return (value); } while(0)
+#else
+#define INTERMEDIATE_RETURN(value) return (value)
+#endif
   double updated[sizeof(intermediate_equilibrium_species) / sizeof(intermediate_equilibrium_species[0])];
 
   if(intermediate_equilibrium_species_count == 0)
-    return 1;
+    INTERMEDIATE_RETURN(1);
 
   if(intermediate_equilibrium_species_count == 1) {
     enum SPECIES species = intermediate_equilibrium_species[0];
     if(!chemistry_network_intermediate_equilibrium_abundance(species, mode, nH, abundance, rates->forward, rates->inverse, &updated[0], NULL))
-      return 0;
+      INTERMEDIATE_RETURN(0);
     abundance[species] = updated[0];
-    return 1;
+    INTERMEDIATE_RETURN(1);
   }
 
-  for(int iteration = 0; iteration < 32; iteration++) {
-    memcpy(previous, abundance, sizeof(previous));
-    double max_change = 0.0;
+  int n_intermediate = (int)intermediate_equilibrium_species_count;
+  double trial[N_SP];
+  double rhs[N_SP];
+  double matrix[N_SP * N_SP];
+  int pivots[N_SP];
+  int one = 1;
+  int info;
 
-    for(size_t i = 0; i < intermediate_equilibrium_species_count; i++) {
-      enum SPECIES species = intermediate_equilibrium_species[i];
-      if(!chemistry_network_intermediate_equilibrium_abundance(species, mode, nH, previous, rates->forward, rates->inverse, &updated[i], NULL))
-        return 0;
-      double change = fabs(updated[i] - previous[species]) / (fabs(updated[i]) + 1.e-80);
-      if(change > max_change)
-        max_change = change;
-    }
+  memcpy(trial, abundance, sizeof(trial));
+  for(int i = 0; i < n_intermediate; i++)
+    trial[intermediate_equilibrium_species[i]] = 0.0;
 
-    for(size_t i = 0; i < intermediate_equilibrium_species_count; i++)
-      abundance[intermediate_equilibrium_species[i]] = updated[i];
+#ifdef CHEMISTRY_PROFILE
+  double assembly_start = chemistry_profile_time();
+#endif
+  chemistry_network_intermediate_system(mode, nH, trial, rates->forward, rates->inverse,
+                                        intermediate_equilibrium_species, n_intermediate, rhs, matrix);
 
-    if(max_change < 1.e-12)
-      return 1;
+  for(int row = 0; row < n_intermediate; row++)
+    updated[row] = -rhs[row];
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_INTERMEDIATE_ASSEMBLY, chemistry_profile_time() - assembly_start);
+  double intermediate_linear_start = chemistry_profile_time();
+#endif
+
+  dgesv_(&n_intermediate, &one, matrix, &n_intermediate, pivots, updated, &n_intermediate, &info);
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_INTERMEDIATE_LINEAR_SOLVE, chemistry_profile_time() - intermediate_linear_start);
+#endif
+  if(info != 0)
+    INTERMEDIATE_RETURN(0);
+
+  double negative_tolerance = 1.e-30;
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double element_scale = 0.0;
+  const enum SPECIES stored_metal_species[] = {sCI, sCII, sCO, sCO2, sOI, sOH, sH2O, sO2};
+  for(size_t i = 0; i < sizeof(stored_metal_species) / sizeof(stored_metal_species[0]); i++)
+    element_scale = dmax(element_scale, fabs(abundance[stored_metal_species[i]]));
+  negative_tolerance = dmax(negative_tolerance, 1.e-12 * element_scale);
+#endif
+
+  for(int i = 0; i < n_intermediate; i++) {
+    if(!isfinite(updated[i]) || updated[i] < -negative_tolerance)
+      INTERMEDIATE_RETURN(0);
+    abundance[intermediate_equilibrium_species[i]] = dmax(updated[i], 0.0);
   }
-  return 0;
+  INTERMEDIATE_RETURN(1);
+#undef INTERMEDIATE_RETURN
 }
 
+#ifdef CARBON_OXYGEN_CHEMISTRY
+#define CHEM_MAX_CONSERVATION_CONSTRAINTS 6
+#else
 #define CHEM_MAX_CONSERVATION_CONSTRAINTS 4
+#endif
 
 typedef struct {
   int count;
@@ -565,7 +642,50 @@ static void chemistry_add_conservation_constraint(ChemConservationSystem *conser
   conservation->is_dependent[dependent_species] = 1;
 }
 
-static int chemistry_build_conservation_system(ChemConservationSystem *conservation)
+static int chemistry_invert_dependent_matrix(ChemConservationSystem *conservation)
+{
+  const int count = conservation->count;
+  double augmented[CHEM_MAX_CONSERVATION_CONSTRAINTS][2 * CHEM_MAX_CONSERVATION_CONSTRAINTS];
+
+  for(int constraint = 0; constraint < count; constraint++)
+    for(int column = 0; column < 2 * count; column++)
+      augmented[constraint][column] = column < count ?
+          conservation->coefficient[constraint][conservation->dependent_species[column]] :
+          (column - count == constraint ? 1.0 : 0.0);
+
+  for(int pivot = 0; pivot < count; pivot++) {
+    int pivot_row = pivot;
+    for(int row = pivot + 1; row < count; row++)
+      if(fabs(augmented[row][pivot]) > fabs(augmented[pivot_row][pivot]))
+        pivot_row = row;
+    if(fabs(augmented[pivot_row][pivot]) < 1.e-30)
+      return 0;
+    if(pivot_row != pivot)
+      for(int column = 0; column < 2 * count; column++) {
+        double temporary = augmented[pivot][column];
+        augmented[pivot][column] = augmented[pivot_row][column];
+        augmented[pivot_row][column] = temporary;
+      }
+
+    double inverse_pivot = 1.0 / augmented[pivot][pivot];
+    for(int column = 0; column < 2 * count; column++)
+      augmented[pivot][column] *= inverse_pivot;
+    for(int row = 0; row < count; row++) {
+      if(row == pivot)
+        continue;
+      double factor = augmented[row][pivot];
+      for(int column = 0; column < 2 * count; column++)
+        augmented[row][column] -= factor * augmented[pivot][column];
+    }
+  }
+
+  for(int dependent = 0; dependent < count; dependent++)
+    for(int constraint = 0; constraint < count; constraint++)
+      conservation->dependent_inverse[constraint * count + dependent] = augmented[dependent][count + constraint];
+  return 1;
+}
+
+static int chemistry_build_conservation_system(ChemConservationSystem *conservation, double metallicity, double n_nuclei)
 {
   memset(conservation, 0, sizeof(*conservation));
 
@@ -590,6 +710,45 @@ static int chemistry_build_conservation_system(ChemConservationSystem *conservat
   conservation->coefficient[deuterium_constraint][sHDI] = 1.0;
 #endif
 
+#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifndef CHEM_DISABLE_CARBON_OXYGEN_CONSERVATION
+  int molecular_dependent = n_nuclei >= CHEM_CO_O2_DEPENDENT_DENSITY;
+  int carbon_constraint = conservation->count;
+  chemistry_add_conservation_constraint(conservation, molecular_dependent ? sCO : sCI, A_C_sun * metallicity);
+  conservation->coefficient[carbon_constraint][sCI] = 1.0;
+  conservation->coefficient[carbon_constraint][sCII] = 1.0;
+  conservation->coefficient[carbon_constraint][sCO] = 1.0;
+  conservation->coefficient[carbon_constraint][sCO2] = 1.0;
+#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+  conservation->coefficient[carbon_constraint][sCOII] = 1.0;
+  conservation->coefficient[carbon_constraint][sCH] = 1.0;
+  conservation->coefficient[carbon_constraint][sCH2] = 1.0;
+#endif
+
+  int oxygen_constraint = conservation->count;
+  chemistry_add_conservation_constraint(conservation, molecular_dependent ? sO2 : sOI, A_O_sun * metallicity);
+  conservation->coefficient[oxygen_constraint][sOI] = 1.0;
+  conservation->coefficient[oxygen_constraint][sOH] = 1.0;
+  conservation->coefficient[oxygen_constraint][sH2O] = 1.0;
+  conservation->coefficient[oxygen_constraint][sO2] = 2.0;
+  conservation->coefficient[oxygen_constraint][sCO] = 1.0;
+  conservation->coefficient[oxygen_constraint][sCO2] = 2.0;
+#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+  conservation->coefficient[oxygen_constraint][sCOII] = 1.0;
+  conservation->coefficient[oxygen_constraint][sOII] = 1.0;
+  conservation->coefficient[oxygen_constraint][sOHII] = 1.0;
+  conservation->coefficient[oxygen_constraint][sH2OII] = 1.0;
+  conservation->coefficient[oxygen_constraint][sH3OII] = 1.0;
+  conservation->coefficient[oxygen_constraint][sO2II] = 2.0;
+#endif
+#else
+  (void)n_nuclei;
+#endif
+#else
+  (void)metallicity;
+  (void)n_nuclei;
+#endif
+
   int charge_constraint = conservation->count;
   chemistry_add_conservation_constraint(conservation, sELEC, 0.0);
   conservation->coefficient[charge_constraint][sELEC] = -1.0;
@@ -598,15 +757,19 @@ static int chemistry_build_conservation_system(ChemConservationSystem *conservat
   conservation->coefficient[charge_constraint][sHeII] = 1.0;
   conservation->coefficient[charge_constraint][sHeIII] = 2.0;
 #endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  conservation->coefficient[charge_constraint][sCII] = 1.0;
+#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+  conservation->coefficient[charge_constraint][sCOII] = 1.0;
+  conservation->coefficient[charge_constraint][sOII] = 1.0;
+  conservation->coefficient[charge_constraint][sOHII] = 1.0;
+  conservation->coefficient[charge_constraint][sH2OII] = 1.0;
+  conservation->coefficient[charge_constraint][sH3OII] = 1.0;
+  conservation->coefficient[charge_constraint][sO2II] = 1.0;
+#endif
+#endif
 
-  for(int constraint = 0; constraint < conservation->count; constraint++) {
-    enum SPECIES dependent = conservation->dependent_species[constraint];
-    double diagonal = conservation->coefficient[constraint][dependent];
-    if(diagonal == 0.0)
-      return 0;
-    conservation->dependent_inverse[constraint * conservation->count + constraint] = 1.0 / diagonal;
-  }
-  return 1;
+  return chemistry_invert_dependent_matrix(conservation);
 }
 
 static int chemistry_species_is_conservation_dependent(enum SPECIES species, const ChemConservationSystem *conservation)
@@ -621,58 +784,175 @@ static int chemistry_species_is_algebraic(enum SPECIES species, const ChemConser
 
 static int chemistry_update_implicit_algebraic_species(double nH, double *abundance, const ChemRates *rates, const ChemConservationSystem *conservation)
 {
-  abundance[sHI] = 1.0 - abundance[sHII] - 2.0 * abundance[sH2I];
-#ifdef HELIUM
-  abundance[sHeI] = XHe / XH - abundance[sHeII] - abundance[sHeIII];
-#endif
-#ifdef HD
-  abundance[sDI] = D_number_fraction / XH - abundance[sDII] - abundance[sHDI];
-#endif
-  abundance[sELEC] = abundance[sHII];
-#ifdef HELIUM
-  abundance[sELEC] += abundance[sHeII] + 2.0 * abundance[sHeIII];
-#endif
+  double remaining[CHEM_MAX_CONSERVATION_CONSTRAINTS];
+  for(int constraint = 0; constraint < conservation->count; constraint++) {
+    remaining[constraint] = conservation->total[constraint];
+    for(int species = 0; species < N_SP; species++)
+      if(!conservation->is_dependent[species])
+        remaining[constraint] -= conservation->coefficient[constraint][species] * abundance[species];
+  }
 
-  if(!isfinite(abundance[sHI]) || !isfinite(abundance[sELEC])
-#ifdef HELIUM
-     || !isfinite(abundance[sHeI])
-#endif
-#ifdef HD
-     || !isfinite(abundance[sDI])
-#endif
-    )
-    return 0;
+  for(int dependent = 0; dependent < conservation->count; dependent++) {
+    double value = 0.0;
+    for(int constraint = 0; constraint < conservation->count; constraint++)
+      value += conservation->dependent_inverse[constraint * conservation->count + dependent] * remaining[constraint];
+    abundance[conservation->dependent_species[dependent]] = value;
+    if(!isfinite(value))
+      return 0;
+  }
 
   return chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_IMPLICIT, nH, abundance, rates);
 }
 
-static int chemistry_apply_implicit_newton_step(double nH, double *abundance, double *delta, const double *upper_bound, const ChemRates *rates, const ChemConservationSystem *conservation)
+static int chemistry_apply_implicit_newton_step(double nH, double *abundance, double *delta, const double *upper_bound, const ChemRates *rates, const ChemConservationSystem *conservation, int *invalid_species)
 {
   double initial[N_SP];
   memcpy(initial, abundance, sizeof(initial));
 
-  double step_scale = 1.0;
-  for(int attempt = 0; attempt < 24; attempt++) {
-    double trial[N_SP];
-    for(int species = 0; species < N_SP; species++)
-      trial[species] = initial[species] + step_scale * delta[species];
-
-    int valid = chemistry_update_implicit_algebraic_species(nH, trial, rates, conservation);
-    for(int species = 0; valid && species < N_SP; species++)
-      if(!isfinite(trial[species]) || trial[species] < 0.0 || trial[species] > upper_bound[species])
-        valid = 0;
-
-    if(valid) {
-      for(int species = 0; species < N_SP; species++) {
-        delta[species] = trial[species] - initial[species];
-        abundance[species] = trial[species];
-      }
-      return 1;
+  *invalid_species = -1;
+  double trial[N_SP];
+  for(int species = 0; species < N_SP; species++) {
+    if(chemistry_species_is_algebraic(species, conservation)) {
+      trial[species] = initial[species];
+      continue;
     }
-    step_scale *= 0.5;
+    if(!isfinite(delta[species])) {
+      *invalid_species = species;
+      return 0;
+    }
+    if(initial[species] + delta[species] < 0.1 * initial[species])
+      delta[species] = -0.9 * initial[species];
+    else if(initial[species] + delta[species] > upper_bound[species])
+      delta[species] = dmin(0.9 * initial[species], 0.9 * (upper_bound[species] - initial[species]));
+    trial[species] = initial[species] + delta[species];
+  }
+
+  int valid = chemistry_update_implicit_algebraic_species(nH, trial, rates, conservation);
+  if(!valid)
+    *invalid_species = -2;
+#ifdef CHEMISTRY_PROFILE
+  if(!valid)
+    chemistry_profile_set_failure(600);
+#endif
+  for(int species = 0; valid && species < N_SP; species++)
+    if(!isfinite(trial[species]) || trial[species] < 0.0 || trial[species] > upper_bound[species]) {
+      valid = 0;
+      *invalid_species = species;
+#ifdef CHEMISTRY_PROFILE
+      chemistry_profile_set_failure(700 + species);
+#endif
+    }
+
+  if(!valid)
+    return 0;
+  for(int species = 0; species < N_SP; species++) {
+    delta[species] = trial[species] - initial[species];
+    abundance[species] = trial[species];
+  }
+  return 1;
+}
+
+#ifdef CHEMISTRY_RANDOM_RESTART_DIAGNOSTIC
+#define CHEMISTRY_RANDOM_RESTART_MAX 512
+
+static uint64_t chemistry_random_u64(uint64_t *state)
+{
+  uint64_t z = (*state += UINT64_C(0x9e3779b97f4a7c15));
+  z = (z ^ (z >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+  z = (z ^ (z >> 27)) * UINT64_C(0x94d049bb133111eb);
+  return z ^ (z >> 31);
+}
+
+static double chemistry_random_unit(uint64_t *state)
+{
+  return (chemistry_random_u64(state) >> 11) * 0x1.0p-53;
+}
+
+static double chemistry_random_weight(uint64_t *state)
+{
+  return pow(10.0, -12.0 * chemistry_random_unit(state));
+}
+
+static void chemistry_random_partition(uint64_t *random_state, int count, const double *multiplicity, double total, double *values)
+{
+  double weights[4];
+  double normalization = 0.0;
+  for(int i = 0; i < count; i++) {
+    weights[i] = chemistry_random_weight(random_state);
+    normalization += multiplicity[i] * weights[i];
+  }
+  for(int i = 0; i < count; i++)
+    values[i] = total * weights[i] / normalization;
+}
+
+static int chemistry_randomize_newton_guess(double nH, double metallicity, double *abundance, const ChemRates *rates, const ChemConservationSystem *conservation, uint64_t *random_state)
+{
+  const double unit_multiplicity[4] = {1.0, 1.0, 1.0, 1.0};
+  const double hydrogen_multiplicity[3] = {1.0, 1.0, 2.0};
+  const double oxygen_multiplicity[4] = {1.0, 1.0, 1.0, 2.0};
+  double values[4];
+
+  for(int sample = 0; sample < 128; sample++) {
+    chemistry_random_partition(random_state, 3, hydrogen_multiplicity, 1.0, values);
+    abundance[sHI] = values[0];
+    abundance[sHII] = values[1];
+    abundance[sH2I] = values[2];
+    abundance[sHM] = pow(10.0, -30.0 + 27.0 * chemistry_random_unit(random_state));
+
+#ifdef HD
+    chemistry_random_partition(random_state, 3, unit_multiplicity, D_number_fraction / XH, values);
+    abundance[sDI] = values[0];
+    abundance[sDII] = values[1];
+    abundance[sHDI] = values[2];
+#endif
+
+#ifdef CARBON_OXYGEN_CHEMISTRY
+    double carbon_total = A_C_sun * metallicity;
+    double oxygen_total = A_O_sun * metallicity;
+    chemistry_random_partition(random_state, 4, unit_multiplicity, carbon_total, values);
+    abundance[sCI] = values[0];
+    abundance[sCII] = values[1];
+    abundance[sCO] = values[2];
+    abundance[sCO2] = values[3];
+    double oxygen_left = oxygen_total - abundance[sCO] - 2.0 * abundance[sCO2];
+    if(oxygen_left <= 0.0)
+      continue;
+    chemistry_random_partition(random_state, 4, oxygen_multiplicity, oxygen_left, values);
+    abundance[sOI] = values[0];
+    abundance[sOH] = values[1];
+    abundance[sH2O] = values[2];
+    abundance[sO2] = values[3];
+#else
+    (void)metallicity;
+#endif
+
+    if(chemistry_update_implicit_algebraic_species(nH, abundance, rates, conservation))
+      return 1;
   }
   return 0;
 }
+
+static double chemistry_implicit_equation_error(double nH, double dt, const double *abundance, const double *initial_abundance, const ChemRates *rates, const enum SPECIES *solver_species, int n_solver_species, double *absolute_error, int *error_species)
+{
+  double rhs[N_SP];
+  double maximum_error = 0.0;
+  *absolute_error = 0.0;
+  *error_species = -1;
+  chemistry_network_rhs(CHEM_REACTION_IMPLICIT, nH, abundance, rates->forward, rates->inverse, rhs);
+  for(int solver_i = 0; solver_i < n_solver_species; solver_i++) {
+    int species = solver_species[solver_i];
+    double residual = rhs[species] * dt - (abundance[species] - initial_abundance[species]);
+    double scale = 1.e-12 + dmax(fabs(abundance[species]), fabs(initial_abundance[species]));
+    double normalized_residual = fabs(residual) / scale;
+    if(normalized_residual > maximum_error) {
+      maximum_error = normalized_residual;
+      *absolute_error = fabs(residual);
+      *error_species = species;
+    }
+  }
+  return maximum_error;
+}
+#endif
 
 static int chemistry_reduce_jacobian_for_algebraic_species(double nH, const double *abundance, const ChemRates *rates, const enum SPECIES *solver_species, int n_solver_species, const ChemConservationSystem *conservation, double drfdy[N_SP][N_SP])
 {
@@ -687,14 +967,12 @@ static int chemistry_reduce_jacobian_for_algebraic_species(double nH, const doub
   for(int dependent = 0; dependent < conservation->count; dependent++)
     algebraic_species[n_intermediate + dependent] = conservation->dependent_species[dependent];
 
-  for(int algebraic = 0; algebraic < n_algebraic; algebraic++) {
-    enum SPECIES species = algebraic_species[algebraic];
-    chemistry_network_jacobian_column(species, nH, abundance, rates->forward, rates->inverse, drfdy[species]);
-  }
-
   double algebraic_response[N_SP * N_SP];
   memset(algebraic_response, 0, sizeof(algebraic_response));
 
+#ifdef CHEMISTRY_PROFILE
+  double response_start = chemistry_profile_time();
+#endif
   for(int solver_j = 0; solver_j < n_solver_species; solver_j++) {
     enum SPECIES column_species = solver_species[solver_j];
     for(int dependent = 0; dependent < conservation->count; dependent++)
@@ -703,6 +981,9 @@ static int chemistry_reduce_jacobian_for_algebraic_species(double nH, const doub
             conservation->dependent_inverse[constraint * conservation->count + dependent] *
             conservation->coefficient[constraint][column_species];
   }
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_JACOBIAN_RESPONSE, chemistry_profile_time() - response_start);
+#endif
 
   if(n_intermediate > 0) {
     double intermediate_jacobian[N_SP * N_SP];
@@ -731,8 +1012,14 @@ static int chemistry_reduce_jacobian_for_algebraic_species(double nH, const doub
       }
     }
 
+#ifdef CHEMISTRY_PROFILE
+    double intermediate_solve_start = chemistry_profile_time();
+#endif
     int info;
     dgesv_(&n_intermediate, &n_solver_species, intermediate_jacobian, &n_intermediate, intermediate_pivots, intermediate_response, &n_intermediate, &info);
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_add(CHEM_PROFILE_JACOBIAN_INTERMEDIATE_SOLVE, chemistry_profile_time() - intermediate_solve_start);
+#endif
     if(info != 0)
       return 0;
 
@@ -741,14 +1028,33 @@ static int chemistry_reduce_jacobian_for_algebraic_species(double nH, const doub
         algebraic_response[solver_j * n_algebraic + intermediate] = intermediate_response[solver_j * n_intermediate + intermediate];
   }
 
+#ifdef CHEMISTRY_PROFILE
+  double schur_start = chemistry_profile_time();
+#endif
+  unsigned char active_algebraic_count[N_SP];
+  unsigned char active_algebraic[N_SP][N_SP];
+  for(int solver_i = 0; solver_i < n_solver_species; solver_i++) {
+    enum SPECIES row_species = solver_species[solver_i];
+    active_algebraic_count[solver_i] = 0;
+    for(int algebraic_k = 0; algebraic_k < n_algebraic; algebraic_k++) {
+      if(drfdy[algebraic_species[algebraic_k]][row_species] != 0.0)
+        active_algebraic[solver_i][active_algebraic_count[solver_i]++] = algebraic_k;
+    }
+  }
+
   for(int solver_j = 0; solver_j < n_solver_species; solver_j++) {
     enum SPECIES column_species = solver_species[solver_j];
     for(int solver_i = 0; solver_i < n_solver_species; solver_i++) {
       enum SPECIES row_species = solver_species[solver_i];
-      for(int algebraic_k = 0; algebraic_k < n_algebraic; algebraic_k++)
+      for(int active = 0; active < active_algebraic_count[solver_i]; active++) {
+        int algebraic_k = active_algebraic[solver_i][active];
         drfdy[column_species][row_species] -= drfdy[algebraic_species[algebraic_k]][row_species] * algebraic_response[solver_j * n_algebraic + algebraic_k];
+      }
     }
   }
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_add(CHEM_PROFILE_JACOBIAN_SCHUR, chemistry_profile_time() - schur_start);
+#endif
 
   return 1;
 }
@@ -783,9 +1089,12 @@ static const enum SPECIES explicit_species_order[] = {
   sDM,
 #endif
 #endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  sCI, sCII, sCO, sCO2, sOI, sOH, sH2O, sO2,
+#endif
 };
 
-static void chemistry_explicit_enforce_constraints(ChemState *state)
+static void chemistry_explicit_enforce_constraints(const ChemEnvironment *environment, ChemState *state)
 {
   double correction = H_number_fraction /
       (state->abund[sHI] + state->abund[sHII] + state->abund[sHM] + 2.0 * state->abund[sH2I]
@@ -837,6 +1146,31 @@ static void chemistry_explicit_enforce_constraints(ChemState *state)
   state->abund[sHeIII] *= correction;
 #endif
 
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double carbon_total = XH * A_C_sun * environment->metallicity;
+  double carbon_sum = state->abund[sCI] + state->abund[sCII] + state->abund[sCO] + state->abund[sCO2];
+  if(carbon_sum > 0.0) {
+    correction = carbon_total / carbon_sum;
+    state->abund[sCI] *= correction;
+    state->abund[sCII] *= correction;
+    state->abund[sCO] *= correction;
+    state->abund[sCO2] *= correction;
+  }
+
+  double oxygen_total = XH * A_O_sun * environment->metallicity;
+  double oxygen_in_carbon = state->abund[sCO] + 2.0 * state->abund[sCO2];
+  double oxygen_sum = state->abund[sOI] + state->abund[sOH] + state->abund[sH2O] + 2.0 * state->abund[sO2];
+  if(oxygen_sum > 0.0 && oxygen_total >= oxygen_in_carbon) {
+    correction = (oxygen_total - oxygen_in_carbon) / oxygen_sum;
+    state->abund[sOI] *= correction;
+    state->abund[sOH] *= correction;
+    state->abund[sH2O] *= correction;
+    state->abund[sO2] *= correction;
+  }
+#else
+  (void)environment;
+#endif
+
   state->abund[sELEC] = state->abund[sHII] - state->abund[sHM];
 #ifdef H2_PLUS
   state->abund[sELEC] += state->abund[sH2II];
@@ -853,9 +1187,12 @@ static void chemistry_explicit_enforce_constraints(ChemState *state)
 #ifdef HELIUM
   state->abund[sELEC] += state->abund[sHeII] + 2.0 * state->abund[sHeIII];
 #endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  state->abund[sELEC] += state->abund[sCII];
+#endif
 }
 
-int chemistry_noneq_exp_nometal(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, double dt)
+int chemistry_noneq_explicit(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, double dt)
 {
   const double nH = XH * environment->rho_cgs / PROTONMASS;
   const double temperature = work->thermodynamics.temperature;
@@ -909,7 +1246,7 @@ int chemistry_noneq_exp_nometal(const ChemEnvironment *environment, const ChemSt
     for(size_t i = 0; i < intermediate_equilibrium_species_count; i++)
       previous_intermediate_equilibrium[i] = state->abund[intermediate_equilibrium_species[i]];
 
-    chemistry_explicit_enforce_constraints(state);
+    chemistry_explicit_enforce_constraints(environment, state);
     for(int species = 0; species < N_SP; species++)
       abundance[species] = state->abund[species] / XH;
     if(!chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_EXPLICIT, nH, abundance, &work->rates))
@@ -993,6 +1330,9 @@ int chemistry_saha(const ChemEnvironment *environment, ChemState *state, ChemWor
 
 int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, double dt)
 {
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_set_failure(0);
+#endif
   enum SPECIES species;
   const ChemState state_old = *state;
 
@@ -1003,38 +1343,31 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   const double n_nuclei  = rho_gas/PROTONMASS;
   const double nH = XH * n_nuclei;
   const double T_gas = work->thermodynamics.temperature;
+#ifdef CHEMISTRY_RANDOM_RESTART_DIAGNOSTIC
+  uint64_t random_state = UINT64_C(0x6a09e667f3bcc909);
+  uint64_t value_bits;
+  memcpy(&value_bits, &nH, sizeof(value_bits));
+  random_state ^= value_bits;
+  memcpy(&value_bits, &T_gas, sizeof(value_bits));
+  random_state ^= value_bits + UINT64_C(0x9e3779b97f4a7c15);
+  memcpy(&value_bits, &dt, sizeof(value_bits));
+  random_state ^= value_bits + UINT64_C(0x3c6ef372fe94f82b);
+  int random_restart_count = 0;
+  int first_invalid_species = -3;
+  int random_search_target = environment->metallicity >= 5.e-4 && environment->metallicity <= 2.e-2 &&
+                             n_nuclei >= 1.e9 && T_gas < 30.0;
+#endif
 
   evaluate_reaction_rates(environment, step, state, work);
 
   double yi[n_sp];
-
-  yi[sELEC]  = state->abund[sELEC]/XH;
-  yi[sHI]    = state->abund[sHI]/XH;
-  yi[sHII]   = state->abund[sHII]/XH;
-#ifdef HELIUM
-  yi[sHeI]   = state->abund[sHeI]/XH;
-  yi[sHeII]  = state->abund[sHeII]/XH;
-  yi[sHeIII] = state->abund[sHeIII]/XH;
-#endif
-
-  yi[sH2I]   = state->abund[sH2I]/XH;
-#ifdef H2_PLUS
-  yi[sH2II]  = state->abund[sH2II]/XH;
-#endif
-  yi[sHM]    = state->abund[sHM]/XH;
-#ifdef HD
-  yi[sDI]    = state->abund[sDI]/XH;
-  yi[sDII]   = state->abund[sDII]/XH;
-  yi[sHDI]   = state->abund[sHDI]/XH;
-#ifdef HD_PLUS
-  yi[sHDII]  = state->abund[sHDII]/XH;
-#endif
-#ifdef DMINUS
-  yi[sDM]    = state->abund[sDM]/XH;
-#endif
-#endif
+  for(int i_sp = 0; i_sp < n_sp; i_sp++)
+    yi[i_sp] = state->abund[i_sp] / XH;
 
   if(!chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_IMPLICIT, nH, yi, &work->rates)) {
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_set_failure(1);
+#endif
     *state = state_old;
     return 0;
   }
@@ -1049,6 +1382,12 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   enum SPECIES solver_species[n_sp];
   int n_solver_species = 0;
   ChemConservationSystem conservation;
+
+  for(int i_sp = 0; i_sp < n_sp; i_sp++) {
+    y_min[i_sp] = 0.0;
+    y_mean[i_sp] = dmax(state->abund[i_sp], 1.e-80);
+    y_max[i_sp] = 2.0;
+  }
 
   y_min[sELEC] = 1.e-80,  y_mean[sELEC]  = 1.e-15   ,  y_max[sELEC]  = 2.0;
 
@@ -1081,6 +1420,15 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 #endif
 #endif
 
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double carbon_max = dmax(A_C_sun * environment->metallicity * 1.001, 1.e-80);
+  double oxygen_max = dmax(A_O_sun * environment->metallicity * 1.001, 1.e-80);
+  y_max[sCI] = y_max[sCII] = y_max[sCO] = y_max[sCO2] = carbon_max;
+  y_max[sOI] = y_max[sOH] = y_max[sH2O] = y_max[sO2] = oxygen_max;
+  y_max[sCOII] = y_max[sCH] = y_max[sCH2] = carbon_max;
+  y_max[sOII] = y_max[sOHII] = y_max[sH2OII] = y_max[sH3OII] = y_max[sO2II] = oxygen_max;
+#endif
+
   for(int i_sp=0;i_sp<n_sp;i_sp++) {
     y_mean[i_sp] /= XH;
     y_init[i_sp] = yi[i_sp];
@@ -1092,8 +1440,11 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   }
 
   correct_initial_abundances(yi);
-  if(!chemistry_build_conservation_system(&conservation) ||
+  if(!chemistry_build_conservation_system(&conservation, environment->metallicity, n_nuclei) ||
      !chemistry_update_implicit_algebraic_species(nH, yi, &work->rates, &conservation)) {
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_set_failure(2);
+#endif
     *state = state_old;
     return 0;
   }
@@ -1142,8 +1493,28 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
       yi[sHM]    = 1.e-15;
     }
 
-    if(flag_reset >= 4){
+#ifdef CARBON_OXYGEN_CHEMISTRY
+    if(flag_reset == 1 || flag_reset == 2){
+      double carbon_total = A_C_sun * environment->metallicity;
+      double oxygen_total = A_O_sun * environment->metallicity;
+      yi[sCI] = yi[sCII] = yi[sCO2] = 0.0;
+      yi[sCO] = carbon_total;
+      yi[sOI] = yi[sOH] = yi[sH2O] = 0.0;
+      yi[sO2] = 0.5 * dmax(oxygen_total - carbon_total, 0.0);
     }
+
+    if(flag_reset == 3){
+      double carbon_total = A_C_sun * environment->metallicity;
+      double oxygen_total = A_O_sun * environment->metallicity;
+      yi[sCI] = yi[sCII] = 0.0;
+      yi[sCO2] = 0.0183 * carbon_total;
+      yi[sCO] = carbon_total - yi[sCO2];
+      double oxygen_left = dmax(oxygen_total - yi[sCO] - 2.0 * yi[sCO2], 0.0);
+      yi[sOI] = yi[sOH] = 0.0;
+      yi[sH2O] = 0.10 * oxygen_left;
+      yi[sO2] = 0.45 * oxygen_left;
+    }
+#endif
 
     for(int i_sp=0;i_sp<n_sp;i_sp++)
       dy[i_sp] = yi[i_sp] - y_init[i_sp];
@@ -1155,15 +1526,31 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
     printf("T_gas=%g y=%g %g %g %g %g\n", T_gas, yi[sELEC], yi[sHI], yi[sHII], yi[sH2I], yi[sHM]);
 
   if(!chemistry_update_implicit_algebraic_species(nH, yi, &work->rates, &conservation)) {
+    if(flag_reset < 3) {
+      flag_reset++;
+      flag_conv = 0;
+      err_max = 100.0;
+      goto chem_START;
+    }
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_set_failure(3);
+#endif
     *state = state_old;
     return 0;
   }
+
   for(int i_sp = 0; i_sp < n_sp; i_sp++)
     if(chemistry_species_is_algebraic(i_sp, &conservation))
       dy[i_sp] = 0.0;
 
   while(itr<=MAX_ITER_CHEM && flag_conv < 2) {  // iteration
-    chemistry_network_rhs(nH, yi, work->rates.forward, work->rates.inverse, rf_tot);
+#ifdef CHEMISTRY_PROFILE
+    double rhs_start = chemistry_profile_time();
+#endif
+    chemistry_network_rhs(CHEM_REACTION_IMPLICIT, nH, yi, work->rates.forward, work->rates.inverse, rf_tot);
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_add(CHEM_PROFILE_NEWTON_RHS, chemistry_profile_time() - rhs_start);
+#endif
 
     if(FlagPrint){
       printf("[%d] T_gas=%g err=%g flag=%d y=%g %g %g %g %g rf_tot=%g %g %g %g %g dt=%g\n"
@@ -1183,13 +1570,19 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
     memset(drfdy, 0, sizeof(drfdy));
     int use_analytic_jacobian = 0;
+#ifdef CHEMISTRY_PROFILE
+    double jacobian_start = chemistry_profile_time();
+#endif
 #if defined(CHEM_DIFF_ANALYTIC) && !defined(CHEM_DIFF_NUMERICAL)
     use_analytic_jacobian = !use_numerical_jacobian;
     if(use_analytic_jacobian) {
-      for(int solver_j=0;solver_j<n_solver_species;solver_j++) {
-        int j_sp = solver_species[solver_j];
-        chemistry_network_jacobian_column(j_sp, nH, yi, work->rates.forward, work->rates.inverse, drfdy[j_sp]);
-      }
+#ifdef CHEMISTRY_PROFILE
+      double solver_columns_start = chemistry_profile_time();
+#endif
+      chemistry_network_jacobian(CHEM_REACTION_IMPLICIT, nH, yi, work->rates.forward, work->rates.inverse, drfdy);
+#ifdef CHEMISTRY_PROFILE
+      chemistry_profile_add(CHEM_PROFILE_JACOBIAN_SOLVER_COLUMNS, chemistry_profile_time() - solver_columns_start);
+#endif
       if(!chemistry_reduce_jacobian_for_algebraic_species(nH, yi, &work->rates, solver_species, n_solver_species, &conservation, drfdy)) {
         use_numerical_jacobian = 1;
         use_analytic_jacobian = 0;
@@ -1212,17 +1605,23 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
 
         double rf_f[n_sp],rf_b[n_sp];
         if(!chemistry_update_implicit_algebraic_species(nH, y_tmp, &work->rates, &conservation)) {
+#ifdef CHEMISTRY_PROFILE
+          chemistry_profile_set_failure(4);
+#endif
           *state = state_old;
           return 0;
         }
-        chemistry_network_rhs(nH, y_tmp, work->rates.forward, work->rates.inverse, rf_f);
+        chemistry_network_rhs(CHEM_REACTION_IMPLICIT, nH, y_tmp, work->rates.forward, work->rates.inverse, rf_f);
 
         y_tmp[j_sp]=yi[j_sp]-0.5*Dyi;
         if(!chemistry_update_implicit_algebraic_species(nH, y_tmp, &work->rates, &conservation)) {
+#ifdef CHEMISTRY_PROFILE
+          chemistry_profile_set_failure(5);
+#endif
           *state = state_old;
           return 0;
         }
-        chemistry_network_rhs(nH, y_tmp, work->rates.forward, work->rates.inverse, rf_b);
+        chemistry_network_rhs(CHEM_REACTION_IMPLICIT, nH, y_tmp, work->rates.forward, work->rates.inverse, rf_b);
 
         for(int i_sp=0;i_sp<n_sp;i_sp++) {
           double drf, rf_big;
@@ -1237,6 +1636,9 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
         }
       }
     }
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_add(CHEM_PROFILE_NEWTON_JACOBIAN, chemistry_profile_time() - jacobian_start);
+#endif
 
 #ifdef ID_CHEM_DEBUG
     if(FlagPrint){
@@ -1261,17 +1663,63 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
       solver_rhs[solver_i] = rf_tot[i_sp]*dt - dy[i_sp];
     }
 
+#ifdef CHEMISTRY_PROFILE
+    double linear_solve_start = chemistry_profile_time();
+#endif
     dgesv_(&n_solver_species, &inc, AA, &n_solver_species, ipiv, solver_rhs, &n_solver_species, &info);    //compile with -llapack -lblas
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_add(CHEM_PROFILE_NEWTON_LINEAR_SOLVE, chemistry_profile_time() - linear_solve_start);
+#endif
 
     memset(ddy, 0, sizeof(ddy));
     for(int solver_i=0;solver_i<n_solver_species;solver_i++)
       ddy[solver_species[solver_i]] = solver_rhs[solver_i];
 
     err_max=0.0;
-    if(!chemistry_apply_implicit_newton_step(nH, yi, ddy, y_max, &work->rates, &conservation)) {
+#ifdef CHEMISTRY_PROFILE
+    double newton_step_start = chemistry_profile_time();
+#endif
+    int invalid_species;
+    if(!chemistry_apply_implicit_newton_step(nH, yi, ddy, y_max, &work->rates, &conservation, &invalid_species)) {
+      if(flag_reset < 3) {
+        flag_reset++;
+        flag_conv = 0;
+        err_max = 100.0;
+        goto chem_START;
+      }
+#ifdef CHEMISTRY_PROFILE
+      if(chemistry_profile_last_failure() == 0)
+        chemistry_profile_set_failure(6);
+#endif
+#ifdef CHEMISTRY_RANDOM_RESTART_DIAGNOSTIC
+      if(first_invalid_species == -3)
+        first_invalid_species = invalid_species;
+      if(random_search_target && random_restart_count < CHEMISTRY_RANDOM_RESTART_MAX &&
+         chemistry_randomize_newton_guess(nH, environment->metallicity, yi, &work->rates, &conservation, &random_state)) {
+        random_restart_count++;
+        flag_conv = 0;
+        flag_reset = 0;
+        itr = 1;
+        err_max = 100.0;
+#if defined(CHEM_DIFF_ANALYTIC) && !defined(CHEM_DIFF_NUMERICAL)
+        use_numerical_jacobian = 0;
+#endif
+        for(int i_sp = 0; i_sp < n_sp; i_sp++)
+          dy[i_sp] = chemistry_species_is_algebraic(i_sp, &conservation) ? 0.0 : yi[i_sp] - y_init[i_sp];
+        goto chem_START;
+      }
+      if(random_search_target)
+        fprintf(stderr, "CHEM_RANDOM_FAILURE n=%g T=%g dt=%g Z=%g restarts=%d invalid=%d(%s)\n",
+                n_nuclei, T_gas, dt, environment->metallicity, random_restart_count,
+                first_invalid_species,
+                first_invalid_species >= 0 ? chemistry_species_definition(first_invalid_species)->name : "algebraic");
+#endif
       *state = state_old;
       return 0;
     }
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_add(CHEM_PROFILE_NEWTON_STEP, chemistry_profile_time() - newton_step_start);
+#endif
 
     for(int i_sp=0;i_sp<n_sp;i_sp++)
       dy[i_sp] += ddy[i_sp]; //dy[] is recalculated at the end of the loop
@@ -1294,10 +1742,21 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
     if(intermediate_equilibrium_species_count > 0 && itr >= 20 && err_max > ErrMaxCrit)
       use_numerical_jacobian = 1;
 #endif
+#ifdef CHEMISTRY_RANDOM_RESTART_DIAGNOSTIC
+    double iteration_absolute_error;
+    int iteration_error_species;
+    double iteration_equation_error = chemistry_implicit_equation_error(nH, dt, yi, y_init, &work->rates,
+                                                                         solver_species, n_solver_species,
+                                                                         &iteration_absolute_error,
+                                                                         &iteration_error_species);
+    if((random_search_target ? iteration_equation_error : err_max) < ErrMaxCrit) flag_conv++;
+    else flag_conv = 0;
+#else
     if(err_max < ErrMaxCrit) flag_conv++;
     else flag_conv = 0;
+#endif
 
-    if(flag_reset <=3 && itr - 70*(flag_reset+1) > 0 && err_max > 1){
+    if(flag_reset < 3 && itr - 70*(flag_reset+1) > 0 && err_max > 1){
       flag_reset++;
       goto chem_START;
     }
@@ -1306,11 +1765,26 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
   }   // iteration
 
   if(!chemistry_update_implicit_algebraic_species(nH, yi, &work->rates, &conservation)) {
+#ifdef CHEMISTRY_PROFILE
+    chemistry_profile_set_failure(7);
+#endif
     *state = state_old;
     return 0;
   }
 
-  if(err_max<1.0e-6) {
+#ifdef CHEMISTRY_RANDOM_RESTART_DIAGNOSTIC
+  double equation_absolute_error;
+  int equation_error_species;
+  double equation_error = chemistry_implicit_equation_error(nH, dt, yi, y_init, &work->rates,
+                                                             solver_species, n_solver_species,
+                                                             &equation_absolute_error,
+                                                             &equation_error_species);
+  double convergence_error = random_search_target ? equation_error : err_max;
+#else
+  double convergence_error = err_max;
+#endif
+
+  if(convergence_error<1.0e-6) {
     double t_chem1 = 1.0e20;
     for(int i_sp=0;i_sp<n_sp;i_sp++) {
       if(chemistry_species_is_algebraic(i_sp, &conservation))
@@ -1323,7 +1797,7 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
       work->evaluation.t_chem = t_chem1;
     }
   }else{
-    if(err_max>1.e-4){
+    if(convergence_error>1.e-4){
       printf("iteration is not converged err=%le(in %d),itr=%d,"
 	     " id=%d.\n dt=%g, rho=%g, T_gas=%g, n_nuclei=%g;\n"
 	     "y[%d]=%g, y[%d]=%g, y[%d]=%g, ",
@@ -1373,7 +1847,10 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
       printf("\n");
 #endif
 
-      work->evaluation.err_chem = err_max;
+      work->evaluation.err_chem = convergence_error;
+#ifdef CHEMISTRY_PROFILE
+      chemistry_profile_set_failure(8);
+#endif
       *state = state_old;
       return 0;
     }else{
@@ -1391,33 +1868,28 @@ int chemistry_noneq_chem_implicit(const ChemEnvironment *environment, const Chem
     }
   }
 
-  work->evaluation.err_chem = err_max;
+  work->evaluation.err_chem = convergence_error;
 
-  state->abund[sELEC] =yi[sELEC] *XH;
-  state->abund[sHI]   =yi[sHI]   *XH;
-  state->abund[sHII]  =yi[sHII]  *XH;
-#ifdef HELIUM
-  state->abund[sHeI]  =yi[sHeI]  *XH;
-  state->abund[sHeII] =yi[sHeII] *XH;
-  state->abund[sHeIII]=yi[sHeIII]*XH;
+#ifdef CHEMISTRY_RANDOM_RESTART_DIAGNOSTIC
+  if(random_restart_count > 0) {
+    fprintf(stderr, "CHEM_RANDOM_SUCCESS n=%g T=%g dt=%g Z=%g restarts=%d iterations=%d err=%g equation_error=%g equation_abs=%g equation_species=%d(%s) invalid=%d(%s) HII0=%g H2I0=%g HM0=%g HII=%g H2I=%g HM=%g",
+            n_nuclei, T_gas, dt, environment->metallicity, random_restart_count, itr, err_max,
+            equation_error, equation_absolute_error, equation_error_species,
+            equation_error_species >= 0 ? chemistry_species_definition(equation_error_species)->name : "none",
+            first_invalid_species,
+            first_invalid_species >= 0 ? chemistry_species_definition(first_invalid_species)->name : "algebraic",
+            y_init[sHII], y_init[sH2I], y_init[sHM], yi[sHII], yi[sH2I], yi[sHM]);
+#ifdef CARBON_OXYGEN_CHEMISTRY
+    fprintf(stderr, " CII=%g CO=%g CO2=%g OH=%g H2O=%g O2=%g\n",
+            yi[sCII], yi[sCO], yi[sCO2], yi[sOH], yi[sH2O], yi[sO2]);
+#else
+    fprintf(stderr, "\n");
+#endif
+  }
 #endif
 
-  state->abund[sH2I]  =yi[sH2I]  *XH;
-#ifdef H2_PLUS
-  state->abund[sH2II] =yi[sH2II] *XH;
-#endif
-  state->abund[sHM]   =yi[sHM]   *XH;
-#ifdef HD
-  state->abund[sDI]   =yi[sDI]   *XH;
-  state->abund[sDII]  =yi[sDII]  *XH;
-  state->abund[sHDI]  =yi[sHDI]  *XH;
-#ifdef HD_PLUS
-  state->abund[sHDII] =yi[sHDII] *XH;
-#endif
-#ifdef DMINUS
-  state->abund[sDM]   =yi[sDM]   *XH;
-#endif
-#endif
+  for(int i_sp = 0; i_sp < n_sp; i_sp++)
+    state->abund[i_sp] = yi[i_sp] * XH;
 
   /* The Newton solver evaluates chemical heating/cooling from the converged,
      unclamped Newton solution.  Keep that ordering while making state carry

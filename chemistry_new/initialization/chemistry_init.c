@@ -18,6 +18,7 @@
 #include "cooling_func.h"
 #include "dust_cooling.h"
 #include "forward_rates.h"
+#include "molecular_cooling.h"
 #include "partition.h"
 #include "reaction_network.h"
 #include "chemistry_tables.h"
@@ -88,6 +89,13 @@ int InitChem(void)
     fprintf(stderr, "Failed to initialize the chemical reaction network.\n");
     endrun();
   }
+
+#ifdef MOLECULAR_LINE_COOLING
+  if(!molecular_line_cooling_init()) {
+    fprintf(stderr, "Failed to initialize molecular line cooling.\n");
+    endrun();
+  }
+#endif
 
   /* ----- cross-sections, etc ... */
   int ifunc = chem_tabulate();
