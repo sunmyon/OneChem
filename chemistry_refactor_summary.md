@@ -235,6 +235,31 @@ edot_dust = -Lambda_dust * rho * metallicity * dust_to_gas_ratio
 
 各境界を相対幅 `1e-3` の `tanh` transition で連続化し、その微分も解析 residual derivative に含めた。324ケース比較では、この連続化によるgas温度進化の差は最大相対約 `9.4e-7`、最大絶対約 `9.3e-4 K` だった。
 
+hard stepを残した試験では、二分法のbracketが275 Kなどの不連続点へ収縮し、`Tdust`がその境界に張り付く場合があった。これはbracket両端でresidualの符号が異なっていても、その間に `F(Tdust) = 0` を満たす温度が存在するとは限らないためである。
+
+```text
+F(T_boundary - 0) < 0
+F(T_boundary + 0) > 0
+```
+
+というjumpがあれば、二分法は通常の連続関数と同様に区間を狭めるが、得られるのはzero crossingではなく不連続点である。局所微分も定義できないため、Newton法へ移っても安定した改善は期待できない。今回のcollision factorについては、hard stepを物理的に厳密な相転移として扱う必要性が低く、`tanh`で連続化するのが適切と判断した。
+
+ただし、境界に張り付く解が常に数値的な失敗というわけではない。次の場合は境界解がphysical、または少なくとも採用している物理モデルの範囲内で正しい場合がある。
+
+- collisionが消える極限で `Tdust = Trad` になる。
+- gas-dust couplingが非常に強い極限で `Tdust` が `Tgas` に近づく。
+- dustの存在温度やopacity tableの有効範囲に上限を課し、非制約平衡解がその範囲外にある。
+- grain組成の相転移やsublimationを真の不連続modelとして与え、境界の両側からのenergy収支が境界へ戻す向きになる。
+
+最後の場合は通常の `F = 0` ではなく、境界の片側極限を使って安定性を判定する必要がある。例えば
+
+```text
+F(T_boundary - 0) <= 0
+F(T_boundary + 0) >= 0
+```
+
+で、温度変化が両側から境界へ向かうなら、その境界は一般化された平衡解として扱える。一方、単にtableが2000 Kで終わっているだけなら、`Tdust = 2000 K` はtable上の境界解であり、それだけではsublimationを物理的に解いたことにはならない。
+
 ### bracket と Newton 法
 
 初期区間は物理的に根を挟む
@@ -259,6 +284,28 @@ bracket width <= max(1e-4 K, 1e-5 Tdust)
 ```
 
 二つ目は `Tdust` と `TCMB` がほぼ等しく、両energy termが同時にゼロへ近づく場合に、相対residualだけで無意味な反復を続けることを防ぐ。
+
+### 二分法とNewton法の将来的な切り替え
+
+現在のsafeguarded Newtonは十分高速で安定しているが、C/O coolingやgrainの相転移を追加すると、residualの滑らかさや許容温度域が変わる可能性がある。将来的には、単なる固定反復回数ではなく、局所的な関数形に応じて次のように切り替えるのがよい。
+
+1. `Trad`から開始し、物理的な許容区間でbracketを作る。
+2. residualが連続で解析微分が有限なら、最初からNewton候補を計算する。
+3. Newton候補がbracket内にあり、stepが十分小さく、residualまたはbracket幅を実際に減らす場合だけ採用する。
+4. 候補が区間外へ出る、微分が小さすぎる、または改善しない場合は二分法へ戻る。
+5. table cell境界や急なtransition付近では、区間幅がtransition幅またはtable分解能程度になるまで二分法を優先する。
+6. bracketが既知の不連続境界へ収縮した場合は、通常の収束とみなす前に片側residualを評価する。
+7. 片側residualが境界へ戻す向きならphysical boundary solutionとして受理し、そうでなければmodel不連続または探索失敗として記録する。
+
+これはNewton法を主として使い、二分法でbracketを保証する現在の方法を、Brent法に近い受理判定へ発展させる方針である。重要なのは、区間が狭くなったという理由だけで不連続点を根とみなさないことと、physical boundary solutionを無理に内部の `F = 0` へ置き換えないことである。
+
+将来の性能評価では、平均反復回数だけでなく、次も個別に数えるべきである。
+
+- Newton候補の採用・棄却回数
+- 二分法へfallbackした回数
+- smooth root、physical boundary、table上限の各終了回数
+- 不連続点を挟んだbracketの検出回数
+- 各終了理由ごとのenergy residual
 
 ### 反復数と速度
 
