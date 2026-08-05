@@ -2,6 +2,15 @@
 int compute_abundances_d(int mode, int ithis, double a_start, double a_end,int *flag_implicit, int flag_print);
 #else
 int compute_abundances_d(int mode, const struct chemdata_in *sph_in, struct chemdata_out *sph_out, double dtime);
+int compute_chemistry_implicit_d(const struct chemdata_in *sph_in, struct chemdata_out *sph_out,
+                                 double temperature, double dtime);
+int compute_chemistry_implicit_guess_d(const struct chemdata_in *sph_in, struct chemdata_out *sph_out,
+                                       double temperature, double dtime,
+                                       const double *newton_guess, int max_iterations);
+int compute_equilibrium_abundances_d(const struct chemdata_in *sph_in,
+                                     const struct chemdata_out *sph_out,
+                                     double temperature, double dtime,
+                                     double *full_abundance);
 #endif
 int H2line_tabulate(void);
 int InitChem(void);

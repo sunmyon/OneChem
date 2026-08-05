@@ -23,10 +23,15 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   !-----------------------------------------------------------------------*/
 double H2_cooling_G15(double nH, double T_K,double yHI,double yH2,double yHeI,double yHII, double y_e){
   double xLmbd_H2;
+  double xLdH2_LTE;
   double T_rad = 0.;
 
   if(T_K > 2.e4)
     T_K = 2.e4;
+
+  xLdH2_LTE = H2cool_LTEfit(T_K) * nH * yH2;
+  if(xLdH2_LTE <= 0.)
+    return 0.;
 
   //lineがthickになった後に、opt-thin low-density cooling rateが現れないように場合分け
   if(nH < 1.e8){
@@ -36,10 +41,14 @@ double H2_cooling_G15(double nH, double T_K,double yHI,double yH2,double yHeI,do
     //if(FlagPrint)
     //      printf("H2_cool_rate: GP12=%g G15=%g\n", xLdH2_GP12, xLdH2_n0);
 
-    double xLdH2_LTE = H2cool_LTEfit(T_K) * nH * yH2;
-    xLmbd_H2  = xLdH2_LTE / (1. + xLdH2_LTE/xLdH2_n0);
+    if(xLdH2_n0 <= 0.)
+      return 0.;
+
+    if(xLdH2_LTE < xLdH2_n0)
+      xLmbd_H2 = xLdH2_LTE / (1. + xLdH2_LTE/xLdH2_n0);
+    else
+      xLmbd_H2 = xLdH2_n0 / (1. + xLdH2_n0/xLdH2_LTE);
   }else{
-    double xLdH2_LTE = H2cool_LTEfit(T_K) * nH * yH2;
     xLmbd_H2  = xLdH2_LTE;
   }
 

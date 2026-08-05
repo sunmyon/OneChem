@@ -37,6 +37,13 @@ void chemistry_profile_record_residual(const ChemEnvironment *environment, const
                                        double energy_old, double energy_new, double residual,
                                        int chemistry_status);
 void chemistry_profile_report_energy_warning(void);
+void chemistry_profile_record_equilibrium_initialization(double fraction,
+                                                         double electron_before,
+                                                         double electron_after);
+void chemistry_profile_record_newton_solve(int iterations, int reset_count,
+                                           int clipped_steps);
+void chemistry_profile_record_clipped_species(int species);
+void chemistry_profile_record_newton_limiter(int species, double nH);
 void chemistry_profile_report(void);
 
 #endif

@@ -4,6 +4,7 @@
 #include<errno.h>
 #include<limits.h>
 #include<math.h>
+#include<ctype.h>
 #include<time.h>
 #include<sys/time.h>
 #include<sys/stat.h>
@@ -12,6 +13,7 @@
 #include "proto.h"
 #ifndef CHEMISTRY_OLD
 #include "chemistry_profile.h"
+#include "species.h"
 #endif
 
 #ifndef PATH_MAX
@@ -26,6 +28,14 @@ int set_units();
 int initialize_cells(double z, double theta);
 void Init_test(int ithis,double *a_start, double *dt_sec);
 static void set_chemistry_table_dir(const char *argv0);
+static int survey_first_chemistry_failures;
+#ifndef CHEMISTRY_OLD
+static int run_single_chemistry_step(const char *path, int diagnostic_mode,
+                                     const char *guess_path);
+static void print_single_chemistry_step_input(const struct chemdata_in *input,
+                                              const struct chemdata_out *output,
+                                              double temperature, double dt);
+#endif
 
 double gettimeofday_sec(void);
 int InitTable(void);
@@ -85,6 +95,501 @@ double compute_temp(int ithis)
   double utherm_cgs = SphP[ithis].ThermalEnergy * All.UnitEnergy_in_cgs / All.UnitMass_in_g;
   return chemistry_temperature(abund, SphP[ithis].Gamma, utherm_cgs);
 }
+
+static char *trim_text(char *text)
+{
+  while(isspace((unsigned char)*text))
+    text++;
+  char *end = text + strlen(text);
+  while(end > text && isspace((unsigned char)end[-1]))
+    *--end = '\0';
+  return text;
+}
+
+static int run_single_chemistry_step(const char *path, int diagnostic_mode,
+                                     const char *guess_path)
+{
+  FILE *input = fopen(path, "r");
+  if(!input) {
+    fprintf(stderr, "cannot open chemistry-step input '%s': %s\n", path, strerror(errno));
+    return 2;
+  }
+
+  double nH = -1.0, n_nuclei = -1.0, temperature = -1.0, metallicity = -1.0, dt = -1.0;
+  double cmb_temperature = -1.0, utherm_input_cgs = -1.0, gamma_input = -1.0;
+  double abundance[TGCHEM_NUM_ABUNDANCES] = {0};
+  int abundance_set[TGCHEM_NUM_ABUNDANCES] = {0};
+  char line[4096];
+  int line_number = 0;
+  while(fgets(line, sizeof(line), input)) {
+    line_number++;
+    char *text = trim_text(line);
+    if(*text == '\0' || *text == '#')
+      continue;
+    char *equals = strchr(text, '=');
+    if(!equals) {
+      fprintf(stderr, "%s:%d: expected key=value\n", path, line_number);
+      fclose(input);
+      return 2;
+    }
+    *equals = '\0';
+    char *key = trim_text(text);
+    char *value_text = trim_text(equals + 1);
+    char *value_end = NULL;
+    errno = 0;
+    double value = strtod(value_text, &value_end);
+    if(errno || value_end == value_text || *trim_text(value_end) != '\0' || !isfinite(value)) {
+      fprintf(stderr, "%s:%d: invalid value '%s'\n", path, line_number, value_text);
+      fclose(input);
+      return 2;
+    }
+
+    if(strcmp(key, "nH_cm3") == 0) nH = value;
+    else if(strcmp(key, "n_nuclei_cm3") == 0) n_nuclei = value;
+    else if(strcmp(key, "T_K") == 0) temperature = value;
+    else if(strcmp(key, "T_CMB_K") == 0) cmb_temperature = value;
+    else if(strcmp(key, "Z") == 0) metallicity = value;
+    else if(strcmp(key, "dt_s") == 0) dt = value;
+    else if(strcmp(key, "Utherm_cgs") == 0) utherm_input_cgs = value;
+    else if(strcmp(key, "Gamma") == 0) gamma_input = value;
+    else {
+      const char *species_name = strncmp(key, "x0_", 3) == 0 ? key + 3 : key;
+      enum SPECIES species;
+      if(!chemistry_species_from_name(species_name, &species) || species >= sSTORED_END) {
+        fprintf(stderr, "%s:%d: unknown key '%s'\n", path, line_number, key);
+        fclose(input);
+        return 2;
+      }
+      abundance[species] = value;
+      abundance_set[species] = 1;
+    }
+  }
+  fclose(input);
+
+  if(n_nuclei <= 0.0 && nH > 0.0)
+    n_nuclei = nH / XH;
+  if(n_nuclei <= 0.0 || temperature <= 0.0 || metallicity < 0.0 || dt <= 0.0) {
+    fprintf(stderr, "chemistry-step input requires nH_cm3 or n_nuclei_cm3, T_K, Z, and dt_s\n");
+    return 2;
+  }
+  if(cmb_temperature > 0.0)
+    All.T_CMB = cmb_temperature;
+  for(int species = 0; species < sSTORED_END; species++)
+    if(!abundance_set[species]) {
+      fprintf(stderr, "chemistry-step input requires x0_%s\n", chemistry_species_definition(species)->name);
+      return 2;
+    }
+
+  struct chemdata_in sph_in;
+  struct chemdata_out sph_out;
+  memset(&sph_in, 0, sizeof(sph_in));
+  memset(&sph_out, 0, sizeof(sph_out));
+  sph_in.ID = 0;
+  sph_in.rho_cgs = n_nuclei * PROTONMASS;
+  sph_in.Density = sph_in.rho_cgs / (All.UnitDensity_in_cgs * All.HubbleParam * All.HubbleParam * All.cf_a3inv);
+#ifdef METALLICITY
+  sph_in.Metallicity = metallicity;
+#endif
+  for(int species = 0; species < sSTORED_END; species++)
+    sph_out.Abund[species] = XH * abundance[species];
+  sph_out.Gamma = gamma_input > 1.0 ? gamma_input :
+      compute_gamma_from_abund(sph_out.Abund, temperature);
+  double molecular_weight = chemistry_molecular_weight(sph_out.Abund);
+  double utherm_cgs = BOLTZMANN * temperature /
+      ((sph_out.Gamma - 1.0) * molecular_weight * PROTONMASS);
+  if(utherm_input_cgs > 0.0)
+    utherm_cgs = utherm_input_cgs;
+  sph_out.Utherm = utherm_cgs / (All.UnitEnergy_in_cgs / All.UnitMass_in_g);
+  sph_out.t_chem = sph_out.t_cool = MAX_REAL_NUMBER;
+
+  if(diagnostic_mode == 2) {
+    double full_abundance[N_SP];
+    if(compute_equilibrium_abundances_d(&sph_in, &sph_out, temperature, dt, full_abundance))
+      for(int species = 0; species < N_SP; species++)
+        printf("ENERGY_STEP_INPUT_%s=%.17g\n",
+               chemistry_species_definition(species)->name, full_abundance[species]);
+  }
+
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  if(diagnostic_mode == 1) {
+    const int grid_side = 21;
+    const unsigned long molecular_carbon_count = 3 + (unsigned long)grid_side * grid_side;
+    const int carbon_reservoir_modes = 2;
+    const int oxygen_reservoir_modes = 4;
+    const unsigned long carbon_oxygen_count = molecular_carbon_count *
+        carbon_reservoir_modes * oxygen_reservoir_modes;
+    const int hydrogen_modes = 4;
+#ifdef HD
+    const int deuterium_modes = 4;
+#else
+    const int deuterium_modes = 1;
+#endif
+    const unsigned long grid_count = carbon_oxygen_count * hydrogen_modes * deuterium_modes;
+    const double carbon_total = XH * A_C_sun * metallicity;
+    const double oxygen_total = XH * A_O_sun * metallicity;
+    double started = gettimeofday_sec();
+
+    for(unsigned long guess_index = 0; guess_index < grid_count; guess_index++) {
+      struct chemdata_out trial = sph_out;
+      double guess[TGCHEM_NUM_ABUNDANCES];
+      memcpy(guess, sph_out.Abund, sizeof(guess));
+      unsigned long mode_index = guess_index / carbon_oxygen_count;
+      unsigned long carbon_oxygen_index = guess_index % carbon_oxygen_count;
+      unsigned long reservoir_index = carbon_oxygen_index / molecular_carbon_count;
+      unsigned long molecular_carbon_index = carbon_oxygen_index % molecular_carbon_count;
+      int oxygen_reservoir_mode = (int)(reservoir_index % oxygen_reservoir_modes);
+      int carbon_reservoir_mode = (int)(reservoir_index / oxygen_reservoir_modes);
+      int hydrogen_mode = (int)(mode_index % hydrogen_modes);
+      int deuterium_mode = (int)(mode_index / hydrogen_modes);
+
+      if(hydrogen_mode != 1) {
+        guess[sHI] = guess[sHII] = guess[sH2I] = guess[sHM] = 0.0;
+      }
+#ifdef HD
+      if(deuterium_mode != 1) {
+        guess[sDI] = guess[sDII] = guess[sHDI] = 0.0;
+        if(deuterium_mode == 0)
+          guess[sHDI] = D_number_fraction;
+        else if(deuterium_mode == 2)
+          guess[sDI] = D_number_fraction;
+        else
+          guess[sDII] = D_number_fraction;
+      }
+#endif
+      guess[sCI] = guess[sCII] = guess[sCO] = guess[sCO2] = 0.0;
+      guess[sOI] = guess[sOH] = guess[sH2O] = guess[sO2] = 0.0;
+
+      double carbon_left = carbon_total;
+      double oxygen_left = oxygen_total;
+      if(molecular_carbon_index == 0) {
+        guess[sCO] = dmin(carbon_left, oxygen_left);
+      } else if(molecular_carbon_index == 1) {
+        guess[sCO2] = dmin(carbon_left, 0.5 * oxygen_left);
+      } else if(molecular_carbon_index >= 3) {
+        unsigned long grid_index = molecular_carbon_index - 3;
+        double co2_fraction = (double)(grid_index / grid_side) / (double)(grid_side - 1);
+        double co_fraction = (double)(grid_index % grid_side) / (double)(grid_side - 1);
+        guess[sCO2] = dmin(carbon_left, 0.5 * oxygen_left) * co2_fraction;
+        carbon_left -= guess[sCO2];
+        oxygen_left -= 2.0 * guess[sCO2];
+        guess[sCO] = dmin(carbon_left, oxygen_left) * co_fraction;
+      }
+      carbon_left = carbon_total - guess[sCO] - guess[sCO2];
+      oxygen_left = oxygen_total - guess[sCO] - 2.0 * guess[sCO2];
+      if(carbon_reservoir_mode == 0)
+        guess[sCII] = dmax(carbon_left, 0.0);
+      else
+        guess[sCI] = dmax(carbon_left, 0.0);
+      if(oxygen_reservoir_mode == 0)
+        guess[sH2O] = dmax(oxygen_left, 0.0);
+      else if(oxygen_reservoir_mode == 1)
+        guess[sO2] = 0.5 * dmax(oxygen_left, 0.0);
+      else if(oxygen_reservoir_mode == 2)
+        guess[sOI] = dmax(oxygen_left, 0.0);
+      else
+        guess[sOH] = dmax(oxygen_left, 0.0);
+
+      if(hydrogen_mode != 1) {
+        double hydrogen_in_other_species = 0.0;
+        for(int species = 0; species < sSTORED_END; species++)
+          if(species != sHI && species != sHII && species != sH2I)
+            hydrogen_in_other_species +=
+                chemistry_species_definition(species)->nuclei[CHEM_ELEMENT_H] *
+                guess[species];
+        double hydrogen_available = dmax(XH - hydrogen_in_other_species, 0.0);
+        if(hydrogen_mode == 0)
+          guess[sH2I] = 0.5 * hydrogen_available;
+        else if(hydrogen_mode == 2)
+          guess[sHI] = hydrogen_available;
+        else
+          guess[sHII] = hydrogen_available;
+      }
+
+      int guess_iteration_limit = molecular_carbon_index < 3 ? 1000 : 100;
+      int status = compute_chemistry_implicit_guess_d(
+          &sph_in, &trial, temperature, dt, guess, guess_iteration_limit);
+      int nonnegative_root = 1;
+      for(int species = 0; species < sSTORED_END; species++)
+        if(trial.Abund[species] < 0.0)
+          nonnegative_root = 0;
+      if(status == 1 && nonnegative_root) {
+        printf("CHEM_GRID_FOUND guess=%lu hydrogen_mode=%d deuterium_mode=%d carbon_reservoir_mode=%d oxygen_reservoir_mode=%d molecular_carbon_guess=%lu elapsed_s=%.9g\n",
+               guess_index, hydrogen_mode, deuterium_mode, carbon_reservoir_mode,
+               oxygen_reservoir_mode, molecular_carbon_index,
+               gettimeofday_sec() - started);
+        for(int species = 0; species < sSTORED_END; species++)
+          printf("xguess_%s=%.17g\n", chemistry_species_definition(species)->name,
+                 guess[species] / XH);
+        for(int species = 0; species < sSTORED_END; species++)
+          printf("root_%s=%.17g\n", chemistry_species_definition(species)->name,
+                 trial.Abund[species] / XH);
+        return 0;
+      }
+      if((guess_index + 1) % 1000 == 0)
+        fprintf(stderr, "CHEM_GRID_PROGRESS guesses=%lu elapsed_s=%.9g\n",
+                guess_index + 1, gettimeofday_sec() - started);
+    }
+    fprintf(stderr, "CHEM_GRID_NOT_FOUND guesses=%lu elapsed_s=%.9g\n",
+            grid_count, gettimeofday_sec() - started);
+    return 1;
+  }
+#else
+  (void)diagnostic_mode;
+#endif
+
+  double started = gettimeofday_sec();
+  if(diagnostic_mode == 2)
+    sph_in.flag_print = 1;
+  int status;
+  if(diagnostic_mode == 2) {
+    status = compute_abundances_d(1, &sph_in, &sph_out, dt);
+  } else if(diagnostic_mode == 3 || diagnostic_mode == 4 || diagnostic_mode == 5) {
+    FILE *guess_input = fopen(guess_path, "r");
+    if(!guess_input) {
+      fprintf(stderr, "cannot open chemistry guess '%s': %s\n",
+              guess_path, strerror(errno));
+      return 2;
+    }
+    double newton_guess[TGCHEM_NUM_ABUNDANCES] = {0};
+    int guess_set[TGCHEM_NUM_ABUNDANCES] = {0};
+    int guess_line_number = 0;
+    while(fgets(line, sizeof(line), guess_input)) {
+      guess_line_number++;
+      char *text = trim_text(line);
+      if(*text == '\0' || *text == '#')
+        continue;
+      char *equals = strchr(text, '=');
+      if(!equals)
+        continue;
+      *equals = '\0';
+      char *key = trim_text(text);
+      if(strncmp(key, "guess_", 6) != 0)
+        continue;
+      char *value_text = trim_text(equals + 1);
+      char *value_end = NULL;
+      errno = 0;
+      double value = strtod(value_text, &value_end);
+      enum SPECIES species;
+      if(errno || value_end == value_text || *trim_text(value_end) != '\0' ||
+         !isfinite(value) ||
+         !chemistry_species_from_name(key + 6, &species) || species >= sSTORED_END) {
+        fprintf(stderr, "%s:%d: invalid chemistry guess '%s'\n",
+                guess_path, guess_line_number, key);
+        fclose(guess_input);
+        return 2;
+      }
+      newton_guess[species] = XH * value;
+      guess_set[species] = 1;
+    }
+    fclose(guess_input);
+    for(int species = 0; species < sSTORED_END; species++)
+      if(!guess_set[species]) {
+        fprintf(stderr, "chemistry guess requires guess_%s\n",
+                chemistry_species_definition(species)->name);
+        return 2;
+      }
+    if(diagnostic_mode == 3) {
+      status = compute_chemistry_implicit_guess_d(
+          &sph_in, &sph_out, temperature, dt, newton_guess, 1000);
+    } else if(diagnostic_mode == 5) {
+      const int grid_intervals = 100;
+      double grid_started = gettimeofday_sec();
+      unsigned long grid_trials = 0;
+      for(int hydrogen_index = 0; hydrogen_index <= grid_intervals;
+          hydrogen_index++) {
+        double hydrogen_fraction = (double)hydrogen_index / grid_intervals;
+        for(int carbon_oxygen_index = 0; carbon_oxygen_index <= grid_intervals;
+            carbon_oxygen_index++) {
+          double carbon_oxygen_fraction =
+              (double)carbon_oxygen_index / grid_intervals;
+          double trial_guess[TGCHEM_NUM_ABUNDANCES];
+          memcpy(trial_guess, sph_out.Abund, sizeof(trial_guess));
+          const int hydrogen_species[] = {sELEC, sHI, sHII, sH2I, sHM};
+          for(size_t member = 0;
+              member < sizeof(hydrogen_species) / sizeof(hydrogen_species[0]);
+              member++) {
+            int species = hydrogen_species[member];
+            trial_guess[species] =
+                (1.0 - hydrogen_fraction) * sph_out.Abund[species] +
+                hydrogen_fraction * newton_guess[species];
+          }
+#ifdef HD
+          const int deuterium_species[] = {sDI, sDII, sHDI};
+          for(size_t member = 0;
+              member < sizeof(deuterium_species) / sizeof(deuterium_species[0]);
+              member++) {
+            int species = deuterium_species[member];
+            trial_guess[species] =
+                (1.0 - hydrogen_fraction) * sph_out.Abund[species] +
+                hydrogen_fraction * newton_guess[species];
+          }
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+          for(int species = sCI; species < sSTORED_END; species++)
+            trial_guess[species] =
+                (1.0 - carbon_oxygen_fraction) * sph_out.Abund[species] +
+                carbon_oxygen_fraction * newton_guess[species];
+#endif
+          struct chemdata_out trial = sph_out;
+          int trial_status = compute_chemistry_implicit_guess_d(
+              &sph_in, &trial, temperature, dt, trial_guess, 1000);
+          grid_trials++;
+          if(trial_status == 1) {
+            printf("CHEM_GUESS_GRID2_FOUND trials=%lu H_fraction=%.2f CO_fraction=%.2f elapsed_s=%.9g\n",
+                   grid_trials, hydrogen_fraction, carbon_oxygen_fraction,
+                   gettimeofday_sec() - grid_started);
+            for(int species = 0; species < sSTORED_END; species++)
+              printf("guess_%s=%.17g\n",
+                     chemistry_species_definition(species)->name,
+                     trial_guess[species] / XH);
+            for(int species = 0; species < sSTORED_END; species++)
+              printf("root_%s=%.17g\n",
+                     chemistry_species_definition(species)->name,
+                     trial.Abund[species] / XH);
+            return 0;
+          }
+        }
+      }
+      printf("CHEM_GUESS_GRID2_NOT_FOUND trials=%lu elapsed_s=%.9g\n",
+             grid_trials, gettimeofday_sec() - grid_started);
+      return 1;
+    } else {
+      int success_count = 0;
+      double first_success = -1.0, last_success = -1.0;
+      double scan_started = gettimeofday_sec();
+      const int scan_intervals = 1000;
+      for(int scan_index = 0; scan_index <= scan_intervals; scan_index++) {
+        double fraction = (double)scan_index / scan_intervals;
+        double trial_guess[TGCHEM_NUM_ABUNDANCES];
+        for(int species = 0; species < sSTORED_END; species++)
+          trial_guess[species] =
+              (1.0 - fraction) * sph_out.Abund[species] +
+              fraction * newton_guess[species];
+        struct chemdata_out trial = sph_out;
+        int trial_status = compute_chemistry_implicit_guess_d(
+            &sph_in, &trial, temperature, dt, trial_guess, 1000);
+        if(trial_status == 1) {
+          if(first_success < 0.0)
+            first_success = fraction;
+          last_success = fraction;
+          success_count++;
+          printf("CHEM_GUESS_SCAN_SUCCESS fraction=%.3f HII=%.17g DII=%.17g CO=%.17g CO2=%.17g\n",
+                 fraction, trial_guess[sHII] / XH,
+#ifdef HD
+                 trial_guess[sDII] / XH,
+#else
+                 0.0,
+#endif
+                 trial_guess[sCO] / XH, trial_guess[sCO2] / XH);
+        }
+      }
+      printf("CHEM_GUESS_SCAN_SUMMARY successes=%d first=%.17g last=%.17g elapsed_s=%.9g\n",
+             success_count, first_success, last_success,
+             gettimeofday_sec() - scan_started);
+
+      for(int group_mask = 1; group_mask < 16; group_mask++) {
+        double trial_guess[TGCHEM_NUM_ABUNDANCES];
+        memcpy(trial_guess, sph_out.Abund, sizeof(trial_guess));
+        if(group_mask & 1) {
+          trial_guess[sELEC] = newton_guess[sELEC];
+          trial_guess[sHI] = newton_guess[sHI];
+          trial_guess[sHII] = newton_guess[sHII];
+          trial_guess[sH2I] = newton_guess[sH2I];
+          trial_guess[sHM] = newton_guess[sHM];
+        }
+#ifdef HD
+        if(group_mask & 2) {
+          trial_guess[sDI] = newton_guess[sDI];
+          trial_guess[sDII] = newton_guess[sDII];
+          trial_guess[sHDI] = newton_guess[sHDI];
+        }
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+        if(group_mask & 4)
+          for(int species = sCI; species < sCOII; species++)
+            trial_guess[species] = newton_guess[species];
+        if(group_mask & 8)
+          for(int species = sCOII; species < sSTORED_END; species++)
+            trial_guess[species] = newton_guess[species];
+#endif
+        struct chemdata_out trial = sph_out;
+        int trial_status = compute_chemistry_implicit_guess_d(
+            &sph_in, &trial, temperature, dt, trial_guess, 1000);
+        printf("CHEM_GUESS_GROUPS H=%d D=%d CO_stored=%d CO_intermediate=%d converged=%d\n",
+               !!(group_mask & 1), !!(group_mask & 2), !!(group_mask & 4),
+               !!(group_mask & 8),
+               trial_status == 1);
+      }
+      for(int reverted_species = 0; reverted_species < sSTORED_END;
+          reverted_species++) {
+        double trial_guess[TGCHEM_NUM_ABUNDANCES];
+        memcpy(trial_guess, newton_guess, sizeof(trial_guess));
+        trial_guess[reverted_species] = sph_out.Abund[reverted_species];
+        struct chemdata_out trial = sph_out;
+        int trial_status = compute_chemistry_implicit_guess_d(
+            &sph_in, &trial, temperature, dt, trial_guess, 1000);
+        printf("CHEM_GUESS_REVERT species=%s converged=%d physical=%.17g successful=%.17g\n",
+               chemistry_species_definition(reverted_species)->name,
+               trial_status == 1,
+               sph_out.Abund[reverted_species] / XH,
+               newton_guess[reverted_species] / XH);
+      }
+      {
+        double trial_guess[TGCHEM_NUM_ABUNDANCES];
+        memcpy(trial_guess, sph_out.Abund, sizeof(trial_guess));
+        const int selected_species[] = {
+          sHII, sH2I, sHM,
+#ifdef CARBON_OXYGEN_CHEMISTRY
+          sCI, sCII, sCO, sOH, sOII, sOHII,
+#endif
+        };
+        const int selected_count = sizeof(selected_species) / sizeof(selected_species[0]);
+        for(int selected = 0; selected < selected_count; selected++) {
+          int species = selected_species[selected];
+          trial_guess[species] = newton_guess[species];
+        }
+        struct chemdata_out trial = sph_out;
+        int trial_status = compute_chemistry_implicit_guess_d(
+            &sph_in, &trial, temperature, dt, trial_guess, 1000);
+        printf("CHEM_GUESS_SELECTED converged=%d count=%d\n",
+               trial_status == 1, selected_count);
+      }
+      return success_count > 0 ? 0 : 1;
+    }
+  } else {
+    status = compute_chemistry_implicit_d(&sph_in, &sph_out, temperature, dt);
+  }
+  int converged = diagnostic_mode == 2 ? status == 0 : status == 1;
+  double elapsed = gettimeofday_sec() - started;
+  double final_temperature = chemistry_temperature(sph_out.Abund, sph_out.Gamma,
+      sph_out.Utherm * (All.UnitEnergy_in_cgs / All.UnitMass_in_g));
+  printf("CHEM_STEP converged=%d status=%d elapsed_s=%.9g n_nuclei_cm3=%.17g T_initial_K=%.17g T_final_K=%.17g Z=%.17g dt_s=%.17g\n",
+         converged, status, elapsed, n_nuclei, temperature, final_temperature, metallicity, dt);
+  for(int species = 0; species < sSTORED_END; species++)
+    printf("%s=%.17g\n", chemistry_species_definition(species)->name,
+           sph_out.Abund[species] / XH);
+  return converged ? 0 : 1;
+}
+
+static void print_single_chemistry_step_input(const struct chemdata_in *input,
+                                              const struct chemdata_out *output,
+                                              double temperature, double dt)
+{
+  fprintf(stderr, "CHEM_STEP_INPUT_BEGIN\n");
+  fprintf(stderr, "n_nuclei_cm3=%.17g\n", input->rho_cgs / PROTONMASS);
+  fprintf(stderr, "T_K=%.17g\n", temperature);
+  fprintf(stderr, "T_CMB_K=%.17g\n", All.T_CMB);
+#ifdef METALLICITY
+  fprintf(stderr, "Z=%.17g\n", input->Metallicity);
+#else
+  fprintf(stderr, "Z=0\n");
+#endif
+  fprintf(stderr, "dt_s=%.17g\n", dt);
+  for(int species = 0; species < sSTORED_END; species++)
+    fprintf(stderr, "x0_%s=%.17g\n", chemistry_species_definition(species)->name,
+            output->Abund[species] / XH);
+  fprintf(stderr, "CHEM_STEP_INPUT_END\n");
+}
 #endif
 
 #if defined(IONIZATION_PHOTON) || defined(X_RAY)
@@ -129,17 +634,69 @@ int main(int argc, char **argv){
 #endif
   ifunc = InitTable();
 
+#ifndef CHEMISTRY_OLD
+  if(argc == 3 && strcmp(argv[1], "--chem-step") == 0)
+    return run_single_chemistry_step(argv[2], 0, NULL);
+  if(argc == 3 && strcmp(argv[1], "--chem-grid") == 0)
+    return run_single_chemistry_step(argv[2], 1, NULL);
+  if(argc == 3 && strcmp(argv[1], "--energy-step") == 0)
+    return run_single_chemistry_step(argv[2], 2, NULL);
+  if(argc == 4 && strcmp(argv[1], "--chem-guess") == 0)
+    return run_single_chemistry_step(argv[2], 3, argv[3]);
+  if(argc == 4 && strcmp(argv[1], "--chem-guess-scan") == 0)
+    return run_single_chemistry_step(argv[2], 4, argv[3]);
+  if(argc == 4 && strcmp(argv[1], "--chem-guess-grid2") == 0)
+    return run_single_chemistry_step(argv[2], 5, argv[3]);
+  if(argc == 2 && strcmp(argv[1], "--survey-first-failures") == 0)
+    survey_first_chemistry_failures = 1;
+#endif
+
 #ifdef METALLICITY
   All.Metallicity = pow(10., METALLICITY);
 #endif
 
-  sprintf(outputdir, "%s", "./output");
+  const char *output_root = getenv("ONEZONE_OUTPUT_ROOT");
+  if(!output_root || output_root[0] == '\0')
+    output_root = "./output";
+  double run_nH_max = nH_MAX;
+  const char *maximum_density_text = getenv("ONEZONE_MAX_NH");
+  if(maximum_density_text && maximum_density_text[0] != '\0') {
+    char *maximum_density_end = NULL;
+    double requested_maximum = strtod(maximum_density_text, &maximum_density_end);
+    if(maximum_density_end != maximum_density_text &&
+       *maximum_density_end == '\0' && requested_maximum > 0.0)
+      run_nH_max = dmin(run_nH_max, requested_maximum);
+  }
+  int requested_redshift_index = -1;
+  int requested_metallicity_index = -1;
+  const char *redshift_index_text = getenv("ONEZONE_REDSHIFT_INDEX");
+  const char *metallicity_index_text = getenv("ONEZONE_METALLICITY_INDEX");
+  if(redshift_index_text)
+    requested_redshift_index = atoi(redshift_index_text);
+  if(metallicity_index_text)
+    requested_metallicity_index = atoi(metallicity_index_text);
+  sprintf(outputdir, "%s", output_root);
   mkdir(outputdir, 0755);
   
 #ifndef METALLICITY
-  sprintf(outputdir,"%s","./output/nomet");
+  sprintf(outputdir,"%s/nomet",output_root);
 #else
-  sprintf(outputdir,"%s","./output/metals");
+  sprintf(outputdir,"%s/metals",output_root);
+#endif
+
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  sprintf(outputdir,"%s_CO",outputdir);
+#ifdef CHEM_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION
+  sprintf(outputdir,"%s_EQ_FULL",outputdir);
+#elif defined(CHEM_INTERMEDIATE_EQUILIBRIUM)
+  sprintf(outputdir,"%s_EQ_REDUCED",outputdir);
+#else
+  sprintf(outputdir,"%s_NEQ",outputdir);
+#endif
+#endif
+
+#ifdef HELIUM
+  sprintf(outputdir,"%s_He",outputdir);
 #endif
 
 #ifdef HD
@@ -176,6 +733,10 @@ int main(int argc, char **argv){
       for(int iz=0;iz<nz;iz++)
 #endif
 	{
+#ifdef SURVEY_CMB_REDSHIFT
+	  if(requested_redshift_index >= 0 && iz != requested_redshift_index)
+	    continue;
+#endif
 #ifdef SURVEY_LYMANWERNER
 	  All.LymanWerner = LW[il];
 #ifdef BACKGROUND_LW_RADIATION
@@ -196,6 +757,10 @@ int main(int argc, char **argv){
 		  for(int imet=0;imet<nmet;imet++)
 #endif
 		    {
+#ifdef SURVEY_METALLICITY
+		      if(requested_metallicity_index >= 0 && imet != requested_metallicity_index)
+		        continue;
+#endif
 #ifdef SURVEY_METALLICITY
 		      All.Metallicity = metallicity_survey[imet];
 		      //All.Metallicity = pow(10., -3.25-0.05 * imet);
@@ -376,7 +941,19 @@ int main(int argc, char **argv){
 			sph_out.Abund[sELEC], sph_out.Abund[sHI], sph_out.Abund[sHII], sph_out.Abund[sH2I], sph_out.Abund[sHM]);
 #endif
       
+		struct chemdata_out sph_out_initial = sph_out;
+		double chemistry_input_temperature = SphP[ithis].temperature;
 		ifunc = compute_abundances_d(1, &sph_in, &sph_out, dt_in_sec);
+		if(ifunc != 0)
+		  {
+		    fprintf(stderr,
+		            "CHEM_SURVEY_FAILURE Z=%.17g T_CMB_K=%.17g istep=%d status=%d\n",
+		            All.Metallicity, All.T_CMB, istep, ifunc);
+		    print_single_chemistry_step_input(&sph_in, &sph_out_initial,
+		                                      chemistry_input_temperature, dt_in_sec);
+		    if(survey_first_chemistry_failures)
+		      break;
+		  }
 #ifdef TRACE_1ZONE_CHEM
 		fprintf(stderr, "TRACE after compute: ifunc=%d U=%g gamma=%g Abund=%g %g %g %g %g\n",
 			ifunc, sph_out.Utherm, sph_out.Gamma,
@@ -525,7 +1102,7 @@ int main(int argc, char **argv){
 		istep++;
   
 		if(istep == istep_max) break;
-		if(nH > nH_MAX || SphP[0].temperature > 2.e6)
+		if(nH > run_nH_max || SphP[0].temperature > 2.e6)
 		  break;
 		
 #ifdef MODE_REPEAT

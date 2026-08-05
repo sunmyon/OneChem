@@ -235,6 +235,80 @@ int compute_abundances_d(int mode, const chemdata_in *input, chemdata_out *outpu
   return status;
 }
 
+int compute_chemistry_implicit_d(const chemdata_in *input, chemdata_out *output,
+                                 double temperature, double dtime)
+{
+  ChemEnvironment environment = {0};
+  ChemState state;
+  ChemWorkspace workspace = {0};
+  ChemStepData step;
+
+  FlagPrint = input->flag_print;
+  import_environment(input, &environment);
+  import_state(output, &state);
+  workspace.thermodynamics.temperature = temperature;
+  workspace.thermodynamics.molecular_weight = chemistry_molecular_weight(state.abund);
+  workspace.evaluation.t_cool_rad = MAX_REAL_NUMBER;
+  workspace.evaluation.t_cool_chem = MAX_REAL_NUMBER;
+  workspace.evaluation.t_chem = MAX_REAL_NUMBER;
+  initialize_step_data(&environment, &state, temperature, dtime, &step);
+
+  int status = chemistry_noneq_chem_implicit(&environment, &step, &state, &workspace, dtime);
+  export_state(&state, output);
+  export_workspace(&workspace, output);
+  return status;
+}
+
+int compute_equilibrium_abundances_d(const chemdata_in *input, const chemdata_out *output,
+                                     double temperature, double dtime, double *full_abundance)
+{
+  ChemEnvironment environment = {0};
+  ChemState state;
+  ChemWorkspace workspace = {0};
+  ChemStepData step;
+
+  import_environment(input, &environment);
+  import_state(output, &state);
+  workspace.thermodynamics.temperature = temperature;
+  workspace.thermodynamics.molecular_weight = chemistry_molecular_weight(state.abund);
+  initialize_step_data(&environment, &state, temperature, dtime, &step);
+  evaluate_reaction_rates(&environment, &step, &state, &workspace);
+
+  for(int species = 0; species < N_SP; species++)
+    full_abundance[species] = state.abund[species] / XH;
+  return chemistry_update_intermediate_equilibrium_species(
+      CHEM_REACTION_IMPLICIT, XH * environment.rho_cgs / PROTONMASS,
+      full_abundance, &workspace.rates);
+}
+
+int compute_chemistry_implicit_guess_d(const chemdata_in *input, chemdata_out *output,
+                                       double temperature, double dtime,
+                                       const double *newton_guess, int max_iterations)
+{
+  ChemEnvironment environment = {0};
+  ChemState state;
+  ChemWorkspace workspace = {0};
+  ChemStepData step;
+  double full_guess[N_SP] = {0};
+
+  FlagPrint = input->flag_print;
+  import_environment(input, &environment);
+  import_state(output, &state);
+  memcpy(full_guess, newton_guess, sizeof(output->Abund));
+  workspace.thermodynamics.temperature = temperature;
+  workspace.thermodynamics.molecular_weight = chemistry_molecular_weight(state.abund);
+  workspace.evaluation.t_cool_rad = MAX_REAL_NUMBER;
+  workspace.evaluation.t_cool_chem = MAX_REAL_NUMBER;
+  workspace.evaluation.t_chem = MAX_REAL_NUMBER;
+  initialize_step_data(&environment, &state, temperature, dtime, &step);
+
+  int status = chemistry_noneq_chem_implicit_with_guess(
+      &environment, &step, &state, &workspace, dtime, full_guess, max_iterations);
+  export_state(&state, output);
+  export_workspace(&workspace, output);
+  return status;
+}
+
 static ChemSolverPlan select_solvers(double n_nuclei, double time_cooling, double time_chemistry, double time_remaining)
 {
   ChemSolverPlan plan = {CHEMISTRY_SOLVER_EXPLICIT, ENERGY_SOLVER_EXPLICIT,

@@ -89,12 +89,23 @@ EXPLICIT_CHEMISTRY_UPDATE=SIMULTANEOUS
 
 ## 中間生成物の平衡近似
 
-現在は HM を対象としているが、実装は複数中間体を扱える形にしている。
+HMとC/O短寿命中間体を対象とし、平衡値の利用とNewton未知変数の選択を分離している。現在のoptionは次の通りである。
 
 ```text
-INTERMEDIATE_EQUILIBRIUM=0    # 全speciesを非平衡値として保持
-INTERMEDIATE_EQUILIBRIUM=1    # 指定した中間生成物を代数的平衡として扱う
+INTERMEDIATE_EQUILIBRIUM=1          # default: 中間体の平衡値を構築する
+INTERMEDIATE_EQUILIBRIUM=0          # 平衡値を構築せず、全speciesを非平衡値として保持する
+
+EQUILIBRIUM_NEWTON_SYSTEM=FULL      # default: 平衡値を初期guessに使い、全speciesをNewtonで解く
+EQUILIBRIUM_NEWTON_SYSTEM=REDUCED   # 中間体を代数的平衡としてNewton系から除外する
+
+NEWTON_LU_REUSE=1                   # default: FULL Newtonの最終収束確認でLUを再利用する
+NEWTON_LU_REUSE=0
+
+EQUILIBRIUM_SPECIES_CONVERGENCE=0   # default: FULLで初期化した中間体を収束判定から外す
+EQUILIBRIUM_SPECIES_CONVERGENCE=1   # 中間体も通常speciesと同じ収束判定へ含める
 ```
+
+`INTERMEDIATE_EQUILIBRIUM=1, EQUILIBRIUM_NEWTON_SYSTEM=FULL`では、平衡値はNewton初期guessとしてのみ使われる。有限`dt`の最終解へ代数的平衡を強制するmodeではない。厳密に中間体平衡を強制するのは`REDUCED`である。`REDUCED`は`INTERMEDIATE_EQUILIBRIUM=1`を必要とし、矛盾する組合せはMakefileで拒否する。LU再利用はequilibriumの有無によらずFULL Newtonで有効であり、eq-species収束判定optionはequilibrium付きFULLでのみ有効である。
 
 主な実装内容は次の通りである。
 
@@ -102,8 +113,9 @@ INTERMEDIATE_EQUILIBRIUM=1    # 指定した中間生成物を代数的平衡と
 - 単一中間体は直接平衡値を求める。
 - 複数中間体は収束判定付きの反復で同時に更新する。
 - explicit chemistry でも中間体の平衡値を更新する。
-- implicit chemistry では中間体を Newton の独立変数から外す。
-- 中間体平衡値の連鎖微分を解析 Jacobian に組み込み、一般の複数中間体行列として解く。
+- REDUCED implicit chemistryでは中間体をNewtonの独立変数から外す。
+- REDUCEDでは中間体平衡値の連鎖微分を解析Jacobianへ組み込み、一般の複数中間体行列として解く。
+- FULLでは平衡値で中間体guessを構築した後、主要speciesと同じfull implicit Newton系で解く。
 - 解析的縮約が失敗した場合、または20反復以降も収束しない場合は numerical Jacobian へ切り替える。
 
 これにより、C/O network で複数の短寿命中間体を追加しても、同じ枠組みを利用できる。
@@ -422,7 +434,7 @@ C, C+, CO, CO2, O, OH, H2O, O2
 HM, CO+, CH, CH2, O+, OH+, H2O+, H3O+, O2+
 ```
 
-`INTERMEDIATE_EQUILIBRIUM=1` ではこれらをchemistry内部の代数的平衡speciesとし、Newtonの独立変数から外す。`INTERMEDIATE_EQUILIBRIUM=0` ではHMを含む全speciesを非平衡変数として時間発展させる。
+`INTERMEDIATE_EQUILIBRIUM=1, EQUILIBRIUM_NEWTON_SYSTEM=REDUCED`ではこれらをchemistry内部の代数的平衡speciesとし、Newtonの独立変数から外す。`EQUILIBRIUM_NEWTON_SYSTEM=FULL`では平衡値を初期guessとして生成した後、HMを含む全speciesを非平衡変数として時間発展させる。`INTERMEDIATE_EQUILIBRIUM=0`では平衡初期化も行わず、入力された全speciesを非平衡変数として時間発展させる。
 
 中間体の結合構造は一様ではない。
 
@@ -896,3 +908,304 @@ O2+                         scalar
 となり、block版の方が約1.3%遅かった。小blockを複数回呼ぶoverheadが、Accelerate/LAPACKによる9x9 solve一回を上回ったためである。このためblock solver実装は撤回し、production codeはdense 9x9へ戻した。
 
 今後の安全な候補はsparsity分解ではなく、同じ9x9 factorizationを平衡abundance solveと直後のresponse solveで再利用することである。これならglobal pivotingと現在の数値解を維持できる。ただし、両地点で構築される行列がbitwiseに一致することを先に確認する必要がある。もう一つの候補は中間体変数・平衡式のscalingだが、H3O+ responseの数値解自体を変える可能性があるため、性能変更ではなく数値安定性の問題として別に検証する。
+
+## dynamic reservoir導入後に残ったenergy failure
+
+H/D/C/Oの従属reservoirを各chemistry callで最大存在量のspeciesへ切り替えた後、`nH=1e7 cm^-3`までの36条件走査ではchemistryの1000反復到達は0になった。一方、z=0、Z=1、step 1052にenergy solver failureが1件残った。この入力は
+
+```text
+chemistry_energy_failure_dynamic_reservoir_z0_z1_step1052.in
+```
+
+へ保存した。条件は `n_nuclei=6.9120314518885e5 cm^-3`、`T=0.488653961 K`、`T_CMB=2.73 K`、`dt=1.02710802816e11 s` である。chemistryだけを同じ入力から実行すると約0.2 msで収束したため、chemistry Newtonのfailureではなかった。
+
+energy residualの低温側探索を追跡すると、`T=0.0488654 K`でH2 line coolingだけがNaNになっていた。`H2cool_LTEfit()`は100 K以下でLTE coolingを0とする。一方、低密度fitもこの温度ではunderflowして0となるため、従来の補間式
+
+```text
+Lambda = Lambda_LTE / (1 + Lambda_LTE/Lambda_low)
+```
+
+が `0/(1+0/0)` を評価していた。これは低温で有限のcoolingを失った問題ではなく、本来0へ向かう冷却率の数値表現だけがNaNになった問題である。
+
+修正後は、LTE coolingが0なら低密度fitを評価せず0を返す。LTEと低密度rateがともに正の場合は、小さい方を分子に選ぶ等価な調和平均形を使い、ratioのoverflowも避ける。温度floorやphysical timestep短縮は導入していない。
+
+保存入力のenergy solveは修正後、有限な `T_new=0.469122641 K` を得てstatus 0となった。従来は `FlagPrint=1`なら成功時にも `not converged(in energy)` と表示していたため、verbose成功時は `converged(in energy diagnostic)` と表示するよう診断文も修正した。その後、z=0、Z=1の進化は元のstep 1052を越え、`nH=1e7 cm^-3`まで完走した。
+
+最後に `CARBON_OXYGEN_CONSERVATION=1`、中間体平衡ON、`-O2`のbuildで36条件を `nH=1e7 cm^-3`まで再走査した。結果は次の通りである。
+
+| 項目 | 結果 |
+|---|---:|
+| chemistry 1000反復到達 | 0 |
+| 非ゼロstatus | 0 |
+| energy failure | 0 |
+| NaN | 0 |
+| wall time | 11.53 s |
+
+z=0、Z=1ではgas temperatureが一時的にCMB温度未満となるが、その後density上昇とdust couplingにより約3 Kへ戻った。今回のfailureの直接原因はこの低温状態そのものではなく、H2 cooling補間のゼロ除算だった。CMB未満への一時的な進化がchemical energy termを含めて物理的に妥当かどうかは、必要なら別の科学的検証対象とする。
+
+### `nH=1e16 cm^-3`までの高密度再走査
+
+`nH=1e7 cm^-3`では高密度側の問題を検査できないため、同じbuildで36条件すべてを`main.c`の既定上限 `nH_MAX=1e16 cm^-3`まで再走査した。density stepが上限を越えるまで進むため、全出力の最終sampleは `nH=1.2870653571e16 cm^-3`だった。
+
+| 項目 | 結果 |
+|---|---:|
+| 完走した条件 | 36/36 |
+| chemistry Newton最終失敗 | 0 |
+| physical step内1000 substep到達 | 0 |
+| 非ゼロstatus | 0 |
+| energy failure | 0 |
+| NaNを含む最終出力 | 0 |
+| wall time | 17.59 s |
+
+したがって、H2 coolingのNaN修正とdynamic reservoirを含む現在のbuildでは、以前問題が現れていた高密度範囲も含めてterminal failureは再現しなかった。なお、収束前にreset経路を使用して最終的に回復した回数は現在の通常ログには出していないため、この回数自体を性能指標として調べる場合は別途counterが必要である。
+
+### 中間体平衡OFFとの高密度比較
+
+`INTERMEDIATE_EQUILIBRIUM=0`では、低密度から中密度の成功条件は平衡ONより高速だった。代表的なz=0、Z=0.1の `nH=1e16 cm^-3`までの単独runは、ONが0.803 s、OFFが0.142 sだった。一方、OFFは高密度で頑健ではなく、最初のterminal failureはz=0、Z=1、step 1478、`n_nuclei=1.2277638733e15 cm^-3`、`T=1219.166 K`、`dt=2.437034e6 s`で発生した。入力は `chemistry_noneq_intermediate_failure_z0_z0_step1478.in` に保存した。
+
+この条件ではCI、CII、OIがいずれも `1e-16`だった。OFFではCの従属reservoirはCO、Oの従属reservoirはO2なので、この3種は保存則の差し引きで得た値ではなく、`CHEMISTRY_CARBON_OXYGEN_FLOOR=1e-16`を下限とする独立Newton変数である。C/O総量付近のdoubleのULPはそれぞれ約 `7.0e-20`、`1.3e-19`であり、`1e-16`は表現限界ではなく人為的floorである。
+
+ただしfloorを `1e-30`へ下げて初期密度からz=0、Z=1を再計算しても、CI/CII/OIが `1e-30`になっただけで、同じstep 1478、同じdensityでfailureした。保存stepのCI/CII/OIだけを `1e-30`へ置換したchemistry-only solveも未収束だった。したがって、このfloorは物理解を制限し得る別の問題ではあるが、非平衡中間体を含む今回の高密度Newton failureの直接原因ではない。診断後、production floorとbuildは `1e-16`、中間体平衡ONへ戻した。
+
+failure時に全speciesの最終abundance、Newton補正、implicit residualを出す診断を追加した。step 1478の最後のbasinでは、収束判定を直接止めた最大相対Newton補正はCIIの `2.8117` だった。しかし単一speciesの問題ではなく、主な独立変数の相対補正はCI `0.853`、HII `0.500`、HM `0.498`、DII `0.500`、OH+ `0.508`、H2O `0.322`、H3O+ `0.320`だった。implicit residualもHIIで約 `-1.27e6`、OH/H2Oで約 `-9.84/+9.84`、H2O+/H3O+で約 `-15.15/+15.14`となり、反応対の間を大きく往復していた。CO、O2、electron、H2、HDはこのcallで保存則により従属なので、その行のresidual自体は収束判定対象ではない。
+
+したがって、OFF高密度failureはCII floorだけが解を妨げる現象ではなく、H/D recombination系、CII/CI、酸素中性分子系、`H2O+ -> H3O+` ion chainを含むfull non-equilibrium Newton系が、random reset後もroot basinへ入れず大振幅の補正を続ける現象である。平衡ONが頑健なのは、HMとC/O中間体を代数的に除去してこのstiffな自由度をNewton時間発展系から外しているためと考えられる。
+
+### 従属speciesも含めたNewton step縮小
+
+step 1478の最初のresetを個別に追跡すると、70反復上限や5回連続clipではなく、iteration 1のNewton試行直後に発生していた。初期電子存在量は `9.952e-14`だったが、試行点ではHMが `8.068e-13`、H3O+が `5.979e-13`、O2+が `3.900e-15`となり、電荷保存から再構成される電子が `-2.048e-13`になったためである。
+
+従来のbacktrackingは、独立Newton変数へ `1, 1/2, 1/4, ...` 倍の補正を適用して保存従属speciesを再構成していたが、再構成関数が数値的に成功した時点で縮小loopを抜けていた。電子などの従属speciesが非負かどうかはloopを抜けた後に検査していたため、負の電子を見つけても補正をさらに縮小せず、直ちにresetしていた。
+
+修正後は、各backtracking試行で代数再構成の直後に全speciesの有限性・非負性・上限を確認する。不正な従属speciesがあれば同じphysical timestepのままNewton補正だけを半減する。保存則や物理timestepは変更していない。
+
+保存入力 `chemistry_noneq_intermediate_failure_z0_z0_step1478.in` は、平衡OFFで修正前は未収束だったが、修正後は約 `0.19 ms`、status 1で収束した。最終電子存在量は正の `1.01e-23`だった。z=0、Z=1を初期密度から `nH=1e16 cm^-3`まで進化させても元のstep 1478を通過し、terminal failureなしで完走した。
+
+平衡OFFの36条件を同じ上限まで走査した結果、36/36が完走し、terminal failure 0、NaN 0だった。energy root探索中に採用されなかった温度trialでのchemistry 1000反復警告は305回残っており、OFF系のすべての難条件を解消したわけではない。一方、平衡ONの36条件もterminal failure 0、NaN 0で完走し、内部計測時間は17.68秒で従来の17.59秒と同等だった。平衡ONでは不採用trialの1000反復警告が2回あったが、旧backtrackingでも同じz=10、15、Z=0.01条件で各1回再現したため、今回の修正による回帰ではない。
+
+### full-HII reset欠落の検証
+
+C/O chemistry統合後の決定論的resetには、旧コードにあった `HI=1e-5`、`HII=0.99999`相当のfull-HII経路が残っていなかった。この経路の収束半径は小さいため、乱数探索で得た `HII=0.919`程度のguessをfull-HII経路の代用にはできない。
+
+保存入力 `chemistry_noneq_first_1000_z0_z1_t26159.in` に対して、H保存を満たす利用可能なHのほぼ全量をHIIへ置き、Dもほぼ全量をDIIへ置く旧コード相当のresetを追加して検証した。C/Oについては元の初期組成、full CO、full CO2、および先の長時間乱数探索でrootへ到達したstored C/O組成をそれぞれ組み合わせた。full COの場合はC/O設定後にもH保存を再計算し、実際に `HI=1e-5`、`HII=0.9999899998`となることを確認した。しかし、いずれも既定1000反復内では収束しなかった。
+
+さらに、既存3経路の後へfull-HII経路だけを追加して平衡OFFの36条件をclean buildで再走査すると、1000反復警告は305から6189へ増え、terminal failureも0から52へ悪化した。狭い収束域の外にあるfull-HII basinへ70反復を割り当てることで、後続の乱数探索予算を減らしたためである。追加を撤回すると同じclean buildで警告305、terminal failure 0、chemistry内部時間約7.28秒へ復帰した。
+
+したがって、full-HII経路が統合時に欠落したという指摘自体は正しいが、この保存条件の1000反復到達の原因ではなく、無条件に復元することも改善にならない。full-HII経路を将来利用するなら、温度だけでなくroot basin内であることを判定できる条件が必要であり、現時点のproduction resetには追加していない。
+
+### 最初の平衡OFF・1000反復例のroot basin
+
+`main.c`から既存の公開関数 `compute_chemistry_implicit_guess_d()`を直接呼び、物理初期値とNewton guessを別々に指定できる `--chem-guess` 診断を追加した。solver内部のresetは使用しない。先の1000万反復探索で保存したguessを
+
+```text
+./1ZONE --chem-guess chemistry_noneq_first_1000_z0_z1_t26159.in \
+  chemistry_noneq_first_1000_z0_z1_t26159.solution
+```
+
+として与えると、同じ物理初期値・温度・dtで約0.25 ms、status 1で収束し、保存済みrootを再現した。したがって、このimplicit equationには非負かつ保存則を満たすrootが存在する。
+
+物理初期値と成功guessの直線補間をresetなしで1001点走査した。収束したのは15点だけで、主な連続窓は補間係数 `0.907--0.914`だった。`0.951`、`0.958--0.959`、`0.974`、`0.977`、`0.990`、`1.000`にも孤立した成功点があった。成功guessへ単調に近づけば常に収束する広いbasinではなく、Newtonの境界処理により細い複数の収束経路へ分かれている。
+
+guessをH系、D系、stored C/O、中間体C/Oに分けると、H系・stored C/O・中間体C/Oの3群を同時に成功guessへ置いた場合だけ収束した。D系は物理初期値のままでよかった。さらに成功guessから1 speciesずつ物理初期値へ戻すleave-one-out試験では、戻すと収束を失うspeciesは
+
+```text
+HII, H2, HM, CI, CII, CO, OH, O+, OH+
+```
+
+の9種だった。この9種だけを成功値へ置き、electron、HI、D全種、CO2、OI、H2O、O2および残りの中間体を物理初期値へ戻したguessも収束した。必要な9種の値は
+
+```text
+HII  = 9.192653185255546e-1
+H2   = 3.0987842508294233e-6
+HM   = 5.6668883436398361e-16
+CI   = 1.723488380845078e-5
+CII  = 1.5210013534424043e-6
+CO   = 1.2848525743524021e-4
+OH   = 3.860439229856089e-5
+O+   = 0
+OH+  = 0
+```
+
+である。これはfull-HIIだけでは足りず、H2/HMの高温側guessと、炭素のCO優勢化、O+/OH+の消滅を同時に与える必要があることを示す。ここまでの試験はroot探索であり、productionのreset条件は変更していない。
+
+### 平衡OFF failure個別例: `Z=1, T=3127 K`
+
+36条件走査で失敗した別の入力を `chemistry_noneq_1000_z0_z1_t3127.in` に保存した。条件は `n_nuclei=1.3530475638964064e16 cm^-3`、`T=3127.1931289707927 K`、`dt=734112.205465086 s`、`Z=1`である。初期状態は `H2=0.4988049`、`HII=6.98e-20`のほぼ完全分子状態で、Cは主に `CO2=2.5901e-4`と`CO=5.6978e-5`に入っていた。
+
+同じphysical timestepのまま乱数探索上限を1000万へ増やすと、iteration 1887、乱数guess 282個目でrootを得た。成功guessは `chemistry_noneq_1000_z0_z1_t3127.solution` にrootとともに保存した。このguessを `--chem-guess` で直接与えると、resetなし11反復、約0.20 msで同じrootへ収束した。
+
+成功guessの主成分は `HII=0.2517909`、`H2=0.2685402`、`HM=2.887e-7`、`CO2=2.77335e-4`、`CO=1.42460e-5`だった。したがって、この例もfull HII basinではなく、初期のほぼ完全分子状態から部分電離・部分分子状態へ移るbasinである。既定1000反復では乱数guessが十分な回数まで進まず失敗した。
+
+この成功guessを既存reset 1--3の後のreset 4へ追加した。C/O存在量だけはmetallicityでscaleし、H/D組成とC/O中間体ゼロの構造は保存guessを用いた。既存reset 1--3は変更していない。対象入力は既定1000反復で約0.35 ms、status 1となり、保存済みrootへ収束した。
+
+元の平衡OFF・36条件走査で1000反復へ達した305入力を個別に再実行すると、46件が収束し、259件が未収束だった。収束した46件の内訳は、対象の `Z=1, n=1.3530e16, T=3127 K`が1件、`Z=1, n=4.2969e14, T=1458.90--1459.10 K`が2件、残り43件は `Z=0.1, T=1200.67--1457.05 K`の低温群だった。したがって、このreset templateは対象例だけでなく、部分電離・部分分子rootを共有する低温群にも有効だった。
+
+### 平衡OFF failure個別例: `z=5, Z=0.01, T=32465 K`
+
+次の入力を `chemistry_noneq_1000_z5_zm2_t32465.in` に保存した。条件は `n_nuclei=4.075810248096081e15 cm^-3`、`T=32464.826316773917 K`、`T_CMB=16.38 K`、`Z=0.01`、`dt=1.3375560748113827e6 s`である。初期状態は `HII=0.22908`、`H2=0.11209`で、C/O中間体には `O+=1.162e-7`、`OH+=3.569e-7`が存在した。
+
+1000万反復、約200万乱数guess、113秒の乱数探索ではrootを得られなかった。そこで既に得た `Z=1, T=26160 K`の高温成功guessについて、C/Oだけを`Z=0.01`へscaleし、物理初期値との直線補間1001点をresetなしで走査した。補間係数 `0.860--0.893`の34点が連続して収束し、探索時間は約0.27秒だった。
+
+最初の成功点 `0.860`を `chemistry_noneq_1000_z5_zm2_t32465.solution` に保存した。このguessは `HII=0.822640`、`H2=0.0156946`、`HM=3.348e-9`で、resetなし約0.22 msでrootへ収束した。rootは `HII=0.9998731`、`HI=1.2607e-4`、`H2=1.753e-15`のほぼ完全電離状態だった。C/Oでは `CO=1.2445e-6`、`CO2=9.2591e-7`が残り、自由酸素は主に `O+=1.8420e-6`、`OH+=8.1139e-7`へ入った。
+
+成功basin入口をresetへ入れただけでは、5回連続境界判定によってbasinから離脱し、対象例は未収束のままだった。このため収束rootそのものをreset 5へ追加した。C/O存在量はmetallicityでscaleする。対象例は既定1000反復で約0.34 ms、status 1となった。
+
+reset 4までの再計算は305件中46件収束・259件未収束だった。reset 5追加後は139件収束・166件未収束となり、新規収束93件、回帰0件だった。新規93件の内訳は対象を含む `Z=0.01`高温群23件、`Z=0.1`高温群69件、先の `Z=1, T=26160 K`例1件である。
+
+### 平衡OFF failure個別例: `z=20, Z=0.1, T=34463 K`
+
+残り166件で最大だった120件の温度trial群から、`n_nuclei=3.8880174573810462e14 cm^-3`、`T=34462.737079619219 K`、`T_CMB=57.33 K`、`Z=0.1`、`dt=4.3306678265419006e6 s`を選び、`chemistry_noneq_1000_z20_zm1_t34463.in`へ保存した。初期状態は `HII=0.28570`、`H2=0.20330`で、CはCO2優勢だった。
+
+1000万反復・約200万乱数guessを47.5秒で完了したがrootは得られなかった。既知の高温rootおよびbasin入口へ向かう一次元補間1001点と、H/D補間率とC/O補間率を分けた101x101二次元gridにも成功点はなかった。
+
+次にfull H2、physical、full HI、full HIIのH mode、同じ4種のD mode、CI/CII reservoir、OI/OH/H2O/O2 reservoir、およびCO/CO2分配を組み合わせた21x21の粗いgridを実行した。trial 28265、約3.03秒でrootを得た。成功guessはfull HII、物理初期D、`CO2=1.86875e-5`、`CO=1.0330e-5`、`CI=2.5825e-6`、`OH=9.795e-6`だった。rootは `HII=0.9999820`、`H2=1.217e-17`、`CO2=1.75019e-5`、`CO=1.50011e-6`、`O+=1.33393e-5`、`OH+=7.65664e-6`だった。全値は `chemistry_noneq_1000_z20_zm1_t34463.solution` に保存した。
+
+rootをmetallicity scale付きreset 6へ追加すると、対象例は既定1000反復、約0.42 msで収束した。305入力の再計算は227件収束・78件未収束となり、reset 5から新規収束88件、回帰0件だった。
+
+### 平衡OFF reset探索の継続と36条件再走査
+
+同じ手順（失敗入力の保存、乱数探索を優先、約60秒で見つからなければphysical grid、成功guessとrootの保存、reset追加後の再走査）を継続した。元の305失敗入力に対する結果は次の通りだった。
+
+| reset | 保存入力 | 探索結果 | 305入力の収束数 |
+|---:|---|---|---:|
+| 7 | `chemistry_noneq_1000_z20_zm1_t30811.in` | coarse physical grid | 289 |
+| 8 | `chemistry_noneq_1000_z0_zm1_t1260.in` | random 132 guesses | 297 |
+| 9 | `chemistry_noneq_1000_z20_z1_t92675.in` | physical grid（負のrootを除外） | 302 |
+| 10 | `chemistry_noneq_1000_z0_z1_t1501.in` | random 317 guesses | 303 |
+| 11 | `chemistry_noneq_1000_z20_z1_t1515.in` | random 173 guesses | 305 |
+
+reset 11までで元の305入力は305/305収束、回帰0となった。ただし36条件を初期状態から再計算すると進化経路が変わり、別の高密度失敗が現れた。このため保存入力のreplayだけでなく、reset追加ごとに36条件を新規走査する必要がある。
+
+新規走査で得たreset 12--17は次の通りである。
+
+| reset | 保存入力 | 成功経路 | 追加後の36条件結果 |
+|---:|---|---|---|
+| 12 | `chemistry_noneq_1000_z20_z1_t1308.in` | random 144 guesses、分子root | terminal 3、内部219 |
+| 13 | `chemistry_noneq_1000_z15_zm1_t1625.in` | reset 10 basinから得た分子root | terminal 0、内部33 |
+| 14 | `chemistry_noneq_1000_z0_zm1_t13492.in` | 1000万random失敗後、grid trial 4165 | terminal 0、内部32 |
+| 15 | `chemistry_noneq_1000_z0_zm1_t2817.in` | random 330 guesses | terminal 0、内部32（対象1件消失、別1件出現） |
+| 16 | `chemistry_noneq_1000_z0_z1_t3137.in` | random 154 guesses | terminal 0、内部17 |
+| 17 | `chemistry_noneq_1000_z0_zm1_t2055.in` | random 283 guesses | terminal 0、内部16 |
+
+reset 17の平衡OFF・36条件clean runはterminal chemistry failure 0、energy failure 0、内部の不採用温度trialにおける1000反復到達16、wall time 5.97秒だった。
+
+内部trialの1件 `chemistry_noneq_1000_z0_zm1_t1959.in`についてもrandom 427 guessesで非負rootを得て、`chemistry_noneq_1000_z0_zm1_t1959.solution`へ保存した。しかし、このrootを無条件reset 18へ追加すると、内部失敗1439、terminal failure 1、energy failure 2、wall time 13.02秒へ明確に回帰した。energy解が約`5.2e4 K`の別枝へ飛んだためである。reset 18はproductionから削除し、reset 17へ戻した。
+
+この結果は、単独chemistry方程式の非負rootが存在しても、それが時間発展が連続的に追うべきrootとは限らないことを示す。現在残る16件はenergy root探索中に捨てられるoff-branch温度trialであり、physical stepの最終解はすべて収束している。これらを無条件なglobal reset追加だけでゼロにすると進化解を壊すため、同じ方法では追わない。将来ゼロ化する場合は、直前の受理状態との連続性を使ったroot選択、またはenergy trial専用の条件付きguess選択として検討する必要がある。
+
+### energy residualの枝不連続と温度continuation回復
+
+`chemistry_noneq_1000_z0_zm1_t1959.in`を発生元のenergy stepとして再現するため、保存入力へ`Utherm_cgs=1.8066540385982877e11`と`Gamma=1.6213310268476695`を追加した。このstepのenergy solver入口温度は`1283.9616399003071 K`である。従来探索は`1931.0416445 K`を受理したが、最終評価ではenergy residualの絶対値がenergy scaleの約`3.7e9`倍残っていた。
+
+固定したphysical初期状態からtrial温度を独立に走査すると、`1930.10 K`の低電離解でresidualは約`-5.62e12`、`1935.00 K`では別の部分電離解へ移り約`+9.56e17`となった。これは連続なenergy residualの零点ではなく、chemistry Newtonが別のroot basinへ移った不連続である。低電離枝は`HII`が約`1.3e-8`で滑らかだったが、C/O保存の従属reservoirである微量`O2`が境界へ近づくため、通常の独立探索では枝を追跡できなかった。
+
+そこで、前の温度で収束した全speciesを次の温度のNewton guessに使うcontinuation走査を行った。保存従属speciesに限り、continuation内部では絶対存在量`1e-12`までの負値をNewton収束途中だけ許容する。平衡中間体にはこの許容を適用せず、受理状態へ書き出す前には微小負値を0へclipする。通常chemistry Newtonの境界処理は変更していない。
+
+1900--10000 Kを1 K刻みで追跡すると、同じ低電離chemistry枝上にenergy residualの連続な符号反転が2つ見つかった。初期温度から近い第1 rootは`2648--2649 K`、第2 rootは`3703--3704 K`だった。第1 rootを細分した結果は次の通りである。
+
+```text
+T_root = 2648.8527211961714 K
+HII    = 1.2945720380688406e-6
+H2     = 1.7339031991296561e-1
+O2     = 4.434607435302042e-16
+|g| / energy_scale = 4.4740095e-7
+```
+
+production energy solverには、通常探索の最終chemistry評価が失敗した場合、または`|g|/energy_scale >= 1e6`という桁違いの残差破綻の場合だけcontinuation探索を追加した。後者は通常の収束許容値ではなく、枝不連続をrootと誤認した明白な破綻だけを検出する条件である。continuationがrootを得られなければ通常探索のstate、workspace、温度、energy、statusをそのまま復元する。この回復は問題が確認された`INTERMEDIATE_EQUILIBRIUM=0`だけに有効であり、平衡ONの探索と性能は変更しない。
+
+最終clean buildの36条件走査結果は次の通りだった。
+
+| 中間体平衡 | 内部1000反復warning | terminal failure | energy failure | 非ゼロstatus | wall time |
+|---|---:|---:|---:|---:|---:|
+| OFF | 16 | 0 | 0 | 0 | 5.80 s |
+| ON | 2 | 0 | 0 | 0 | 17.50 s |
+
+OFFではreset 17基準のwarning 16件と完走性を維持し、対象のz=0、Z=0.1進化だけが`1931 K`の偽rootから`2648.85 K`の連続rootへ移った。ONは基準と同じwarning 2件、failure 0で、回復探索を無効にした後の時間も従来の約18秒へ戻った。physical timestepの短縮、global resetの追加、reset 1--17の変更は行っていない。
+
+### energy探索中の内部chemistry警告の分類
+
+平衡OFFに残った16件を、通常の1000反復と試験的な10000反復で比較した。10000反復では15件が消えたが、捨てられるはずだった温度trialで別のchemistry rootを得るため、z=0、15、20の一部でenergy解とその後の進化枝が変わった。したがって反復上限10000は採用していない。
+
+最初に有意な分岐が見えた3条件について、通常1000反復側のenergy solver入口状態を次のファイルへ保存した。
+
+```text
+chemistry_energy_branch_z15_zm1_step.in
+chemistry_energy_branch_z20_zm1_step.in
+chemistry_energy_branch_z0_z1_step.in
+```
+
+これらを`--energy-step`で同一初期状態から再実行すると、1000反復と10000反復は3件とも同一rootへ収束した。対応する最終温度はそれぞれ`2781.298043 K`、`2347.905589 K`、`1968.791507 K`だった。この比較から、反復上限を増やした36条件走査の別枝は、対象stepの同一初期状態に対する改善ではなく、energy探索中の別温度trialを新たに収束させることで生じる経路変更と判断した。
+
+残る16件の内訳は、15件がenergy root探索の投機的温度trial、1件が通常探索の最終候補だった。後者も平衡OFF専用continuationで回復され、physical stepの最終解には採用されていなかった。そこでchemistry Newtonの数値処理、反復上限、reset、energy探索順序は変更せず、詳細な非収束報告の時点だけを変更した。
+
+- 投機的な`give_g`評価と、continuation前の仮`commit_g`評価では、chemistry失敗を従来どおりenergy探索へ返すが詳細dumpは保留する。
+- continuationを含む全energy回復が失敗した場合は、最終温度を診断付きで再評価し、従来のchemistry failure dumpを出す。
+- 単独chemistry計算や通常の最終failureでは従来どおり報告する。
+
+clean buildでの36条件結果は次の通りだった。
+
+| 中間体平衡 | 内部chemistry警告 | terminal failure | energy failure | wall time |
+|---|---:|---:|---:|---:|
+| OFF | 0 | 0 | 0 | 5.53 s |
+| ON | 0 | 0 | 0 | 17.55 s |
+
+OFFの全出力ファイルは16-warning基準`/tmp/1zone_energy_continuation_off_final2`と完全一致した。ONの全出力ファイルも2-warning基準`/tmp/1zone_on_final_output`と完全一致した。したがって今回の変更は進化解を変えず、回復済みの内部trialと実際の最終failureを報告上で区別するものである。
+
+診断保持の確認として、一時的に`MAX_ITER_CHEM=1`で保存stepを単独実行したところ、`iteration is not converged`、`CHEM_FAILURE_INPUT_BEGIN`以下の全入力、species別failure情報が従来どおり出力され、非収束statusになった。確認後のproduction binaryは既定1000反復、`INTERMEDIATE_EQUILIBRIUM=1`、`CARBON_OXYGEN_CONSERVATION=1`でbuildし直した。
+
+### full implicit平衡初期化におけるNewton LU再利用
+
+`INTERMEDIATE_EQUILIBRIUM=1, EQUILIBRIUM_NEWTON_SYSTEM=FULL`では、平衡値で初期化した中間体を含む全speciesをimplicit Newton系で解く。この経路で中間体を収束判定から外した後の36条件profileでは、chemistry内部時間`6.479 s`のうちNewton Jacobian構築が`2.328 s`、Newton線形solveが`1.465 s`を占めていた。
+
+各Newton反復で解く行列は
+
+```text
+A(y) = I - dt dR(y)/dy
+A(y) delta_y = dt R(y) - (y - y_initial)
+```
+
+である。同一chemistry callの内部では密度、温度、`dt`、rate係数は一定だが、組成`y`が変わるのでJacobianは一般には反復ごとに異なる。このためLU分解を無条件に再利用すると通常Newton法ではなくmodified Newton法になり、1回の反復は安くなる一方で収束次数とbasinが変わり得る。
+
+最初に、一つのJacobian/LUを2補正で使う方式を試した。profile時間は`6.480 -> 5.858 s`へ短縮したが、Newton補正は`1,113,836 -> 1,175,861`、resetは`9 -> 13`、最大反復は`60 -> 102`へ増えた。速度上は有利でも難条件の収束を悪化させるため、この一般的な2回再利用は採用しなかった。
+
+現行実装では再利用範囲を、収束確認のための2回目の補正だけに限定した。solverは`err_max < ErrMaxCrit`を2回連続で満たすことを要求しているが、LUを再利用するにはさらに直前補正が`err_max < 1e-12`であることを要求する。最初にこの厳しい条件を満たした補正では通常どおり現在のJacobianを構築・LU分解し、直後の確認補正だけ同じLUへ新しい右辺を与える。確認補正が条件を外せば、次の反復ではただちに現在の組成でJacobianを再構築する。境界clip、reset、別basinへの移動でもcacheを無効にする。
+
+この制限版の36条件profile結果は次の通りである。
+
+| 項目 | 毎反復構築 | 確認補正でLU再利用 |
+|---|---:|---:|
+| chemistry内部時間 | 6.479 s | 5.880 s |
+| implicit chemistry | 6.076 s | 5.478 s |
+| Newton補正回数 | 1,113,836 | 1,113,836 |
+| Jacobian実構築回数 | 1,113,836 | 934,004 |
+| Newton Jacobian時間 | 2.328 s | 1.958 s |
+| Newton線形solve時間 | 1.465 s | 1.265 s |
+| reset総数 | 9 | 9 |
+| 最大反復 | 60 | 61 |
+| terminal failure | 0 | 0 |
+
+profileなしの二つのbinaryを交互に3回ずつ実行すると、毎反復構築が`6.210, 6.231, 6.205 s`（平均`6.215 s`）、制限版再利用が`5.626, 5.610, 5.681 s`（平均`5.639 s`）で、約`9.3%`短縮した。Jacobian実構築は約`16.1%`減るが、RHS評価と三角solveは確認補正でも必要なので、全体短縮率はこれより小さい。
+
+36個の出力を全sampleで比較すると、温度の最大相対差は`6.17e-8`、最大絶対差は`1.907e-5 K`だった。stored C/O speciesの最大絶対差は約`1.8e-15`以下で、大きな相対差は存在量がほぼ0のspeciesに限られた。当初はこの検証を行ったequilibrium付きFULL経路だけで有効化したが、再利用条件自体はequilibrium初期化に依存しないため、後述の平衡OFF検証後に全FULL経路へ拡張した。
+
+### 中間体option整理後の検証
+
+旧`FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION` optionを削除し、平衡値の有無、Newton系、LU再利用、中間体収束判定を上記4 optionへ分離した。FULLを既定に変更したため、検証済み構成と一致させるため`CARBON_OXYGEN_CONSERVATION`の既定値も`1`へ変更した。FULLと旧既定の`CARBON_OXYGEN_CONSERVATION=0`を組み合わせると、高温・高金属量条件で多数の非収束が実際に発生するためである。`=0`は比較・診断用として残している。
+
+36条件のclean run結果は次の通りである。全構成でsurvey failure、terminal chemistry failure、energy failureは0だった。
+
+| equilibrium | Newton系 | LU再利用 | eq-species収束判定 | 内部計測時間 | 出力directory suffix |
+|---:|---|---:|---:|---:|---|
+| 1 | FULL | 1 | 0 | 5.964 s | `_EQ_FULL` |
+| 1 | FULL | 0 | 0 | 6.410 s | `_EQ_FULL` |
+| 1 | FULL | 1 | 1 | 6.316 s | `_EQ_FULL` |
+| 1 | REDUCED | 対象外 | 対象外 | 17.695 s | `_EQ_REDUCED` |
+| 0 | FULL | 1 | 対象外 | 5.409 s | `_NEQ` |
+
+`INTERMEDIATE_EQUILIBRIUM=0, EQUILIBRIUM_NEWTON_SYSTEM=REDUCED`は意味を持たないため、Makefileがcompile前にerrorとする。現在の既定構成は表の1行目である。
+
+### 平衡OFFへのLU再利用拡張
+
+LU再利用の成立条件はequilibrium初期化の有無ではないため、`NEWTON_LU_REUSE=1`を全FULL Newton経路で有効にした。ただし、最初にequilibrium付きFULLと同じ`flag_conv == 1`だけを条件として平衡OFFへ適用すると、36条件はすべて完走したものの、高密度energy枝が変化して温度の最大差が`829.8 K`、最大相対差が`62.5%`に達した。平衡OFFでは全中間体も収束判定へ入るため、通常の収束閾値（長反復時には`1e-4`）に入った直後でもJacobianが十分一定とは限らない。
+
+このため、再利用条件をequilibriumの有無ではなく、直前Newton補正の最大相対量`err_max < 1e-12`へ統一した。この条件では平衡OFFの36条件で、LU再利用なしとの温度差は出力精度内で0、全stored abundanceの最大絶対差は約`1e-38`だった。terminal failure、energy failureとも0である。平衡OFFの内部計測時間はLUなし3回平均`5.606 s`に対してLU再利用あり`5.409 s`で、約`3.5%`短縮した。既定のequilibrium付きFULLも`5.964 s`で全36条件を完走し、LUなしの既存測定`6.410 s`に対して約`7.0%`短縮を維持した。

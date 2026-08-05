@@ -6,6 +6,7 @@
 #include "chemistry.h"
 #include "chemistry_constants.h"
 #include "chemistry_profile.h"
+#include "species.h"
 
 #ifdef CHEMISTRY_PROFILE
 
@@ -27,6 +28,23 @@ static unsigned long profile_calls[CHEM_PROFILE_COUNT];
 static ResidualTrace traces[TRACE_COUNT];
 static unsigned long trace_next;
 static int last_failure;
+static unsigned long equilibrium_initializations;
+static unsigned long limited_equilibrium_initializations;
+static double minimum_equilibrium_initialization_fraction = 1.0;
+static unsigned long equilibrium_electron_ratio_gt_2;
+static unsigned long equilibrium_electron_ratio_gt_10;
+static unsigned long equilibrium_electron_ratio_gt_1e3;
+static double maximum_equilibrium_electron_ratio = 1.0;
+static unsigned long newton_solve_histogram[6];
+static unsigned long newton_solves;
+static unsigned long newton_solves_with_reset;
+static unsigned long newton_solves_with_clipping;
+static unsigned long newton_reset_count;
+static unsigned long newton_clipped_steps;
+static unsigned long newton_max_iterations;
+static unsigned long clipped_species_count[N_SP];
+static unsigned long newton_limiter_count[N_SP];
+static unsigned long high_density_newton_limiter_count[N_SP];
 
 double chemistry_profile_time(void)
 {
@@ -49,6 +67,61 @@ void chemistry_profile_set_failure(int reason)
 int chemistry_profile_last_failure(void)
 {
   return last_failure;
+}
+
+void chemistry_profile_record_equilibrium_initialization(double fraction,
+                                                         double electron_before,
+                                                         double electron_after)
+{
+  equilibrium_initializations++;
+  if(fraction < 1.0) {
+    limited_equilibrium_initializations++;
+    if(fraction < minimum_equilibrium_initialization_fraction)
+      minimum_equilibrium_initialization_fraction = fraction;
+  }
+  double ratio = electron_after / dmax(electron_before, 1.e-300);
+  if(ratio > 2.0)
+    equilibrium_electron_ratio_gt_2++;
+  if(ratio > 10.0)
+    equilibrium_electron_ratio_gt_10++;
+  if(ratio > 1.e3)
+    equilibrium_electron_ratio_gt_1e3++;
+  if(ratio > maximum_equilibrium_electron_ratio)
+    maximum_equilibrium_electron_ratio = ratio;
+}
+
+void chemistry_profile_record_newton_solve(int iterations, int reset_count,
+                                           int clipped_steps)
+{
+  const int boundaries[] = {2, 4, 8, 16, 69};
+  int bucket = 0;
+  while(bucket < 5 && iterations > boundaries[bucket])
+    bucket++;
+  newton_solve_histogram[bucket]++;
+  newton_solves++;
+  if(reset_count > 0)
+    newton_solves_with_reset++;
+  if(clipped_steps > 0)
+    newton_solves_with_clipping++;
+  newton_reset_count += (unsigned long)reset_count;
+  newton_clipped_steps += (unsigned long)clipped_steps;
+  if((unsigned long)iterations > newton_max_iterations)
+    newton_max_iterations = (unsigned long)iterations;
+}
+
+void chemistry_profile_record_clipped_species(int species)
+{
+  if(species >= 0 && species < N_SP)
+    clipped_species_count[species]++;
+}
+
+void chemistry_profile_record_newton_limiter(int species, double nH)
+{
+  if(species < 0 || species >= N_SP)
+    return;
+  newton_limiter_count[species]++;
+  if(nH >= 1.e12)
+    high_density_newton_limiter_count[species]++;
 }
 
 void chemistry_profile_record_residual(const ChemEnvironment *environment, const ChemState *state,
@@ -142,6 +215,37 @@ void chemistry_profile_report(void)
     fprintf(stderr, "PROFILE_TIME %-22s %.9g s %8.3f %% calls=%lu\n", names[section],
             profile_seconds[section], total > 0.0 ? 100.0 * profile_seconds[section] / total : 0.0,
             profile_calls[section]);
+  fprintf(stderr,
+          "PROFILE_EQUILIBRIUM_INITIALIZATION calls=%lu limited=%lu min_fraction=%.17g\n",
+          equilibrium_initializations, limited_equilibrium_initializations,
+          minimum_equilibrium_initialization_fraction);
+  fprintf(stderr,
+          "PROFILE_EQUILIBRIUM_ELECTRON ratio_gt_2=%lu ratio_gt_10=%lu ratio_gt_1e3=%lu max_ratio=%.17g\n",
+          equilibrium_electron_ratio_gt_2, equilibrium_electron_ratio_gt_10,
+          equilibrium_electron_ratio_gt_1e3,
+          maximum_equilibrium_electron_ratio);
+  fprintf(stderr,
+          "PROFILE_NEWTON_SOLVES calls=%lu with_reset=%lu resets=%lu with_clipping=%lu clipped_steps=%lu max_iterations=%lu\n",
+          newton_solves, newton_solves_with_reset, newton_reset_count,
+          newton_solves_with_clipping, newton_clipped_steps,
+          newton_max_iterations);
+  fprintf(stderr,
+          "PROFILE_NEWTON_HIST le2=%lu le4=%lu le8=%lu le16=%lu le69=%lu ge70=%lu\n",
+          newton_solve_histogram[0], newton_solve_histogram[1],
+          newton_solve_histogram[2], newton_solve_histogram[3],
+          newton_solve_histogram[4], newton_solve_histogram[5]);
+  for(int species = 0; species < N_SP; species++)
+    if(clipped_species_count[species] > 0)
+      fprintf(stderr, "PROFILE_CLIPPED_SPECIES name=%s count=%lu\n",
+              chemistry_species_definition(species)->name,
+              clipped_species_count[species]);
+  for(int species = 0; species < N_SP; species++)
+    if(newton_limiter_count[species] > 0)
+      fprintf(stderr,
+              "PROFILE_NEWTON_LIMITER name=%s count=%lu high_density_count=%lu\n",
+              chemistry_species_definition(species)->name,
+              newton_limiter_count[species],
+              high_density_newton_limiter_count[species]);
   fprintf(stderr, "PROFILE_TIMING_END\n");
 }
 
