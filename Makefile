@@ -3,7 +3,7 @@ EXEC   = 1ZONE
 #.KEEP_STATE:
 
 OPT1  += -DOMUKAI05
-OPT1  += -DONEZONE
+OPT1  += -DCHEMISTRY_STANDALONE_HOST
 #OPT1  += -DSHR_ITER
 #OPT1  += -DHIGH_TEMP
 #OPT1  += -DFULLY_MOLECULAR
@@ -11,11 +11,23 @@ OPT1  += -DONEZONE
 
 #OPT1  +=  -DDEBUG_PRINT_FLAG
 #OPT1  +=  -DID_CHEM_DEBUG=0
-USE_CHEMISTRY_OLD = 0
+USE_CHEMISTRY_OLD ?= 0
+ifeq ($(USE_CHEMISTRY_OLD),1)
+USE_CHEMISTRY_PORTABLE ?= 0
+else
+USE_CHEMISTRY_PORTABLE ?= 1
+endif
 ifeq ($(USE_CHEMISTRY_OLD),1)
 OPT1  +=  -DCHEMISTRY_OLD
 endif
+ifeq ($(USE_CHEMISTRY_OLD)$(USE_CHEMISTRY_PORTABLE),11)
+$(error USE_CHEMISTRY_OLD and USE_CHEMISTRY_PORTABLE cannot both be 1)
+endif
+ifeq ($(USE_CHEMISTRY_PORTABLE),1)
+OPT1 += -DCHEMISTRY_PORTABLE
+endif
 ENABLE_LW ?= 0
+WRITE_CHEMISTRY_DIAGNOSTIC_TABLES ?= 0
 UPDATE_L_CORE ?= 0
 EXPLICIT_CHEMISTRY_UPDATE ?= SEQUENTIAL
 # Intermediate treatment: equilibrium guess on/off, then FULL or REDUCED Newton.
@@ -102,6 +114,12 @@ ifeq ($(ENABLE_LW),1)
 OPT1  += -DSURVEY_LYMANWERNER
 endif
 
+ifeq ($(WRITE_CHEMISTRY_DIAGNOSTIC_TABLES),1)
+OPT1 += -DCHEMISTRY_WRITE_DIAGNOSTIC_TABLES
+else ifneq ($(WRITE_CHEMISTRY_DIAGNOSTIC_TABLES),0)
+$(error WRITE_CHEMISTRY_DIAGNOSTIC_TABLES must be 0 or 1)
+endif
+
 #OPT1  += -DDENSITY_GRAD
 #OPT1  +=  -DJEANS_LENGTH_TMAX=1.e4
 
@@ -182,26 +200,42 @@ else
 LAPACK_LIBS = -llapack -lblas -lgfortran
 endif
 
-CFLAGS =  $(OPT1) -g $(OPTIMIZATION) $(GSL_INCL) -I. $(CHEMISTRY_INCLUDE_FLAGS) -Wformat
+CFLAGS =  $(OPT1) -g $(OPTIMIZATION) $(GSL_INCL) -I. -Isrc -Isrc/standalone $(CHEMISTRY_INCLUDE_FLAGS) -Wformat
 
 LIBS   =  $(GSL_INCL) $(GSL_LIBS) -lm $(LAPACK_LIBS) -lgsl -lgslcblas
 
 CC     =  mpicc
 
 ifneq (,$(findstring -DCHEMISTRY_OLD,$(OPT1)))
-CHEMISTRY_DIR  = chemistry_old
-CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/chemistry_200601.o \
-                 $(CHEMISTRY_DIR)/cooling_func_200601.o \
-                 $(CHEMISTRY_DIR)/stellar_spectrum.o
-CHEMISTRY_SUPPORT_OBJS = $(CHEMISTRY_DIR)/H2cooling.o \
-                         $(CHEMISTRY_DIR)/dust_cooling.o \
-                         $(CHEMISTRY_DIR)/saha.o \
-                         $(CHEMISTRY_DIR)/partition.o
-CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h
-CHEMISTRY_INCLUDE_FLAGS = -I$(CHEMISTRY_DIR)
+include legacy/chemistry_old/standalone.mk
+else ifeq ($(USE_CHEMISTRY_PORTABLE),1)
+OPT1 += -DCHEMISTRY_SC
+CHEMISTRY_DIR = src/chemistry
+include src/standalone/standalone.mk
+CHEMISTRY_OBJS = $(CHEMISTRY_PORTABLE_CORE_SOURCES:.c=.o) \
+                 $(CHEMISTRY_STANDALONE_ADAPTER_SOURCES:.c=.o)
+CHEMISTRY_SUPPORT_OBJS =
+CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry_core.h \
+                 $(CHEMISTRY_DIR)/chemistry_build_config.h \
+                 $(CHEMISTRY_DIR)/chemistry_types.h \
+                 $(CHEMISTRY_DIR)/initialization/chemistry_init.h \
+                 $(CHEMISTRY_DIR)/solver/chemistry_newton_diagnostics.h \
+                 src/standalone/chemistry_standalone_adapter.h \
+                 src/standalone/chemistry_standalone_types.h
+CHEMISTRY_INCLUDE_FLAGS = -I$(CHEMISTRY_DIR) \
+                          -I$(CHEMISTRY_DIR)/include \
+                          -I$(CHEMISTRY_DIR)/common \
+                          -I$(CHEMISTRY_DIR)/cooling \
+                          -I$(CHEMISTRY_DIR)/driver \
+                          -I$(CHEMISTRY_DIR)/initialization \
+                          -I$(CHEMISTRY_DIR)/reaction_network \
+                          -I$(CHEMISTRY_DIR)/solver \
+                          -I$(CHEMISTRY_DIR)/thermodynamics \
+                          -I$(CHEMISTRY_DIR)/tables \
+                          -Isrc/standalone
 else
 OPT1 += -DCHEMISTRY_SC
-CHEMISTRY_DIR  = chemistry_new
+CHEMISTRY_DIR  = legacy/chemistry_new
 CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/driver/chemistry_driver.o \
                  $(CHEMISTRY_DIR)/species.o \
                  $(CHEMISTRY_DIR)/initialization/chemistry_init.o \
@@ -212,7 +246,6 @@ CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/driver/chemistry_driver.o \
                  $(CHEMISTRY_DIR)/reaction_network/forward_rates.o \
                  $(CHEMISTRY_DIR)/reaction_network/reaction_rates.o \
                  $(CHEMISTRY_DIR)/reaction_network/reaction_network.o \
-                 $(CHEMISTRY_DIR)/reaction_network/react_rate_FUV.o \
                  $(CHEMISTRY_DIR)/reaction_network/shielding.o \
                  $(CHEMISTRY_DIR)/cooling/H2cooling.o \
                  $(CHEMISTRY_DIR)/cooling/chemistry_cooling.o \
@@ -223,9 +256,10 @@ CHEMISTRY_OBJS = $(CHEMISTRY_DIR)/driver/chemistry_driver.o \
                  $(CHEMISTRY_DIR)/thermodynamics/thermodynamics.o
 CHEMISTRY_SUPPORT_OBJS =
 CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry.h \
+                 $(CHEMISTRY_DIR)/chemistry_api.h \
                  $(CHEMISTRY_DIR)/species.h \
                  $(CHEMISTRY_DIR)/species_definitions.h \
-                 $(CHEMISTRY_DIR)/chemistry_config.h \
+                 $(CHEMISTRY_DIR)/chemistry_build_config.h \
                  $(CHEMISTRY_DIR)/chemistry_types.h \
                  $(CHEMISTRY_DIR)/common/chemistry_constants.h \
                  $(CHEMISTRY_DIR)/common/chemistry_diagnostics.h \
@@ -257,13 +291,17 @@ CHEMISTRY_INCLUDE_FLAGS = -I$(CHEMISTRY_DIR) \
                           -I$(CHEMISTRY_DIR)/tables
 endif
 
-OBJS   = main.o allvars.o timescales.o \
+OBJS   = src/standalone/main.o src/standalone/standalone_run.o \
+         src/standalone/standalone_collapse.o src/standalone/standalone_host.o \
+         src/standalone/timescales.o src/radiation/radiation_rates.o \
 	 $(CHEMISTRY_SUPPORT_OBJS) \
 	 $(CHEMISTRY_OBJS)
 
-INCL   = allvars.h proto.h tags.h $(CHEMISTRY_INCL)
+INCL   = src/standalone/allvars.h src/standalone/standalone_chemistry_compat.h \
+         src/standalone/standalone_run.h src/standalone/standalone_host.h \
+         $(CHEMISTRY_INCL)
 
-BUILDDIR := build
+BUILDDIR ?= build
 OBJDIR_OBJS := $(addprefix $(BUILDDIR)/,$(OBJS))
 
 $(EXEC): $(OBJDIR_OBJS)
