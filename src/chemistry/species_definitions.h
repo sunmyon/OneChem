@@ -151,10 +151,12 @@
     helium_random_partition, \
     sizeof(helium_random_partition) / sizeof(helium_random_partition[0]), \
     CHEM_INITIAL_NORMALIZATION_EXCESS_ONLY, sHeII)
+/* Preserve caller-provided helium fractions.  Electron-scaled seeds for
+ * vanishing HeII or HeIII inject positive charge and create electron spikes. */
 #define CHEM_SPECIES_INITIALIZATION_HELIUM(X) \
-  X(HeI,   1.e-100, 0.06,   0.09, 0, 0) \
-  X(HeII,  1.e-100, 4.e-12, 0.09, 1, 0) \
-  X(HeIII, 1.e-100, 4.e-13, 0.09, 1, 0)
+  X(HeI,   0.0, 0.0, 0.09, 0, 1) \
+  X(HeII,  0.0, 0.0, 0.09, 0, 1) \
+  X(HeIII, 0.0, 0.0, 0.09, 0, 1)
 #else
 #define CHEM_HELIUM_RESERVOIRS(X)
 #define CHEM_HELIUM_RANDOM_PARTITION(X)
