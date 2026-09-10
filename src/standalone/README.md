@@ -15,3 +15,8 @@ Run the boundary test with:
 ```sh
 make -C src/standalone check
 ```
+
+When `SURVEY_LYMANWERNER` is enabled, the standalone executable evaluates
+`J21 = 0, 1e-3, 1e-2, 1e-1, 1, 10, 100, 1000, 10000`. Set
+`ONEZONE_J21_INDEX` to an index from 0 through 8 to run only one member of this
+sequence. Leaving the variable unset runs the complete survey.

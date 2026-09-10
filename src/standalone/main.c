@@ -856,12 +856,16 @@ int main(int argc, char **argv){
   }
   int requested_redshift_index = -1;
   int requested_metallicity_index = -1;
+  int requested_J21_index = -1;
   const char *redshift_index_text = getenv("ONEZONE_REDSHIFT_INDEX");
   const char *metallicity_index_text = getenv("ONEZONE_METALLICITY_INDEX");
+  const char *J21_index_text = getenv("ONEZONE_J21_INDEX");
   if(redshift_index_text)
     requested_redshift_index = atoi(redshift_index_text);
   if(metallicity_index_text)
     requested_metallicity_index = atoi(metallicity_index_text);
+  if(J21_index_text)
+    requested_J21_index = atoi(J21_index_text);
   sprintf(outputdir, "%s", output_root);
   mkdir(outputdir, 0755);
   
@@ -907,12 +911,18 @@ int main(int argc, char **argv){
   double time1 = gettimeofday_sec();
 
 #ifdef SURVEY_LYMANWERNER
-  const int nl=5;
-  double LW[5]={1.e-1, 1., 10., 1.e2, 1.e3};
+  const int nl = 9;
+  const double LW[9] = {
+    0.0, 1.e-3, 1.e-2, 1.e-1, 1.0, 1.e1, 1.e2, 1.e3, 1.e4
+  };
 
   for(int il=0;il<nl;il++)
 #endif
     {
+#ifdef SURVEY_LYMANWERNER
+      if(requested_J21_index >= 0 && il != requested_J21_index)
+        continue;
+#endif
 #ifdef SURVEY_CMB_REDSHIFT
       const int nz=6;
       double Redshifts[6]={0., 5., 10., 15., 20., 30.};
@@ -1398,7 +1408,7 @@ void give_file_name(char *option){
 
 
 #ifdef SLOW_COLLAPSE
-  sprintf(option,"%s_BETA_%g",option,SLOW_COLLAPSE);
+  sprintf(option, "%s_BETA_%g", option, (double)SLOW_COLLAPSE);
 #endif
 
 #ifdef X_RAY
@@ -1851,7 +1861,11 @@ void dump_data(int idump, char *outname, int mode){
 	  SphP[0].k[55] * SphP[0].HI   * SphP[0].HI   * SphP[0].HI * SphP[0].n_nuclei,
 	  SphP[0].k[57] * SphP[0].H2I  * SphP[0].HI   * SphP[0].HI * SphP[0].n_nuclei,
 	  SphP[0].k[58] * SphP[0].H2I  * SphP[0].H2I  ,
+#if CHEM_RATE_COUNT > 60
 	  SphP[0].k[60] * SphP[0].H2I  * SphP[0].elec ,
+#else
+	  0.,
+#endif
 	  SphP[0].k[51] * SphP[0].HI / SphP[0].n_nuclei,
 	  SphP[0].k_inv[8] * SphP[0].H2I * SphP[0].elec   ,
 	  SphP[0].k_inv[13] * SphP[0].HI * SphP[0].HI * SphP[0].elec * SphP[0].n_nuclei
@@ -2081,6 +2095,9 @@ int initialize_cells(double z, double theta){
   
   //HERE Density MUST BE GIVEN IN PHYSICAL CGS UNITS
   for(int i = 0; i < STANDALONE_CELL_COUNT; i++){
+    /* Every survey point is an independent collapse calculation. */
+    memset(&SphP[i], 0, sizeof(SphP[i]));
+
     SphP[i].DMdensity= (9.0/2.0) * pow(theta-sin(theta),2.0) / All.UnitDensity_in_cgs * All.HubbleParam * All.HubbleParam * RHOCRITICAL * All.Omega0 
       * pow((1.0+z),3)/pow((1.0-cos(theta)),3);
     if(All.ComovingIntegrationOn)
