@@ -61,6 +61,47 @@ The process status alone is not sufficient: four exact-zero-metal C/O-on runs
 are physical validation failures, as described below.  Therefore 79 of 83
 trajectories pass both numerical and physical-evolution checks.
 
+## Validation figures
+
+![Thermal sequences](figures/onezone_parameter_validation_2026-09-11/validation_thermal_sequences.png)
+
+The metallicity sequence (left), collapse-time sequence (center), and CMB
+redshift sequence (right) show the full temperature-density trajectories.  The
+curves recover the expected ordering: enhanced cooling at higher metallicity,
+hotter evolution for faster collapse, and a rising low-temperature floor with
+CMB redshift.
+
+![Chemistry switches](figures/onezone_parameter_validation_2026-09-11/validation_chemistry_switches.png)
+
+Solid and dashed curves in the upper-left panel compare C/O chemistry on and
+off at each nonzero metallicity.  The other panels isolate the He/HD switches
+and compare the final electron and H2 abundances.  C/O chemistry has little
+thermal influence at the lowest metallicities but changes the high-density
+trajectory and final charge balance at higher metallicity.
+
+![Lyman-Werner sequences](figures/onezone_parameter_validation_2026-09-11/validation_lw_sequences.png)
+
+The LW sequence shows both temperature and H2 abundance for
+`Z=1e-3 Zsun` (left) and exact zero metallicity with C/O off (right).  Increasing
+J21 delays molecular formation.  At nonzero metallicity the tracks later
+return to a similar dust-cooled molecular endpoint, whereas the zero-metal
+strong-field branch remains substantially less molecular.
+
+![Exact-zero-metal C/O failure](figures/onezone_parameter_validation_2026-09-11/validation_zero_metal_failure.png)
+
+This comparison makes the four physical-validation failures visible.  With He
+and HD on, the C/O-off trajectory evolves normally, while the C/O-on trajectory
+keeps both `x_e` and `x_H2` exactly at their initial values and develops
+temperature excursions despite returning process status 0.
+
+The figures can be regenerated from a validation output tree with:
+
+```sh
+python3 docs/plot_onezone_parameter_validation.py \
+  /private/tmp/chem_validation_a866575/output \
+  docs/figures/onezone_parameter_validation_2026-09-11
+```
+
 ## Metallicity sequence
 
 These runs have C/O, He, and HD enabled, with `z=0`, `J21=0`, and
