@@ -131,7 +131,8 @@ OPT1  +=  -DCMB_HEATING
 OPT1  +=  -DCHEMISTRY
 
 OPT1  +=  -DENERGY_IMPLICIT
-OPT1  +=  -DCHEMISTRY_IMPLICIT
+# Define this directly only when chemistry is implicit but energy is explicit.
+#OPT1  +=  -DCHEMISTRY_IMPLICIT
 #OPT1  +=  -DHYBRID_IMPLICIT
 OPT1  +=  -DFLAG_BRENT
 OPT1  +=  -DCHEM_DIFF_ANALYTIC
