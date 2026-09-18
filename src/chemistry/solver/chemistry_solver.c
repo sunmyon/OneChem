@@ -82,6 +82,97 @@ static void restore_workspace(ChemWorkspace *destination,
  * of magnitude larger than the thermal energy. */
 #define ENERGY_GROSS_RESIDUAL_FACTOR 1.e6
 
+/* Emit one reproducible "CHEMISTRY_RERUN_V1" replay line for the given
+ * physical conditions and abundance state.  This is the single source of
+ * the replay-line format: both the energy-solver failure report and the
+ * chemistry Newton-solver failure report call this function, so a replay
+ * line is always available to feed back into --chem-step / --energy-step,
+ * regardless of which level detected the non-convergence. */
+static void chemistry_print_rerun_line(const ChemEnvironment *environment,
+                                       double n_nuclei, double T_gas,
+                                       double dt, const ChemState *state)
+{
+  printf("/*CHEMISTRY_RERUN_V1*/diagnostic_id=%d;comoving_integration=%d;"
+         "simulation_time=%.17g;scale_factor=%.17g;n_nuclei=%.17g;"
+         "T_gas=%.17g;cmb_temperature=%.17g;metallicity=%.17g;"
+         "dt=%.17g;gamma=%.17g;utherm_cgs=%.17g;"
+         "timescale_safety_factor=%.17g;",
+         environment->ID, environment->global->comoving_integration,
+         environment->global->simulation_time,
+         environment->global->scale_factor, n_nuclei,
+         T_gas, environment->global->cmb_temperature,
+         environment->metallicity, dt, state->gamma,
+         state->utherm_cgs,
+         environment->run->timescale_safety_factor);
+
+  for(int diagnostic_species = 0; diagnostic_species < sSTORED_END;
+      diagnostic_species++)
+    printf("yi[s%s]=%.17g;",
+           chemistry_species_definition(diagnostic_species)->name,
+           state->abund[diagnostic_species]);
+
+#ifdef LYMANWERNER
+#ifdef LW_RADIATION_LOCAL
+  printf("local_J21=%.17g;local_rate_Hminus_pd=%.17g;"
+         "local_rate_H2_diss=%.17g;",
+         environment->J21, environment->rate_Hminus_pd,
+         environment->rate_H2_diss);
+#ifdef HD
+  printf("local_rate_HD_diss=%.17g;", environment->rate_HD_diss);
+#endif
+#ifdef DUST_COOLING
+  printf("local_G0=%.17g;", environment->G0);
+#endif
+#endif
+#ifdef BACKGROUND_LW_RADIATION
+  printf("background_J21=%.17g;background_rate_Hminus_pd=%.17g;"
+         "background_rate_H2_diss=%.17g;",
+         environment->global->background_J21,
+         environment->global->background_rate_Hminus_pd,
+         environment->global->background_rate_H2_diss);
+#ifdef HD
+  printf("background_rate_HD_diss=%.17g;",
+         environment->global->background_rate_HD_diss);
+#endif
+#ifdef METALLICITY
+  printf("background_G0=%.17g;", environment->global->background_G0);
+#endif
+#endif
+#endif
+
+#ifdef IONIZATION_PHOTON
+  printf("photoionization_rate_HI=%.17g;photoheating_rate_HI=%.17g;",
+         environment->photoionization_rate_HI,
+         environment->photoheating_rate_HI);
+#endif
+#ifdef HELIUM
+  printf("photoionization_rate_HeI=%.17g;photoheating_rate_HeI=%.17g;"
+         "photoionization_rate_HeII=%.17g;photoheating_rate_HeII=%.17g;",
+         environment->photoionization_rate_HeI,
+         environment->photoheating_rate_HeI,
+         environment->photoionization_rate_HeII,
+         environment->photoheating_rate_HeII);
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  const char *carbon_stage[3] = {"CI", "CII", "CIII"};
+  const char *oxygen_stage[3] = {"OI", "OII", "OIII"};
+  for(int stage = 0; stage < 3; stage++) {
+    printf("photoionization_rate_%s=%.17g;photoheating_rate_%s=%.17g;",
+           carbon_stage[stage], environment->photoionization_rate_C[stage],
+           carbon_stage[stage], environment->photoheating_rate_C[stage]);
+    printf("photoionization_rate_%s=%.17g;photoheating_rate_%s=%.17g;",
+           oxygen_stage[stage], environment->photoionization_rate_O[stage],
+           oxygen_stage[stage], environment->photoheating_rate_O[stage]);
+  }
+  printf("local_rate_CO_diss=%.17g;", environment->rate_CO_diss);
+#endif
+#ifdef THERMAL_FEEDBACK
+  printf("stellar_radiation_flux=%.17g;",
+         environment->stellar_radiation_flux);
+#endif
+  printf("\n");
+}
+
 int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const ChemStepData *step, ChemState *state, ChemWorkspace *work, ChemistrySolver chemistry_solver, double dt){
 #ifdef CHEMISTRY_PROFILE
   double profile_timer = profile_start();
@@ -445,85 +536,8 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
     printf("%s err=%g id=%d T_old=%g T_new=%g\n",
 	   err > 1.0e-4 ? "not converged(in energy)." : "converged(in energy diagnostic).",
 	   err, environment->ID, T_gas_init, T_new);
-    printf("/*CHEMISTRY_RERUN_V1*/diagnostic_id=%d;comoving_integration=%d;"
-           "simulation_time=%.17g;scale_factor=%.17g;n_nuclei=%.17g;"
-           "T_gas=%.17g;cmb_temperature=%.17g;metallicity=%.17g;"
-           "dt=%.17g;gamma=%.17g;utherm_cgs=%.17g;"
-           "timescale_safety_factor=%.17g;",
-           environment->ID, environment->global->comoving_integration,
-           environment->global->simulation_time,
-           environment->global->scale_factor, rho_gas / PROTONMASS,
-           T_gas_init, environment->global->cmb_temperature,
-           environment->metallicity, dt, state_old.gamma,
-           state_old.utherm_cgs,
-           environment->run->timescale_safety_factor);
-
-    for(int diagnostic_species = 0; diagnostic_species < sSTORED_END;
-        diagnostic_species++)
-      printf("yi[s%s]=%.17g;",
-             chemistry_species_definition(diagnostic_species)->name,
-             state_old.abund[diagnostic_species]);
-
-#ifdef LYMANWERNER
-#ifdef LW_RADIATION_LOCAL
-    printf("local_J21=%.17g;local_rate_Hminus_pd=%.17g;"
-           "local_rate_H2_diss=%.17g;",
-           environment->J21, environment->rate_Hminus_pd,
-           environment->rate_H2_diss);
-#ifdef HD
-    printf("local_rate_HD_diss=%.17g;", environment->rate_HD_diss);
-#endif
-#ifdef DUST_COOLING
-    printf("local_G0=%.17g;", environment->G0);
-#endif
-#endif
-#ifdef BACKGROUND_LW_RADIATION
-    printf("background_J21=%.17g;background_rate_Hminus_pd=%.17g;"
-           "background_rate_H2_diss=%.17g;",
-           environment->global->background_J21,
-           environment->global->background_rate_Hminus_pd,
-           environment->global->background_rate_H2_diss);
-#ifdef HD
-    printf("background_rate_HD_diss=%.17g;",
-           environment->global->background_rate_HD_diss);
-#endif
-#ifdef METALLICITY
-    printf("background_G0=%.17g;", environment->global->background_G0);
-#endif
-#endif
-#endif
-
-#ifdef IONIZATION_PHOTON
-    printf("photoionization_rate_HI=%.17g;photoheating_rate_HI=%.17g;",
-           environment->photoionization_rate_HI,
-           environment->photoheating_rate_HI);
-#endif
-#ifdef HELIUM
-    printf("photoionization_rate_HeI=%.17g;photoheating_rate_HeI=%.17g;"
-           "photoionization_rate_HeII=%.17g;photoheating_rate_HeII=%.17g;",
-           environment->photoionization_rate_HeI,
-           environment->photoheating_rate_HeI,
-           environment->photoionization_rate_HeII,
-           environment->photoheating_rate_HeII);
-#endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
-    const char *carbon_stage[3] = {"CI", "CII", "CIII"};
-    const char *oxygen_stage[3] = {"OI", "OII", "OIII"};
-    for(int stage = 0; stage < 3; stage++) {
-      printf("photoionization_rate_%s=%.17g;photoheating_rate_%s=%.17g;",
-             carbon_stage[stage], environment->photoionization_rate_C[stage],
-             carbon_stage[stage], environment->photoheating_rate_C[stage]);
-      printf("photoionization_rate_%s=%.17g;photoheating_rate_%s=%.17g;",
-             oxygen_stage[stage], environment->photoionization_rate_O[stage],
-             oxygen_stage[stage], environment->photoheating_rate_O[stage]);
-    }
-    printf("local_rate_CO_diss=%.17g;", environment->rate_CO_diss);
-#endif
-#ifdef THERMAL_FEEDBACK
-    printf("stellar_radiation_flux=%.17g;",
-           environment->stellar_radiation_flux);
-#endif
-    printf("\n");
+    chemistry_print_rerun_line(environment, rho_gas / PROTONMASS, T_gas_init,
+                               dt, &state_old);
   }
 
   if(err > 1.0e-4){
@@ -2739,6 +2753,19 @@ restart_newton_basin:
 
   if(!converged){
     work->evaluation.err_chem = 1.0;
+
+    /* Always emit a reproducible replay line on chemistry non-convergence,
+     * even when report_failure is false (the energy-loop trial entry point
+     * currently sets report_failure=0 to keep its verbose species dump
+     * silent for expected trial-temperature probes, but a rejected
+     * temperature should still be reproducible/inspectable on demand). */
+    printf("CHEM_NOT_CONVERGED id=%d T_gas=%g dt=%g n_nuclei=%g err=%g"
+           " iteration=%d reset=%d random_restarts=%d allow_restarts=%d"
+           " report_failure=%d\n",
+           environment->ID, T_gas, dt, n_nuclei, newton.step_error,
+           newton.iteration, newton.reset, newton.random_restart_count,
+           allow_restarts, report_failure);
+    chemistry_print_rerun_line(environment, n_nuclei, T_gas, dt, &state_old);
 
     if(allow_restarts && report_failure){
       chemistry_newton_diagnostics_report_failure(

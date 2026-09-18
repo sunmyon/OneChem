@@ -49,6 +49,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
 static void print_single_chemistry_step_input(const struct chemdata_in *input,
                                               const struct chemdata_out *output,
                                               double temperature, double dt);
+static int run_chemistry_replay_log(const char *path);
 #endif
 
 double gettimeofday_sec(void);
@@ -792,11 +793,379 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
   return converged ? 0 : 1;
 }
 
+/* A single record extracted from one "CHEMISTRY_RERUN_V1" replay line.
+ * Mirrors the flat key=value fields that run_single_chemistry_step() accepts,
+ * but scoped per-record so a batch of many lines from one captured log file
+ * (e.g. many CHEM_NOT_CONVERGED events from one run) cannot leak fields from
+ * one record into the next. */
+typedef struct {
+  double nH, n_nuclei, temperature, metallicity, dt;
+  double cmb_temperature, utherm_input_cgs, gamma_input;
+  double timescale_safety_factor;
+  double simulation_time, scale_factor;
+  int comoving_integration;
+  MyIDType diagnostic_id;
+#ifdef LW_RADIATION_LOCAL
+  double local_J21, local_rate_Hminus_pd, local_rate_H2_diss;
+#ifdef HD
+  double local_rate_HD_diss;
+#endif
+#ifdef DUST_COOLING
+  double local_G0;
+#endif
+#endif
+#ifdef BACKGROUND_LW_RADIATION
+  double background_J21, background_rate_Hminus_pd, background_rate_H2_diss;
+#ifdef HD
+  double background_rate_HD_diss;
+#endif
+#ifdef DUST_COOLING
+  double background_G0;
+#endif
+#endif
+#ifdef IONIZATION_PHOTON
+  double photoionization_rate_HI, photoheating_rate_HI;
+#endif
+#ifdef HELIUM
+  double photoionization_rate_HeI, photoheating_rate_HeI;
+  double photoionization_rate_HeII, photoheating_rate_HeII;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double photoionization_rate_C[3], photoheating_rate_C[3];
+  double photoionization_rate_O[3], photoheating_rate_O[3];
+  double rate_CO_diss;
+#endif
+#ifdef THERMAL_FEEDBACK
+  double stellar_radiation_flux;
+#endif
+  double abundance[TGCHEM_NUM_ABUNDANCES];
+  int abundance_set[TGCHEM_NUM_ABUNDANCES];
+} ChemRerunRecord;
+
+static void init_chem_rerun_record(ChemRerunRecord *record)
+{
+  memset(record, 0, sizeof(*record));
+  record->nH = -1.0;
+  record->n_nuclei = -1.0;
+  record->temperature = -1.0;
+  record->metallicity = -1.0;
+  record->dt = -1.0;
+  record->cmb_temperature = -1.0;
+  record->utherm_input_cgs = -1.0;
+  record->gamma_input = -1.0;
+  record->timescale_safety_factor = All.Epsilon;
+  record->simulation_time = All.Time;
+  record->scale_factor = All.cf_atime;
+  record->comoving_integration = All.ComovingIntegrationOn;
+}
+
+/* Parse one marker-stripped "key=value;key=value;..." string (as already
+ * produced by chemistry_print_rerun_line() / the energy-solver failure
+ * report) into 'record'.  Returns 1 on success, 0 if any assignment on this
+ * line does not parse -- callers should then skip the whole line rather
+ * than abort a multi-record batch over one malformed entry. */
+static int parse_chem_rerun_assignments(char *text, ChemRerunRecord *record,
+                                        const char *path, int line_number)
+{
+  char *assignment = strtok(text, ";");
+  while(assignment) {
+    char *entry_text = trim_text(assignment);
+    char *equals = strchr(entry_text, '=');
+    if(!equals) {
+      fprintf(stderr, "%s:%d: expected key=value in '%s'\n", path,
+              line_number, entry_text);
+      return 0;
+    }
+    *equals = '\0';
+    char *key = trim_text(entry_text);
+    char *value_text = trim_text(equals + 1);
+    char *value_end = NULL;
+    errno = 0;
+    double value = strtod(value_text, &value_end);
+    if(errno || value_end == value_text || *trim_text(value_end) != '\0' ||
+       !isfinite(value)) {
+      fprintf(stderr, "%s:%d: invalid value '%s' for key '%s'\n", path,
+              line_number, value_text, key);
+      return 0;
+    }
+
+    if(strcmp(key, "nH_cm3") == 0) record->nH = value;
+    else if(strcmp(key, "n_nuclei_cm3") == 0 || strcmp(key, "n_nuclei") == 0) record->n_nuclei = value;
+    else if(strcmp(key, "T_K") == 0 || strcmp(key, "T_gas") == 0) record->temperature = value;
+    else if(strcmp(key, "T_CMB_K") == 0 || strcmp(key, "cmb_temperature") == 0) record->cmb_temperature = value;
+    else if(strcmp(key, "Z") == 0 || strcmp(key, "metallicity") == 0) record->metallicity = value;
+    else if(strcmp(key, "dt_s") == 0 || strcmp(key, "dt") == 0) record->dt = value;
+    else if(strcmp(key, "Utherm_cgs") == 0 || strcmp(key, "utherm_cgs") == 0) record->utherm_input_cgs = value;
+    else if(strcmp(key, "timescale_safety_factor") == 0) record->timescale_safety_factor = value;
+    else if(strcmp(key, "Gamma") == 0 || strcmp(key, "gamma") == 0) record->gamma_input = value;
+    else if(strcmp(key, "diagnostic_id") == 0) record->diagnostic_id = (MyIDType)value;
+    else if(strcmp(key, "comoving_integration") == 0) record->comoving_integration = value != 0.0;
+    else if(strcmp(key, "simulation_time") == 0) record->simulation_time = value;
+    else if(strcmp(key, "scale_factor") == 0) record->scale_factor = value;
+#ifdef LW_RADIATION_LOCAL
+    else if(strcmp(key, "local_J21") == 0) record->local_J21 = value;
+    else if(strcmp(key, "local_rate_Hminus_pd_s-1") == 0 || strcmp(key, "local_rate_Hminus_pd") == 0) record->local_rate_Hminus_pd = value;
+    else if(strcmp(key, "local_rate_H2_diss_s-1") == 0 || strcmp(key, "local_rate_H2_diss") == 0) record->local_rate_H2_diss = value;
+#ifdef HD
+    else if(strcmp(key, "local_rate_HD_diss") == 0) record->local_rate_HD_diss = value;
+#endif
+    else if(strcmp(key, "local_G0") == 0) record->local_G0 = value;
+#endif
+#ifdef BACKGROUND_LW_RADIATION
+    else if(strcmp(key, "background_J21") == 0) record->background_J21 = value;
+    else if(strcmp(key, "background_rate_Hminus_pd_s-1") == 0 || strcmp(key, "background_rate_Hminus_pd") == 0) record->background_rate_Hminus_pd = value;
+    else if(strcmp(key, "background_rate_H2_diss_s-1") == 0 || strcmp(key, "background_rate_H2_diss") == 0) record->background_rate_H2_diss = value;
+#ifdef HD
+    else if(strcmp(key, "background_rate_HD_diss") == 0) record->background_rate_HD_diss = value;
+#endif
+#ifdef DUST_COOLING
+    else if(strcmp(key, "background_G0") == 0) record->background_G0 = value;
+#endif
+#endif
+#ifdef IONIZATION_PHOTON
+    else if(strcmp(key, "photoionization_rate_HI_s-1") == 0 || strcmp(key, "photoionization_rate_HI") == 0) record->photoionization_rate_HI = value;
+    else if(strcmp(key, "photoheating_rate_HI_erg_s-1") == 0 || strcmp(key, "photoheating_rate_HI") == 0) record->photoheating_rate_HI = value;
+#endif
+#ifdef HELIUM
+    else if(strcmp(key, "photoionization_rate_HeI") == 0) record->photoionization_rate_HeI = value;
+    else if(strcmp(key, "photoheating_rate_HeI") == 0) record->photoheating_rate_HeI = value;
+    else if(strcmp(key, "photoionization_rate_HeII") == 0) record->photoionization_rate_HeII = value;
+    else if(strcmp(key, "photoheating_rate_HeII") == 0) record->photoheating_rate_HeII = value;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+    else if(strcmp(key, "photoionization_rate_CI") == 0) record->photoionization_rate_C[0] = value;
+    else if(strcmp(key, "photoionization_rate_CII") == 0) record->photoionization_rate_C[1] = value;
+    else if(strcmp(key, "photoionization_rate_CIII") == 0) record->photoionization_rate_C[2] = value;
+    else if(strcmp(key, "photoheating_rate_CI") == 0) record->photoheating_rate_C[0] = value;
+    else if(strcmp(key, "photoheating_rate_CII") == 0) record->photoheating_rate_C[1] = value;
+    else if(strcmp(key, "photoheating_rate_CIII") == 0) record->photoheating_rate_C[2] = value;
+    else if(strcmp(key, "photoionization_rate_OI") == 0) record->photoionization_rate_O[0] = value;
+    else if(strcmp(key, "photoionization_rate_OII") == 0) record->photoionization_rate_O[1] = value;
+    else if(strcmp(key, "photoionization_rate_OIII") == 0) record->photoionization_rate_O[2] = value;
+    else if(strcmp(key, "photoheating_rate_OI") == 0) record->photoheating_rate_O[0] = value;
+    else if(strcmp(key, "photoheating_rate_OII") == 0) record->photoheating_rate_O[1] = value;
+    else if(strcmp(key, "photoheating_rate_OIII") == 0) record->photoheating_rate_O[2] = value;
+    else if(strcmp(key, "local_rate_CO_diss") == 0 || strcmp(key, "rate_CO_diss") == 0) record->rate_CO_diss = value;
+#endif
+#ifdef THERMAL_FEEDBACK
+    else if(strcmp(key, "stellar_radiation_flux") == 0) record->stellar_radiation_flux = value;
+#endif
+    else {
+      const char *species_name = strncmp(key, "x0_", 3) == 0 ? key + 3 : key;
+      char species_buffer[64];
+      int stored_abundance_assignment = 0;
+      if(strncmp(key, "yi[s", 4) == 0) {
+        const char *closing = strchr(key + 4, ']');
+        size_t length = closing ? (size_t)(closing - (key + 4)) : 0;
+        if(!closing || closing[1] != '\0' || length == 0 || length >= sizeof(species_buffer)) {
+          fprintf(stderr, "%s:%d: invalid species assignment '%s'\n", path,
+                  line_number, key);
+          return 0;
+        }
+        memcpy(species_buffer, key + 4, length);
+        species_buffer[length] = '\0';
+        species_name = species_buffer;
+        stored_abundance_assignment = 1;
+      }
+      enum SPECIES species;
+      if(!chemistry_species_from_name(species_name, &species) || species >= sSTORED_END) {
+        fprintf(stderr, "%s:%d: unknown key '%s'\n", path, line_number, key);
+        return 0;
+      }
+      record->abundance[species] = stored_abundance_assignment ? value / XH : value;
+      record->abundance_set[species] = 1;
+    }
+    assignment = strtok(NULL, ";");
+  }
+  return 1;
+}
+
+/* Run a single implicit chemistry solve (equivalent to --chem-step) for one
+ * already-parsed replay record.  Prints one CHEM_REPLAY_LOG_RESULT summary
+ * line per record; never aborts the batch. */
+static void run_chem_rerun_record(const ChemRerunRecord *record,
+                                  const char *path, int line_number)
+{
+  double n_nuclei = record->n_nuclei;
+  if(n_nuclei <= 0.0 && record->nH > 0.0)
+    n_nuclei = record->nH / XH;
+  if(n_nuclei <= 0.0 || record->temperature <= 0.0 ||
+     record->metallicity < 0.0 || record->dt <= 0.0) {
+    fprintf(stderr,
+            "%s:%d: CHEM_REPLAY_LOG_SKIP reason=incomplete_record"
+            " (requires nH_cm3 or n_nuclei_cm3, T_K, Z, dt_s)\n",
+            path, line_number);
+    return;
+  }
+  if(!(record->timescale_safety_factor > 0.0) ||
+     !isfinite(record->timescale_safety_factor)) {
+    fprintf(stderr,
+            "%s:%d: CHEM_REPLAY_LOG_SKIP reason=invalid_timescale_safety_factor\n",
+            path, line_number);
+    return;
+  }
+  for(int species = 0; species < sSTORED_END; species++)
+    if(!record->abundance_set[species]) {
+      fprintf(stderr,
+              "%s:%d: CHEM_REPLAY_LOG_SKIP reason=missing_abundance species=%s\n",
+              path, line_number, chemistry_species_definition(species)->name);
+      return;
+    }
+
+  All.Epsilon = record->timescale_safety_factor;
+#ifdef CHEMISTRY_PORTABLE
+  if(!chemistry_standalone_set_timescale_safety_factor(record->timescale_safety_factor)) {
+    fprintf(stderr, "%s:%d: CHEM_REPLAY_LOG_SKIP reason=standalone_not_initialized\n",
+            path, line_number);
+    return;
+  }
+#endif
+  if(record->cmb_temperature > 0.0)
+    All.T_CMB = record->cmb_temperature;
+  All.Time = record->simulation_time;
+  All.ComovingIntegrationOn = record->comoving_integration;
+  if(record->scale_factor > 0.0) {
+    All.ScaleFactor = record->scale_factor;
+    All.cf_atime = record->scale_factor;
+    All.cf_a3inv = record->comoving_integration ?
+        1.0 / (record->scale_factor * record->scale_factor * record->scale_factor) : 1.0;
+  }
+#ifdef BACKGROUND_LW_RADIATION
+  All.J21 = record->background_J21;
+  All.rate_Hminus_pd = record->background_rate_Hminus_pd;
+  All.rate_H2_diss = record->background_rate_H2_diss;
+#ifdef HD
+  All.rate_HD_diss = record->background_rate_HD_diss;
+#endif
+#ifdef DUST_COOLING
+  All.G0 = record->background_G0;
+#endif
+#endif
+#ifdef CHEMISTRY_PORTABLE
+  prepare_portable_chemistry_step();
+#endif
+
+  struct chemdata_in sph_in;
+  struct chemdata_out sph_out;
+  memset(&sph_in, 0, sizeof(sph_in));
+  memset(&sph_out, 0, sizeof(sph_out));
+  sph_in.ID = record->diagnostic_id;
+  sph_in.rho_cgs = n_nuclei * PROTONMASS;
+  sph_in.Density = sph_in.rho_cgs / (All.UnitDensity_in_cgs * All.HubbleParam * All.HubbleParam * All.cf_a3inv);
+#ifdef METALLICITY
+  sph_in.Metallicity = record->metallicity;
+#endif
+#ifdef LW_RADIATION_LOCAL
+  sph_in.J21 = record->local_J21;
+  sph_in.rate_Hminus_pd = record->local_rate_Hminus_pd;
+  sph_in.rate_H2_diss = record->local_rate_H2_diss;
+#ifdef HD
+  sph_in.rate_HD_diss = record->local_rate_HD_diss;
+#endif
+#ifdef DUST_COOLING
+  sph_in.G0 = record->local_G0;
+#endif
+#endif
+#ifdef IONIZATION_PHOTON
+  sph_in.k22 = record->photoionization_rate_HI;
+  sph_in.piHI = record->photoheating_rate_HI;
+#endif
+#ifdef HELIUM
+  sph_in.photoionization_rate_HeI = record->photoionization_rate_HeI;
+  sph_in.photoheating_rate_HeI = record->photoheating_rate_HeI;
+  sph_in.photoionization_rate_HeII = record->photoionization_rate_HeII;
+  sph_in.photoheating_rate_HeII = record->photoheating_rate_HeII;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  for(int stage = 0; stage < 3; stage++) {
+    sph_in.photoionization_rate_C[stage] = record->photoionization_rate_C[stage];
+    sph_in.photoheating_rate_C[stage] = record->photoheating_rate_C[stage];
+    sph_in.photoionization_rate_O[stage] = record->photoionization_rate_O[stage];
+    sph_in.photoheating_rate_O[stage] = record->photoheating_rate_O[stage];
+  }
+  sph_in.rate_CO_diss = record->rate_CO_diss;
+#endif
+#ifdef THERMAL_FEEDBACK
+  sph_in.stellar_rad_flux = record->stellar_radiation_flux;
+#endif
+  for(int species = 0; species < sSTORED_END; species++)
+    sph_out.Abund[species] = XH * record->abundance[species];
+  sph_out.Gamma = record->gamma_input > 1.0 ? record->gamma_input :
+      compute_gamma_from_abund(sph_out.Abund, record->temperature);
+  double molecular_weight = chemistry_molecular_weight(sph_out.Abund);
+  double utherm_cgs = BOLTZMANN * record->temperature /
+      ((sph_out.Gamma - 1.0) * molecular_weight * PROTONMASS);
+  if(record->utherm_input_cgs > 0.0)
+    utherm_cgs = record->utherm_input_cgs;
+  sph_out.Utherm = utherm_cgs / (All.UnitEnergy_in_cgs / All.UnitMass_in_g);
+  sph_out.t_chem = sph_out.t_cool = MAX_REAL_NUMBER;
+
+  double started = gettimeofday_sec();
+  int status = compute_chemistry_implicit_d(&sph_in, &sph_out, record->temperature, record->dt);
+  double elapsed = gettimeofday_sec() - started;
+  double final_temperature = chemistry_temperature(sph_out.Abund, sph_out.Gamma,
+      sph_out.Utherm * (All.UnitEnergy_in_cgs / All.UnitMass_in_g));
+
+  printf("CHEM_REPLAY_LOG_RESULT line=%d diagnostic_id=%llu converged=%d"
+         " status=%d elapsed_s=%.9g n_nuclei_cm3=%.17g T_initial_K=%.17g"
+         " T_final_K=%.17g Z=%.17g dt_s=%.17g\n",
+         line_number, (unsigned long long)record->diagnostic_id,
+         status == 1, status, elapsed, n_nuclei, record->temperature,
+         final_temperature, record->metallicity, record->dt);
+}
+
+/* Scan 'path' for every line containing a "CHEMISTRY_RERUN_V1" marker
+ * (as emitted, unconditionally, on chemistry or energy non-convergence, or
+ * by --chem-step's own diagnostics) and replay each one as an independent
+ * single implicit chemistry solve.  This lets a raw captured log -- with
+ * arbitrary surrounding text, and possibly many failure records from one
+ * run -- be fed back in directly, with no manual line-extraction step. */
+static int run_chemistry_replay_log(const char *path)
+{
+  FILE *input = fopen(path, "r");
+  if(!input) {
+    fprintf(stderr, "cannot open chemistry replay log '%s': %s\n", path,
+            strerror(errno));
+    return 2;
+  }
+
+  const char *rerun_marker = "/*CHEMISTRY_RERUN_V1*/";
+  char line[8192];
+  int line_number = 0;
+  int records_found = 0, records_parsed = 0;
+
+  while(fgets(line, sizeof(line), input)) {
+    line_number++;
+    char *text = trim_text(line);
+    char *marker = strstr(text, rerun_marker);
+    if(!marker)
+      continue;
+
+    records_found++;
+    ChemRerunRecord record;
+    init_chem_rerun_record(&record);
+    if(!parse_chem_rerun_assignments(marker + strlen(rerun_marker), &record,
+                                     path, line_number)) {
+      fprintf(stderr, "%s:%d: CHEM_REPLAY_LOG_SKIP reason=parse_error\n",
+              path, line_number);
+      continue;
+    }
+    records_parsed++;
+    run_chem_rerun_record(&record, path, line_number);
+  }
+  fclose(input);
+
+  fprintf(stderr,
+          "CHEM_REPLAY_LOG_SUMMARY records_found=%d records_parsed=%d\n",
+          records_found, records_parsed);
+  return records_found == 0 ? 2 : 0;
+}
+
 static void print_single_chemistry_step_input(const struct chemdata_in *input,
                                               const struct chemdata_out *output,
                                               double temperature, double dt)
 {
-  fprintf(stderr, "CHEM_STEP_INPUT_BEGIN\n");
+  fprintf(stderr, "CHEM_STEP_INPUT_BEGIN\\n");
   fprintf(stderr, "n_nuclei_cm3=%.17g\n", input->rho_cgs / PROTONMASS);
   fprintf(stderr, "T_K=%.17g\n", temperature);
   fprintf(stderr, "T_CMB_K=%.17g\n", All.T_CMB);
@@ -887,6 +1256,8 @@ int main(int argc, char **argv){
     return run_single_chemistry_step(argv[2], 5, argv[3]);
   if(argc == 2 && strcmp(argv[1], "--survey-first-failures") == 0)
     survey_first_chemistry_failures = 1;
+  if(argc == 3 && strcmp(argv[1], "--chem-replay-log") == 0)
+    return run_chemistry_replay_log(argv[2]);
 #endif
 
 #ifdef BACKGROUND_LW_RADIATION
