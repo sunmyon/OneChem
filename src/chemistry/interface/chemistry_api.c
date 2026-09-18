@@ -38,8 +38,8 @@ ChemistryStatus chemistry_context_create(const ChemistryConfig *config,
   *context = NULL;
   if(config == NULL || config->abi_version != CHEMISTRY_ABI_VERSION ||
      config->table_root == NULL || config->table_root[0] == '\0' ||
-     !(config->subcycle_safety_factor > 0.0) ||
-     !isfinite(config->subcycle_safety_factor))
+     !(config->timescale_safety_factor > 0.0) ||
+     !isfinite(config->timescale_safety_factor))
     return CHEMISTRY_STATUS_INVALID_ARGUMENT;
 
   ChemistryContext *created = malloc(sizeof(*created));
