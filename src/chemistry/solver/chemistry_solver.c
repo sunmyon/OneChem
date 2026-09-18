@@ -875,6 +875,19 @@ double solve_bisection(const ChemEnvironment *environment, const ChemStepData *s
     if(work->status != CHEMISTRY_STATUS_OK)
       return 1.e30;
 
+    /* give_g returns a non-finite residual when the chemistry trial at T_cand
+     * failed.  Such a point carries no sign information: comparing it with
+     * `<` is always false, so it would be taken as the same side as val_a,
+     * val_a would become non-finite, and every later midpoint would move
+     * T_a toward T_b, ending with a "converged" bracket that is not a root.
+     * Fail instead and let the caller's recovery path handle it. */
+    if(!isfinite(val_new)){
+      printf("[ChemID%d] solve_bisection: non-finite residual at T=%g "
+             "(chemistry trial failed); bracket [%g, %g] cannot be refined.\n",
+             environment->ID, T_cand, T_a, T_b);
+      return 1.e30;
+    }
+
     if(val_a * val_new < 0)
       T_b = T_cand;
     else T_a = T_cand, val_a = val_new;
