@@ -1113,7 +1113,12 @@ static int chemistry_select_conservation_system(ChemConservationSystem *conserva
 #if defined(CARBON_OXYGEN_CHEMISTRY) && !defined(CHEM_DISABLE_CARBON_OXYGEN_CONSERVATION)
   /* Select C/O columns jointly. A nonsingular matrix is insufficient: the
    * reconstructed abundances must also lie in the nonnegative domain. */
-  const enum SPECIES candidates[] = {sCI, sCII, sCO, sCO2, sOI, sOH, sH2O, sO2};
+  const enum SPECIES candidates[] = {
+    sCI, sCII, sCO, sCO2, sOI, sOH, sH2O, sO2,
+#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+    sCIII, sOIV,
+#endif
+  };
   int cr = -1, orow = -1;
   for(int row = 0; row < conservation->count; row++)
     {
