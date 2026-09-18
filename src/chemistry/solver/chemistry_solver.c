@@ -186,7 +186,7 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
   int final_evaluation_available = 0;
   double e_new;
   double T_gas_init, T_old, T_new, dT, d_T;
-  const double T_max=3.e6, T_min=0.1;
+  const double T_max=1.e6, T_min=0.1;
   double T_large, T_small;
   double g = 0., g0;
 
