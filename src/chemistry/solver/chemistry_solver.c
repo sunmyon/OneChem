@@ -1844,6 +1844,20 @@ typedef enum {
   NEWTON_STEP_RECOVER_BASIN
 } NewtonStepOutcome;
 
+/* Limit on the certified Newton residual (chemistry_newton_evaluate_residual,
+ * where 1 corresponds to 1e-10 of the gross reaction activity) above which an
+ * iterate is rejected as grossly inconsistent.  Convergence is decided by the
+ * Newton step criterion together with the clipping hold and
+ * NEWTON_REQUIRED_CONFIRMATIONS; the residual is only a sanity veto.  A tight
+ * (~1) limit can never be met by a stiff, ill-conditioned species once the
+ * Newton correction is smaller than the representable change of that species
+ * (one ulp of the abundance moves the residual by more than the tolerance), so
+ * an already-converged solution would be rejected and restarted.  Overridable
+ * at compile time for testing. */
+#ifndef CHEM_NEWTON_RESIDUAL_GATE_LIMIT
+#define CHEM_NEWTON_RESIDUAL_GATE_LIMIT 1.0e3
+#endif
+
 enum {
   NEWTON_REQUIRED_CONFIRMATIONS = 2,
   NEWTON_CLIPPING_HOLD_ITERATIONS = 2,
@@ -2440,7 +2454,7 @@ static NewtonStepOutcome finish_newton_step(
   if(newton->boundary_streak >= NEWTON_BOUNDARY_STEPS_BEFORE_RESELECTION)
     newton->chart_reselection_requested = 1;
 
-  if(iteration_data->residual_error > 1.0 ||
+  if(iteration_data->residual_error > CHEM_NEWTON_RESIDUAL_GATE_LIMIT ||
       relevant_step_was_clipped){
     newton->convergence_count = 0;
   }else if(newton->clipping_hold > 0){

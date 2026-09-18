@@ -231,6 +231,15 @@ Builds the convergence diagnostics for the current backward-Euler residual.
 This is evaluated before applying the next Newton correction; the subsequent
 step norm provides the second part of convergence certification.
 
+The certified residual is normalized so that 1 means 1e-10 of the gross
+reaction activity.  It is a sanity veto, not the convergence criterion:
+`finish_newton_step` counts a confirmation only when the step norm is within
+tolerance, no relevant step was clipped, the clipping hold has expired, and the
+certified residual is at most `CHEM_NEWTON_RESIDUAL_GATE_LIMIT` (1e3).  A limit
+near 1 cannot be met by a stiff species whose Newton correction has fallen below
+one ulp of its abundance, so it would reject a converged solution and trigger the
+basin-restart cascade.
+
 ### `chemistry_build_newton_jacobian`
 
 Owns the Jacobian policy:
