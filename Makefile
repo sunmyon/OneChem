@@ -334,7 +334,12 @@ $(BUILDDIR)/%.o: %.c $(INCL)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-.PHONY: clean check-chemistry-initialization
+.PHONY: clean check-chemistry-initialization check-energy-replay
+
+# Replays captured AREPO energy-step failures (tests/replay) through the
+# standalone build; builds its own binaries in build-replay*.
+check-energy-replay:
+	sh tests/replay/run_energy_step_replay.sh
 
 $(BUILDDIR)/initialization_regression: src/chemistry/tests/initialization_regression.c $(filter-out $(BUILDDIR)/src/standalone/main.o,$(OBJDIR_OBJS))
 	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
