@@ -25,7 +25,7 @@ ChemRunContext run = {0};
 ChemStandaloneUnits units = {0};
 RadiationRateContext radiation_context;
 
-run.subcycle_safety_factor = All.Epsilon;
+run.timescale_safety_factor = All.Epsilon;
 units.specific_energy_cgs = All.UnitEnergy_in_cgs / All.UnitMass_in_g;
 chemistry_standalone_configure(&run, &units); /* once after set_units() */
 radiation_rate_context_init(&radiation_context); /* once per run/task */

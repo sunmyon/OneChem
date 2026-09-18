@@ -9,14 +9,14 @@ ChemistryStatus chemistry_arepo_context_init(const ChemArepoConfig *config,
 {
   if(config == NULL || context == NULL || config->table_root == NULL ||
      config->table_root[0] == '\0' ||
-     !(config->subcycle_safety_factor > 0.0))
+     !(config->timescale_safety_factor > 0.0))
     return CHEMISTRY_STATUS_INVALID_ARGUMENT;
 
   memset(context, 0, sizeof(*context));
   ChemistryConfig chemistry_config;
   chemistry_config_defaults(&chemistry_config);
   chemistry_config.table_root = config->table_root;
-  chemistry_config.subcycle_safety_factor = config->subcycle_safety_factor;
+  chemistry_config.timescale_safety_factor = config->timescale_safety_factor;
   return chemistry_context_create(&chemistry_config, &context->chemistry);
 }
 

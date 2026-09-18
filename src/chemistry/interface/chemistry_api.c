@@ -26,7 +26,7 @@ void chemistry_config_defaults(ChemistryConfig *config)
 
   memset(config, 0, sizeof(*config));
   config->abi_version = CHEMISTRY_ABI_VERSION;
-  config->subcycle_safety_factor = 0.1;
+  config->timescale_safety_factor = 0.1;
 }
 
 ChemistryStatus chemistry_context_create(const ChemistryConfig *config,
@@ -55,7 +55,7 @@ ChemistryStatus chemistry_context_create(const ChemistryConfig *config,
     return status;
   }
 
-  created->run.subcycle_safety_factor = config->subcycle_safety_factor;
+  created->run.timescale_safety_factor = config->timescale_safety_factor;
   *context = created;
   return CHEMISTRY_STATUS_OK;
 }

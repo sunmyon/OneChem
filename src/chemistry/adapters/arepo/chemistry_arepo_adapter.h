@@ -6,7 +6,7 @@
 
 typedef struct {
   const char *table_root;
-  double subcycle_safety_factor;
+  double timescale_safety_factor;
 } ChemArepoConfig;
 
 /* One explicitly owned instance per MPI rank; immutable after initialization. */

@@ -238,9 +238,9 @@ ChemistryStatus chemistry_core_advance(int mode,
 
   for(int iter=0;iter<MAX_ITERATION;iter++){
     /*---------  Set the internal time step for subcycling */
-    double time1 = environment->run->subcycle_safety_factor * dmin(fabs(workspace->evaluation.t_cool_rad),
+    double time1 = environment->run->timescale_safety_factor * dmin(fabs(workspace->evaluation.t_cool_rad),
                                                                     fabs(workspace->evaluation.t_cool_chem));
-    double time2 = environment->run->subcycle_safety_factor * fabs(workspace->evaluation.t_chem);
+    double time2 = environment->run->timescale_safety_factor * fabs(workspace->evaluation.t_chem);
     double time_elapsed = t_now;
     double time3 = dtime - time_elapsed;
 

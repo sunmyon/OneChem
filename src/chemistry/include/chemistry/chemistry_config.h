@@ -10,7 +10,7 @@ typedef struct ChemistryConfig {
   /* Used only during chemistry_context_create; caller ownership may then end. */
   const char *table_root;
 
-  double subcycle_safety_factor;
+  double timescale_safety_factor;
 } ChemistryConfig;
 
 void chemistry_config_defaults(ChemistryConfig *config);

@@ -18,7 +18,7 @@ typedef struct ChemRunContext {
   ChemistryCoolingTables *cooling_tables;
   ChemistryDustTables *dust_tables;
   ChemistryContinuumOpacityTables *continuum_opacity_tables;
-  double subcycle_safety_factor;
+  double timescale_safety_factor;
 #ifdef FIX_TEMPERATURE
   double fixed_temperature;
 #endif

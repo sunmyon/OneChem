@@ -12,7 +12,7 @@ ChemistryContext *context = NULL;
 chemistry_config_defaults(&config);
 /* Directory that contains the chemistry tables/ subdirectory. */
 config.table_root = chemistry_table_directory;
-config.subcycle_safety_factor = 0.01;
+config.timescale_safety_factor = 0.01;
 chemistry_context_create(&config, &context);
 
 ChemistryGlobalEnvironment global = {0};

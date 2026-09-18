@@ -22,7 +22,7 @@ decides how ranks report and combine that failure.
 ```text
 host parses configuration and establishes units
   -> chemistry_config_defaults
-  -> host sets table_root and subcycle_safety_factor
+  -> host sets table_root and timescale_safety_factor
   -> chemistry_context_create       (once per process/rank)
   -> chemistry_workspace_init       (once per worker/concurrent call)
 

@@ -2005,7 +2005,7 @@ int InitTable(void){
   ChemistryStatus chemistry_status = InitChem(&chemistry_config, run_context);
   if(chemistry_status != CHEMISTRY_STATUS_OK)
     return (int)chemistry_status;
-  run_context->subcycle_safety_factor = All.Epsilon;
+  run_context->timescale_safety_factor = All.Epsilon;
   const ChemStandaloneUnits units = {
       All.UnitEnergy_in_cgs / All.UnitMass_in_g};
   chemistry_standalone_configure(run_context, &units);
