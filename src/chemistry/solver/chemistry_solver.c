@@ -1205,6 +1205,7 @@ int chemistry_species_is_algebraic(enum SPECIES species, const ChemConservationS
 int chemistry_update_conservation_dependent_species(double *abundance, const ChemConservationSystem *conservation)
 {
   double remaining[CHEM_MAX_CONSERVATION_CONSTRAINTS];
+  int valid = 1;
   for(int constraint = 0; constraint < conservation->count; constraint++) {
     remaining[constraint] = conservation->total[constraint];
     for(int species = 0; species < N_SP; species++)
@@ -1217,10 +1218,18 @@ int chemistry_update_conservation_dependent_species(double *abundance, const Che
     for(int constraint = 0; constraint < conservation->count; constraint++)
       value += conservation->dependent_inverse[constraint * conservation->count + dependent] * remaining[constraint];
     abundance[conservation->dependent_species[dependent]] = value;
-    if(!isfinite(value))
-      return 0;
+    if(!isfinite(value) || value < 0.0)
+      valid = 0;
   }
 
+  return valid;
+}
+
+static int chemistry_abundances_are_nonnegative(const double *abundance)
+{
+  for(int species = 0; species < N_SP; species++)
+    if(!isfinite(abundance[species]) || abundance[species] < 0.0)
+      return 0;
   return 1;
 }
 
@@ -1305,7 +1314,8 @@ int chemistry_update_implicit_algebraic_species(double nH, double *abundance, co
   if(intermediate_equilibrium_species_count == 0) {
     if(!chemistry_update_conservation_dependent_species(abundance, conservation))
       return 0;
-    return chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_IMPLICIT, nH, abundance, rates);
+    return chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_IMPLICIT, nH, abundance, rates) &&
+           chemistry_abundances_are_nonnegative(abundance);
   }
 
   /* Conservation-dependent abundances, especially the electron abundance,
@@ -1324,14 +1334,6 @@ int chemistry_update_implicit_algebraic_species(double nH, double *abundance, co
     for(int dependent = 0; dependent < conservation->count; dependent++) {
       enum SPECIES species = conservation->dependent_species[dependent];
       double target = abundance[species];
-      double roundoff_tolerance = 0.0;
-      for(int constraint = 0; constraint < conservation->count; constraint++)
-        if(conservation->total[constraint] > 0.0 &&
-           conservation->coefficient[constraint][species] != 0.0)
-          roundoff_tolerance = dmax(roundoff_tolerance,
-              64.0 * DBL_EPSILON * conservation->total[constraint]);
-      if(target < 0.0 && target >= -roundoff_tolerance)
-        target = abundance[species] = 0.0;
       if(target < 0.0)
         return 0;
       double scale = dmax(dmax(fabs(previous_dependent[dependent]), fabs(target)), 1.e-30);
@@ -1348,7 +1350,7 @@ int chemistry_update_implicit_algebraic_species(double nH, double *abundance, co
         return 0;
       if(!chemistry_update_intermediate_equilibrium_species(CHEM_REACTION_IMPLICIT, nH, abundance, rates))
         return 0;
-      return 1;
+      return chemistry_abundances_are_nonnegative(abundance);
     }
   }
 
@@ -2296,12 +2298,9 @@ static int chemistry_export_implicit_solution(
     return 0;
   }
 
-  for(int species = 0; species < N_SP; species++){
-    if(conservation->is_dependent[species] &&
-        abundance[species] < 0.0 &&
-        abundance[species] >= -CHEMISTRY_NEWTON_TRACE_ABUNDANCE){
-      abundance[species] = 0.0;
-    }
+  if(!chemistry_abundances_are_nonnegative(abundance)){
+    *state = *input_state;
+    return 0;
   }
 
   for(int species = 0; species < N_SP; species++)
@@ -2361,6 +2360,8 @@ static int prepare_newton_basin(
     basin_is_valid = chemistry_update_implicit_algebraic_species(
         nH, system->abundance, rates, &system->conservation);
   }
+  if(basin_is_valid)
+    basin_is_valid = chemistry_abundances_are_nonnegative(system->abundance);
 
   if(!basin_is_valid){
     newton->recovery = NEWTON_RECOVERY_INVALID_BASIN;

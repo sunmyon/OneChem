@@ -172,11 +172,9 @@ int chemistry_newton_normalize_current_state(
         DBL_MIN);
     /* lower_bound is a Newton scaling/floor parameter, not the physical
      * boundary.  Exact zero and positive trace abundances remain valid. */
-    if(abundance[species] < 0.0) {
-      if(abundance[species] < -tolerance)
-        return 0;
-      abundance[species] = 0.0;
-    } else if(abundance[species] > upper_bound[species]) {
+    if(abundance[species] < 0.0)
+      return 0;
+    if(abundance[species] > upper_bound[species]) {
       if(abundance[species] > upper_bound[species] + tolerance)
         return 0;
       abundance[species] = upper_bound[species];
@@ -245,22 +243,108 @@ static void chemistry_newton_form_trial(
 }
 
 static int chemistry_newton_trial_is_admissible(
-    const double *trial, const double *upper_bound,
-    const ChemConservationSystem *conservation,
-    ChemNewtonStepResult *result)
+    const double *trial, const double *upper_bound)
 {
   for(int species = 0; species < N_SP; species++) {
-    int tiny_negative_dependent =
-        conservation->is_dependent[species] &&
-        trial[species] >= -CHEM_NEWTON_TRACE_ABUNDANCE;
     if(!isfinite(trial[species]) ||
-       (trial[species] < 0.0 && !tiny_negative_dependent) ||
+       trial[species] < 0.0 ||
        (!chemistry_species_is_intermediate_equilibrium(species) &&
         trial[species] > upper_bound[species])) {
       return 0;
     }
   }
   return 1;
+}
+
+/* Keep independent corrections component-wise.  A dependent reservoir can
+ * reject the combined trial even when unrelated corrections are admissible;
+ * never contract all independent species by one common factor. */
+static int chemistry_newton_repair_coupled_step(
+    double nH, const double *initial, double *step, double *trial,
+    const double *upper_bound, const ChemRates *rates,
+    const ChemConservationSystem *conservation, ChemNewtonStepResult *result)
+{
+  for(int pass = 0; pass < N_SP; pass++) {
+    int best_species = -1;
+    double best_violation = INFINITY;
+    int best_is_valid = 0;
+
+    for(int species = 0; species < N_SP; species++) {
+      if(chemistry_species_is_algebraic(species, conservation) ||
+         step[species] == 0.0)
+        continue;
+
+      double candidate[N_SP];
+      for(int other = 0; other < N_SP; other++)
+        candidate[other] = chemistry_species_is_algebraic(other, conservation) ?
+            initial[other] : initial[other] +
+            (other == species ? 0.0 : step[other]);
+      int algebraic_ok = chemistry_update_implicit_algebraic_species(
+          nH, candidate, rates, conservation);
+      int admissible = algebraic_ok && chemistry_newton_trial_is_admissible(
+          candidate, upper_bound);
+
+      /* Reconstruct conservation reservoirs for a comparable violation score
+       * even if the coupled intermediate iteration rejected the candidate. */
+      if(!admissible)
+        chemistry_update_conservation_dependent_species(candidate, conservation);
+      double violation = 0.0;
+      for(int other = 0; other < N_SP; other++) {
+        if(!isfinite(candidate[other])) {
+          violation = INFINITY;
+          break;
+        }
+        double scale = fmax(upper_bound[other], 1.e-30);
+        if(candidate[other] < 0.0)
+          violation += -candidate[other] / scale;
+        else if(!chemistry_species_is_intermediate_equilibrium(other) &&
+                candidate[other] > upper_bound[other])
+          violation += (candidate[other] - upper_bound[other]) / scale;
+      }
+      if(!admissible && violation == 0.0)
+        violation = INFINITY;
+      if(best_species < 0 || (admissible && !best_is_valid) ||
+         (admissible == best_is_valid && violation < best_violation)) {
+        best_species = species;
+        best_violation = violation;
+        best_is_valid = admissible;
+      }
+    }
+
+    if(best_species < 0 || !isfinite(best_violation))
+      return 0;
+
+    double original_step = step[best_species];
+    if(best_is_valid) {
+      double feasible = 0.0, infeasible = 1.0;
+      for(int iteration = 0; iteration < 48; iteration++) {
+        double fraction = 0.5 * (feasible + infeasible);
+        step[best_species] = fraction * original_step;
+        chemistry_newton_form_trial(initial, step, conservation, trial);
+        int valid = chemistry_update_implicit_algebraic_species(
+            nH, trial, rates, conservation);
+        if(valid)
+          valid = chemistry_newton_trial_is_admissible(
+              trial, upper_bound);
+        if(valid)
+          feasible = fraction;
+        else
+          infeasible = fraction;
+      }
+      step[best_species] = 0.99 * feasible * original_step;
+    } else {
+      step[best_species] = 0.0;
+    }
+    result->step_was_clipped = 1;
+    result->clipped_species[best_species] = 1;
+    chemistry_newton_form_trial(initial, step, conservation, trial);
+    if(chemistry_update_implicit_algebraic_species(
+           nH, trial, rates, conservation) &&
+       chemistry_newton_trial_is_admissible(
+           trial, upper_bound))
+      return 1;
+  }
+  return 0;
 }
 
 static int chemistry_newton_project_negative_charge_carrier(
@@ -352,161 +436,11 @@ int chemistry_newton_apply_step(
         nH, initial, step, trial, lower_bound, rates, conservation, result);
   if(valid)
     valid = chemistry_newton_trial_is_admissible(
-        trial, upper_bound, conservation, result);
-
-  if(!valid) {
-    double feasible_fraction = 0.0;
-    double infeasible_fraction = 1.0;
-    for(int iteration = 0; iteration < 24; iteration++) {
-      double fraction = 0.5 * (feasible_fraction + infeasible_fraction);
-      double candidate[N_SP];
-      for(int species = 0; species < N_SP; species++)
-        candidate[species] = chemistry_species_is_algebraic(
-            species, conservation) ? initial[species] :
-            initial[species] + fraction * step[species];
-      int candidate_valid = chemistry_update_implicit_algebraic_species(
-          nH, candidate, rates, conservation);
-      if(candidate_valid) {
-        ChemNewtonStepResult candidate_result = *result;
-        candidate_valid = chemistry_newton_trial_is_admissible(
-            candidate, upper_bound, conservation, &candidate_result);
-      }
-      if(candidate_valid)
-        feasible_fraction = fraction;
-      else
-        infeasible_fraction = fraction;
-    }
-
-    if(feasible_fraction > 1.e-8) {
-      double interior_fraction = 0.99 * feasible_fraction;
-      for(int species = 0; species < N_SP; species++)
-        trial[species] = chemistry_species_is_algebraic(
-            species, conservation) ? initial[species] :
-            initial[species] + interior_fraction * step[species];
-      valid = chemistry_update_implicit_algebraic_species(
-          nH, trial, rates, conservation) &&
-          chemistry_newton_trial_is_admissible(
-              trial, upper_bound, conservation, result);
-      if(valid) {
-        result->step_was_clipped = 1;
-        for(int species = 0; species < N_SP; species++)
-          if(fabs(trial[species] - initial[species]) < fabs(step[species]))
-            result->clipped_species[species] = 1;
-      }
-    }
-  }
+        trial, upper_bound);
 
   if(!valid)
-    return 0;
-  for(int species = 0; species < N_SP; species++) {
-    step[species] = trial[species] - initial[species];
-    abundance[species] = trial[species];
-  }
-  return 1;
-}
-
-static int chemistry_newton_apply_explicit_guess_step(
-    double nH, double *abundance, double *step,
-    const double *lower_bound, const double *upper_bound,
-    const ChemRates *rates, const ChemConservationSystem *conservation)
-{
-  double initial[N_SP], direction[N_SP] = {0.0};
-  memcpy(initial, abundance, sizeof(initial));
-
-  for(int species = 0; species < N_SP; species++) {
-    if(chemistry_species_is_algebraic(species, conservation))
-      continue;
-    if(!isfinite(step[species]))
-      return 0;
-    direction[species] = step[species];
-  }
-  for(int dependent = 0; dependent < conservation->count; dependent++) {
-    enum SPECIES species = conservation->dependent_species[dependent];
-    for(int independent = 0; independent < N_SP; independent++)
-      if(!chemistry_species_is_algebraic(independent, conservation))
-        direction[species] += chemistry_newton_dependent_derivative(
-            dependent, independent, conservation) * step[independent];
-  }
-
-  double maximum_fraction = 1.0;
-  for(int species = 0; species < N_SP; species++) {
-    if(chemistry_species_is_intermediate_equilibrium(species))
-      continue;
-    double candidate = 2.0;
-    if(direction[species] < 0.0 &&
-       initial[species] + direction[species] < lower_bound[species])
-      candidate =
-          (lower_bound[species] - initial[species]) / direction[species];
-    else if(direction[species] > 0.0 &&
-            initial[species] + direction[species] > upper_bound[species])
-      candidate =
-          (upper_bound[species] - initial[species]) / direction[species];
-    if(candidate >= 0.0 && candidate < maximum_fraction)
-      maximum_fraction = candidate;
-  }
-
-  double accepted_fraction = maximum_fraction < 1.0 ?
-      0.99 * maximum_fraction : 1.0;
-  for(int species = 0; species < N_SP; species++)
-    if(!chemistry_species_is_algebraic(species, conservation))
-      step[species] *= accepted_fraction;
-
-  double trial[N_SP];
-  chemistry_newton_form_trial(initial, step, conservation, trial);
-  int valid = chemistry_update_implicit_algebraic_species(
-      nH, trial, rates, conservation);
-  if(valid)
-    for(int species = 0; species < N_SP; species++)
-      if(!isfinite(trial[species]) || trial[species] < 0.0 ||
-         (!chemistry_species_is_intermediate_equilibrium(species) &&
-          trial[species] > upper_bound[species])) {
-        valid = 0;
-        break;
-      }
-
-  if(!valid) {
-    double feasible_fraction = 0.0;
-    double infeasible_fraction = 1.0;
-    for(int iteration = 0; iteration < 24; iteration++) {
-      double fraction = 0.5 * (feasible_fraction + infeasible_fraction);
-      double candidate[N_SP];
-      for(int species = 0; species < N_SP; species++)
-        candidate[species] = chemistry_species_is_algebraic(
-            species, conservation) ? initial[species] :
-            initial[species] + fraction * step[species];
-      int candidate_valid = chemistry_update_implicit_algebraic_species(
-          nH, candidate, rates, conservation);
-      if(candidate_valid)
-        for(int species = 0; species < N_SP; species++)
-          if(!isfinite(candidate[species]) || candidate[species] < 0.0 ||
-             (!chemistry_species_is_intermediate_equilibrium(species) &&
-              candidate[species] > upper_bound[species])) {
-            candidate_valid = 0;
-            break;
-          }
-      if(candidate_valid)
-        feasible_fraction = fraction;
-      else
-        infeasible_fraction = fraction;
-    }
-    if(feasible_fraction <= 1.e-8)
-      return 0;
-    double interior_fraction = 0.99 * feasible_fraction;
-    for(int species = 0; species < N_SP; species++)
-      trial[species] = chemistry_species_is_algebraic(
-          species, conservation) ? initial[species] :
-          initial[species] + interior_fraction * step[species];
-    valid = chemistry_update_implicit_algebraic_species(
-        nH, trial, rates, conservation);
-    if(valid)
-      for(int species = 0; species < N_SP; species++)
-        if(!isfinite(trial[species]) || trial[species] < 0.0 ||
-           (!chemistry_species_is_intermediate_equilibrium(species) &&
-            trial[species] > upper_bound[species])) {
-          valid = 0;
-          break;
-        }
-  }
+    valid = chemistry_newton_repair_coupled_step(
+        nH, initial, step, trial, upper_bound, rates, conservation, result);
 
   if(!valid)
     return 0;
@@ -534,9 +468,13 @@ int chemistry_newton_build_explicit_guess(
   }
 
   memcpy(abundance, initial_abundance, N_SP * sizeof(*abundance));
-  return chemistry_newton_apply_explicit_guess_step(
-      nH, abundance, step, lower_bound, upper_bound, rates,
-      conservation);
+  ChemNewtonStepResult result;
+  if(!chemistry_newton_apply_step(nH, abundance, step, lower_bound,
+                                  upper_bound, rates, conservation, &result)) {
+    /* A predictor is optional; retain the valid physical seed on failure. */
+    memcpy(abundance, initial_abundance, N_SP * sizeof(*abundance));
+  }
+  return 1;
 }
 
 int chemistry_newton_reselect_conservation_chart(

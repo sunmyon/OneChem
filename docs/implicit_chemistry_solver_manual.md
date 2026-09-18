@@ -1,5 +1,25 @@
 # Implicit chemistry solver manual
 
+## Highest-priority numerical invariants
+
+1. **No negative abundance is admissible.** This applies to every species,
+   including conservation-dependent and equilibrium-intermediate species, at
+   initialization, every accepted Newton iterate, and export. Do not use a
+   negative-abundance tolerance or silently clip a negative reservoir to zero;
+   reject the trial and repair its independent corrections or change the
+   conservation chart.
+2. **Never shrink the entire correction by one common factor.** Independent
+   species are bounded component by component. If the combined correction
+   makes an algebraic reservoir inadmissible, repair only responsible
+   independent components, leaving unrelated valid components (such as H2)
+   unchanged. This applies to the explicit predictor and Newton corrections.
+3. A repaired trial must be re-evaluated with the coupled algebraic equations
+   and pass the all-species nonnegativity check before it can be accepted.
+
+These invariants take precedence over convergence heuristics and recovery
+policies. In particular, a tiny negative dependent abundance is a rejected
+state, not a roundoff exception.
+
 This document describes the full-implicit chemistry path implemented in
 `src/chemistry/solver/chemistry_solver.c`.  It is intended as a maintenance
 manual: it explains the numerical sequence, the responsibility of each helper,
@@ -262,9 +282,9 @@ left at zero because they are reconstructed rather than independently stepped.
 ### `chemistry_newton_apply_step`
 
 Applies a bounded Newton correction and reconstructs algebraic species.  It
-returns both validity and a per-species clipping record.  Negative physical
-abundances are not exported; limited tolerance near zero is used only when
-certifying numerical convergence.
+returns both validity and a per-species clipping record. Independent
+corrections are clipped or repaired individually; there is no common
+line-search factor. Every accepted species abundance must be nonnegative.
 
 ### `chemistry_newton_material_step_norm`
 
@@ -368,8 +388,8 @@ the caller's timestep control diagnostics.
 ### `chemistry_export_implicit_solution`
 
 Applies output floors to independent species, reconstructs algebraic species,
-clips only roundoff-sized negative dependent reservoirs, converts abundances
-back to external units, evaluates chemical cooling, and optionally updates the
+rejects any negative dependent reservoir, converts abundances back to external
+units, evaluates chemical cooling, and optionally updates the
 continuum-opacity level populations.
 
 ### Profiling API
