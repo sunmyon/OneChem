@@ -9,7 +9,7 @@
 #endif
 
 #if defined(H2_COOLING_Y06) || defined(H2_COOLING_O00)
-#error "The selected H2 cooling model has no implementation in chemistry/cooling/H2cooling.c"
+#error "The selected H2 cooling model has no implementation in the portable chemistry core"
 #elif defined(H2_COOLING_GP12)
 #define SELECTED_H2_COOLING H2_cooling_GP12
 #else

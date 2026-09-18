@@ -60,7 +60,7 @@ double OxygenI_fivelevel_cooling(double nOI, double ne, double nH, double T_gas)
 
 
   double T100, Lambda;
-  
+
   double Coeff[5][5], b[5][2];
 
   int dim, column;
@@ -163,7 +163,7 @@ double OxygenI_fivelevel_cooling(double nOI, double ne, double nH, double T_gas)
 
   gamma13H = (g3/g1) * gamma31H * exp(-delE_31/(BOLTZMANN * T_gas));
   gamma13e = (g3/g1) * gamma31e * exp(-delE_31/(BOLTZMANN * T_gas));
-  
+
   gamma23H = (g3/g2) * gamma32H * exp(-delE_32/(BOLTZMANN * T_gas));
   gamma23e = (g3/g2) * gamma32e * exp(-delE_32/(BOLTZMANN * T_gas));
 
@@ -187,7 +187,7 @@ double OxygenI_fivelevel_cooling(double nOI, double ne, double nH, double T_gas)
 
   gamma45H = (g5/g4) * gamma54H * exp(-delE_54/(BOLTZMANN * T_gas));
   gamma45e = (g5/g4) * gamma54e * exp(-delE_54/(BOLTZMANN * T_gas));
- 
+
 
 
 
@@ -217,7 +217,7 @@ double OxygenI_fivelevel_cooling(double nOI, double ne, double nH, double T_gas)
 
   R34 = nH * gamma34H  + gamma34e * ne;
   R35 = nH * gamma35H  + gamma35e * ne;
-  
+
   R45 = nH * gamma45H  + gamma45e * ne;
 
 
@@ -283,9 +283,9 @@ double OxygenI_fivelevel_cooling(double nOI, double ne, double nH, double T_gas)
   //cout<<b[0][0]<<" "<<b[1][0]<<" "<<b[2][0]<<" "<<b[3][0]<<" "<<b[4][0]<<" and "
   //    <<b[0][0]+b[1][0]+b[2][0]+b[3][0]+b[4][0]<<endl;
 
-  
+
   double n1, n2, n3, n4, n5;
-  
+
   n1 = b[0][0];
   n2 = b[1][0];
   n3 = b[2][0];
@@ -314,8 +314,8 @@ double OxygenI_fivelevel_cooling(double nOI, double ne, double nH, double T_gas)
   int iu, il;
   for(iu=5, Lambda=0.;iu>1;iu--){
     for(il=iu-1;il>=1;il--){
-      tau = 
-	g_OI[iu]/g_OI[il] * A_OI[iu][il] * hc * hc * hc / (8 * M_PI * pow(delE_OI[iu][il],3)) 
+      tau =
+	g_OI[iu]/g_OI[il] * A_OI[iu][il] * hc * hc * hc / (8 * M_PI * pow(delE_OI[iu][il],3))
 	* (n_OI[il] - n_OI[iu] * g_OI[il]/g_OI[iu]) * t_freefall;
 
       if(tau > 1.e-5)
@@ -342,11 +342,11 @@ double OxygenI_fivelevel_cooling(double nOI, double ne, double nH, double T_gas)
   printf("[OI] tau[2]=%g\n", tau_OI[2][1]);
 
   printf("[OI] y[]=%g %g %g %g %g\n", n1/nOI, n2/nOI, n3/nOI, n4/nOI, n5/nOI);
-  
+
   printf("[OI] Lambda=%g thin=%g twolevel=%g %g %g\n"
 	 , Lambda/nOI, Lambda_thin/nOI
 	 , n2/nOI * A21 * delE_21 * fac, Lambda/nOI, Lambda/nH);
-			   
+
   return Lambda; // erg/sec per OI atom
 }
 
@@ -396,8 +396,8 @@ double OxygenI_twolevel_cooling(double nOI, double ne, double nH,
   R12 = g2/g1 * A21 *Q21 + nH * gamma12H  + gamma12e * ne;
 #endif
 
-  
-  double n1, n2;  
+
+  double n1, n2;
   n1 = nOI * R21 / (R12 + R21);
   n2 = nOI * R12 / (R12 + R21);
 
@@ -410,8 +410,8 @@ double OxygenI_twolevel_cooling(double nOI, double ne, double nH,
   hc  = PLANCK*CLIGHT;
 
   double tau21;
-  tau21 = 
-    g2/g1 * A21 * hc * hc * hc / (8 * M_PI * pow(delE_21,3)) 
+  tau21 =
+    g2/g1 * A21 * hc * hc * hc / (8 * M_PI * pow(delE_21,3))
     * (n1 - n2 * g1/g2) * t_freefall;
 
   if(tau21 > 1.e-5)
@@ -466,12 +466,12 @@ double OxygenI_twolevel_cooling_thin(double nOI, double ne, double nH, double T_
   R21 = A21 + nH * gamma21H  + gamma21e * ne;
   R12 = nH * gamma12H  + gamma12e * ne;
 
-  
-  double n2;  
+
+  double n2;
   n2 = nOI * R12 / (R12 + R21);
 
   Lambda = n2 * A21 * delE_21;
-    			   
+
   return Lambda; // erg/sec per OI atom
 }
 
@@ -523,8 +523,8 @@ double CarbonII_twolevel_cooling(double nCII, double ne, double nH,
   R12 = g2/g1 * A21 *Q21 + nH * gamma12H  + gamma12e * ne;
 #endif
 
-  
-  double n1, n2;  
+
+  double n1, n2;
   n1 = nCII * R21 / (R12 + R21);
   n2 = nCII * R12 / (R12 + R21);
 
@@ -537,10 +537,10 @@ double CarbonII_twolevel_cooling(double nCII, double ne, double nH,
   hc  = PLANCK*CLIGHT;
 
   double tau21;
-  tau21 = 
-    g2/g1 * A21 * hc * hc * hc / (8 * M_PI * pow(delE_21,3)) 
+  tau21 =
+    g2/g1 * A21 * hc * hc * hc / (8 * M_PI * pow(delE_21,3))
     * (n1 - n2 * g1/g2) * t_freefall;
-  
+
   if(tau21 > 1.e-5)
     Lambda = n2 * A21 * delE_21 * (1. - exp(-tau21))/tau21;
   else
@@ -555,10 +555,10 @@ double CarbonII_twolevel_cooling(double nCII, double ne, double nH,
 
   //printf("[CII]nH=%g Lambda=%g fac=%g f_red=%g\n", nH, Lambda, fac, (1. - exp(-tau21))/tau21);
 #endif
-  
+
   if(diagnostics_enabled)
     printf("[CII]nH=%g nCII=%g Lambda=%g tau21=%g n2=%g R12=%g R21=%g\n", nH, nCII, Lambda,  tau21, n2, R12, R21);
-    			   
+
   return Lambda; // erg/sec per CII atom
 }
 
@@ -593,12 +593,12 @@ double CarbonII_twolevel_cooling_thin(double nCII, double ne, double nH, double 
 
   R21 = A21 + nH * gamma21H  + gamma21e * ne;
   R12 = nH * gamma12H  + gamma12e * ne;
-  
-  double n2;  
+
+  double n2;
   n2 = nCII * R12 / (R12 + R21);
 
   Lambda = n2 * A21 * delE_21;
-    			   
+
   return Lambda; // erg/sec per OI atom
 }
 
@@ -631,7 +631,7 @@ double CarbonI_threelevel_cooling(double nCI, double ne, double nH, double T_gas
   double delE_21, delE_31, delE_32;
 
   double T100, Lambda;
-  
+
   double Coeff[3][3], b[3][2];
 
   int dim, column;
@@ -676,7 +676,7 @@ double CarbonI_threelevel_cooling(double nCI, double ne, double nH, double T_gas
 
   gamma13H = (g3/g1) * gamma31H * exp(-delE_31/(BOLTZMANN * T_gas));
   gamma13e = (g3/g1) * gamma31e * exp(-delE_31/(BOLTZMANN * T_gas));
-  
+
   gamma23H = (g3/g2) * gamma32H * exp(-delE_32/(BOLTZMANN * T_gas));
   gamma23e = (g3/g2) * gamma32e * exp(-delE_32/(BOLTZMANN * T_gas));
 
@@ -713,7 +713,7 @@ double CarbonI_threelevel_cooling(double nCI, double ne, double nH, double T_gas
   if(!gaussj3(Coeff, dim, b, column))
     return NAN;
 
-  double n1, n2, n3;  
+  double n1, n2, n3;
   n1 = b[0][0];
   n2 = b[1][0];
   n3 = b[2][0];
@@ -738,8 +738,8 @@ double CarbonI_threelevel_cooling(double nCI, double ne, double nH, double T_gas
   int iu, il;
   for(iu=3, Lambda=0.;iu>1;iu--){
     for(il=iu-1;il>=1;il--){
-      tau = 
-	g_CI[iu]/g_CI[il] * A_CI[iu][il] * hc * hc * hc / (8 * M_PI * pow(delE_CI[iu][il],3)) 
+      tau =
+	g_CI[iu]/g_CI[il] * A_CI[iu][il] * hc * hc * hc / (8 * M_PI * pow(delE_CI[iu][il],3))
 	* (n_CI[il] - n_CI[iu] * g_CI[il]/g_CI[iu]) * t_freefall;
 
 
@@ -762,9 +762,9 @@ double CarbonI_threelevel_cooling(double nCI, double ne, double nH, double T_gas
 
   printf("[CI] tau[3]=%g %g\n", tau_CI[3][2], tau_CI[3][1]);
   printf("[CI] tau[2]=%g\n", tau_CI[2][1]);
-  printf("[CI] y[]=%g %g %g\n", n1/nCI, n2/nCI, n3/nCI); 
+  printf("[CI] y[]=%g %g %g\n", n1/nCI, n2/nCI, n3/nCI);
   printf("[CI] Lambda=%g %g %g\n", n2/nCI * A21 * delE_21 * fac, Lambda/nCI, Lambda/nH);
-			   
+
   return Lambda; // erg/sec per OI atom
 }
 
@@ -817,9 +817,9 @@ double CarbonI_twolevel_cooling(double nCI, double ne, double nH,
 	 , R21, R12, A21, Q21, g2/g1*Q21
 	 , nH * gamma21H  + gamma21e * ne, nH * gamma12H  + gamma12e * ne );*/
 #endif
-  
 
-  double n1, n2;  
+
+  double n1, n2;
   n1 = nCI * R21 / (R12 + R21);
   n2 = nCI * R12 / (R12 + R21);
 
@@ -832,15 +832,15 @@ double CarbonI_twolevel_cooling(double nCI, double ne, double nH,
   hc  = PLANCK*CLIGHT;
 
   double tau21;
-  tau21 = 
-    g2/g1 * A21 * hc * hc * hc / (8 * M_PI * pow(delE_21,3)) 
+  tau21 =
+    g2/g1 * A21 * hc * hc * hc / (8 * M_PI * pow(delE_21,3))
     * (n1 - n2 * g1/g2) * t_freefall;
 
   if(tau21 > 1.e-5)
     Lambda = n2 * A21 * delE_21 * (1. - exp(-tau21))/tau21;
   else
     Lambda = n2 * A21 * delE_21;
-  
+
 #ifdef CMB_HEATING
   double fac;
   //fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
@@ -872,7 +872,7 @@ static int gaussj5(double a[5][5], int n, double b[5][2], int m)
 
 	if(n != 5 || m!= 2)
 	  return 0;
-	
+
 	for (j=0;j<n;j++) ipiv[j]=0;
 	for (i=0;i<n;i++) {
 		big=0.0;
@@ -927,7 +927,7 @@ static int gaussj3(double a[3][3], int n, double b[3][2], int m)
 
 	if(n != 3 || m!= 2)
 	  return 0;
-	
+
 	for (j=0;j<n;j++) ipiv[j]=0;
 	for (i=0;i<n;i++) {
 		big=0.0;
@@ -1005,7 +1005,7 @@ int read_continuum_cooling_rate_table_SD93(const char *table_root){
     rewind(fp);
     nT_SD93   = count;
 
-    if(!(SD93_Tgas = malloc(sizeof(double)*nT_SD93)) || 
+    if(!(SD93_Tgas = malloc(sizeof(double)*nT_SD93)) ||
        !(SD93_CoolRate = malloc(sizeof(double)*nT_SD93))){
       printf("Can't allocate memory.\n");
       free(SD93_Tgas);
@@ -1019,7 +1019,7 @@ int read_continuum_cooling_rate_table_SD93(const char *table_root){
     TMax_SD93= -1.e30;
     TMin_SD93 = 1.e30;
 
-    while(fgets(buf, sizeof(buf), fp) != NULL){    
+    while(fgets(buf, sizeof(buf), fp) != NULL){
       double Tgas, cool_rate;
       int n=sscanf(buf, "%le %le", &Tgas, &cool_rate);
       if(n != 2) continue;
@@ -1051,7 +1051,7 @@ double get_cooling_rate_SD93(double T_gas){
   int i_T_left  = i_T - 1;
   if(i_T_left < 0) i_T_left = 0;
   if(i_T == nT_SD93 - 1) i_T_left = nT_SD93-1;
-  
+
   double c_T   = (SD93_Tgas[i_T]-T_gas)    / (SD93_Tgas[i_T] -SD93_Tgas[i_T_left]);
 
   if(i_T == i_T_left)
@@ -1128,12 +1128,12 @@ double continuum_cooling_rate_thin_Lambda(double T_gas){
   double log_T  = log10(T_gas);
   double log_T2 = log_T  * log_T;
   double log_T3 = log_T2 * log_T;
-  double log_T4 = log_T3 * log_T;  
+  double log_T4 = log_T3 * log_T;
 
   double f[N_reaction];
 
   for(int i=0;i<N_reaction;i++){
-    f[i] = A_Cont[i][0] + A_Cont[i][1] * log_T 
+    f[i] = A_Cont[i][0] + A_Cont[i][1] * log_T
       + A_Cont[i][2] * log_T2 + A_Cont[i][3] * log_T3 + A_Cont[i][4] * log_T4;
   }
 
@@ -1145,7 +1145,7 @@ double continuum_cooling_rate_thin_Lambda(double T_gas){
 
   double Lambda = 4 * M_PI * (pow(10., f[cH_fb]) +  pow(10., f[cHM_ff]));
   Lambda *= fac;
-  
+
   return Lambda;
 }
 
@@ -1160,17 +1160,17 @@ double continuum_cooling_rate_thin(double T_gas, double rho_cgs,
     fac = sqrt(T_gas / 1.e6);
     T_gas = 1.e6;
   }
-  
+
   double log_T  = log10(T_gas);
   double log_T2 = log_T  * log_T;
   double log_T3 = log_T2 * log_T;
-  double log_T4 = log_T3 * log_T;  
+  double log_T4 = log_T3 * log_T;
 
   double f[N_reaction];
 
   //printf("T_gas=%g\n", T_gas);
   for(int i=0;i<N_reaction;i++){
-    f[i] = A_Cont[i][0] + A_Cont[i][1] * log_T 
+    f[i] = A_Cont[i][0] + A_Cont[i][1] * log_T
       + A_Cont[i][2] * log_T2 + A_Cont[i][3] * log_T3 + A_Cont[i][4] * log_T4;
   }
 
@@ -1185,32 +1185,32 @@ double continuum_cooling_rate_thin(double T_gas, double rho_cgs,
   double n_elec = n_nuclei * abund[sELEC];
   double n_HI   = n_nuclei * abund[sHI];
   double n_HII  = n_nuclei * abund[sHII];
-  double n_H2I  = n_nuclei * abund[sH2I];  
+  double n_H2I  = n_nuclei * abund[sH2I];
 #ifdef HELIUM
-  double n_HeI  = n_nuclei * abund[sHeI];  
+  double n_HeI  = n_nuclei * abund[sHeI];
 #else
-  double n_HeI  = n_nuclei * XHe;  
-  //n_HeI  = 0.;  
+  double n_HeI  = n_nuclei * XHe;
+  //n_HeI  = 0.;
 #endif
 
 
-  double lambda_tot_thin = 4 * M_PI * 
+  double lambda_tot_thin = 4 * M_PI *
     ( pow(10., f[cH_fb] ) * n_HII * n_elec +
       pow(10., f[cHM_fb]) * n_HI  * n_elec +
 #ifdef HELIUM_COOLING
-      pow(10., f[cHeI_fb]) * n_HeII* n_elec +  
+      pow(10., f[cHeI_fb]) * n_HeII* n_elec +
 #endif
       pow(10., f[cHM_ff]) * n_HI  * n_elec +
       pow(10., f[cH_ff]) * n_HII * n_elec +
       pow(10., f[cH2H2_CIE]) * n_H2I * n_H2I +
-      pow(10., f[cH2He_CIE]) * n_H2I * n_HeI 
+      pow(10., f[cH2He_CIE]) * n_H2I * n_HeI
       );
 
 #ifdef ID_CHEM_DEBUG
   if(diagnostics_enabled)
     printf("cool_rate_cont=%g %g %g %g %g %g\n"
 	   , pow(10, f[cH_fb] ) * n_HII * n_elec
-	   , pow(10, f[cHM_fb] ) * n_HI * n_elec 
+	   , pow(10, f[cHM_fb] ) * n_HI * n_elec
 	   , pow(10, f[cHM_ff]) * n_HI * n_elec
 	   , pow(10, f[cH_ff])  * n_HII * n_elec
 	   , pow(10, f[cH2H2_CIE]) * n_H2I * n_H2I
@@ -1238,13 +1238,13 @@ int output_cooling_rate(void){
     log_T  = log10(T_gas);
     log_T2 = log_T  * log_T;
     log_T3 = log_T2 * log_T;
-    log_T4 = log_T3 * log_T;  
+    log_T4 = log_T3 * log_T;
 
     int i;
     double f[N_reaction+1];
 
     for(i=0;i<N_reaction;i++){
-      f[i] = A_Cont[i][0] + A_Cont[i][1] * log_T 
+      f[i] = A_Cont[i][0] + A_Cont[i][1] * log_T
 	+ A_Cont[i][2] * log_T2 + A_Cont[i][3] * log_T3 + A_Cont[i][4] * log_T4;
     }
 
@@ -1270,17 +1270,17 @@ double calc_continuum_opacities(
   double tau_cont, f_reduce, x = 0.;
   double tau_Rossland=0., tau_Planck=0.;
   double kappa_Rossland=0., kappa_Planck=0.;
-  
-  if(rho_cgs / PROTONMASS > 1.e2){   
+
+  if(rho_cgs / PROTONMASS > 1.e2){
     get_opacities_log(tables, T_gas, rho_cgs, &kappa_Rossland, &kappa_Planck);
 
     tau_Rossland = rho_cgs * kappa_Rossland * l_Jeans;
-    tau_Planck   = rho_cgs * kappa_Planck   * l_Jeans; 
-    
+    tau_Planck   = rho_cgs * kappa_Planck   * l_Jeans;
+
     x        = tau_Planck * (1. + 3./4.*tau_Rossland);
     f_reduce = 1./ (1. + x);
-    tau_cont = sqrt(tau_Rossland*tau_Planck);  
-    
+    tau_cont = sqrt(tau_Rossland*tau_Planck);
+
     //printf("f_red=%g tau=%g %g %g l_Jeans=%g rho=%g kappa=%g %g\n"
     //	   , f_reduce, tau_Rossland, tau_Planck, tau_cont, l_Jeans, rho_cgs, kappa_Rossland, kappa_Planck);
   }else{
@@ -1333,12 +1333,12 @@ static int opacity_upper_index(const double *grid, int size, double value)
   return right;
 }
 
-void lntrim(char *str) {  
-  char *p;  
-  p = strchr(str, '\n');  
-  if(p != NULL) {  
-    *p = '\0';  
-  }  
+void lntrim(char *str) {
+  char *p;
+  p = strchr(str, '\n');
+  if(p != NULL) {
+    *p = '\0';
+  }
 }
 
 int continuum_opacity_tables_create(const char *table_root,
@@ -1422,12 +1422,12 @@ int continuum_opacity_tables_create(const char *table_root,
 
     double tau;
 
-    while(fgets(buf, sizeof(buf), fp_r) != NULL){    
-      lntrim(buf); 
+    while(fgets(buf, sizeof(buf), fp_r) != NULL){
+      lntrim(buf);
       count_rho=0;
 
       tp = strtok(buf, " ");
-      do{      
+      do{
 	if(tp == NULL) break;
 
 	tau = atof(tp);
@@ -1436,7 +1436,7 @@ int continuum_opacity_tables_create(const char *table_root,
 
 	if(count_rho == 0 && count_T > 0){
 	  double temp;
-	  
+
 	  temp = pow(10, tau);
 	  Kappa_Tgas[count_T-1] = temp;
 
@@ -1446,7 +1446,7 @@ int continuum_opacity_tables_create(const char *table_root,
 
 	if(count_T == 0){
 	  double rho;
-	  
+
 	  //rho = pow(10, tau) / PROTONMASS;
 	  rho = pow(10, tau);
 	  Kappa_rho[count_rho] = rho;
@@ -1454,7 +1454,7 @@ int continuum_opacity_tables_create(const char *table_root,
 	  if(RhoMax_tau > pow(10,tau)) RhoMax_tau = rho;
 	  if(RhoMin_tau < pow(10,tau)) RhoMin_tau = rho;
 	}
-	
+
 	count_rho++;
       }while((tp = strtok(NULL, " ")));
 
@@ -1462,18 +1462,18 @@ int continuum_opacity_tables_create(const char *table_root,
     }
 
     count_T=0;
-    while(fgets(buf, sizeof(buf), fp_p) != NULL){    
+    while(fgets(buf, sizeof(buf), fp_p) != NULL){
       lntrim(buf);
       count_rho=0;
 
       tp = strtok(buf, " ");
-      do{      
+      do{
 	if(tp == NULL) break;
 
 	tau = atof(tp);
 	if(count_T > 0 && count_rho > 0)
 	  Kappa_Planck[n_rho * (count_T-1) + (count_rho-1)] = pow(10, tau);
-	
+
 	count_rho++;
       }while((tp = strtok(NULL, " ")));
       count_T++;
@@ -1544,7 +1544,7 @@ static void get_opacities(
 
   if(i_T == n_T - 1) i_T_left = n_T-1;
   if(i_rho == n_rho - 1) i_rho_left = n_rho-1;
-  
+
 
   double c_T, c_rho;
   double kappa_r, kappa_p;
@@ -1558,16 +1558,16 @@ static void get_opacities(
   if(i_rho == i_rho_left)
     c_rho = 0.;
 
-  kappa_r = 
-    c_T       * c_rho       * Kappa_Rossland[i_T_left * n_rho + i_rho_left] + 
-    c_T       * (1 - c_rho) * Kappa_Rossland[i_T_left * n_rho + i_rho] + 
-    (1 - c_T) * c_rho       * Kappa_Rossland[i_T      * n_rho + i_rho_left] + 
+  kappa_r =
+    c_T       * c_rho       * Kappa_Rossland[i_T_left * n_rho + i_rho_left] +
+    c_T       * (1 - c_rho) * Kappa_Rossland[i_T_left * n_rho + i_rho] +
+    (1 - c_T) * c_rho       * Kappa_Rossland[i_T      * n_rho + i_rho_left] +
     (1 - c_T) * (1 - c_rho) * Kappa_Rossland[i_T      * n_rho + i_rho];
 
-  kappa_p = 
-    c_T       * c_rho       * Kappa_Planck[i_T_left * n_rho + i_rho_left] + 
-    c_T       * (1 - c_rho) * Kappa_Planck[i_T_left * n_rho + i_rho] + 
-    (1 - c_T) * c_rho       * Kappa_Planck[i_T      * n_rho + i_rho_left] + 
+  kappa_p =
+    c_T       * c_rho       * Kappa_Planck[i_T_left * n_rho + i_rho_left] +
+    c_T       * (1 - c_rho) * Kappa_Planck[i_T_left * n_rho + i_rho] +
+    (1 - c_T) * c_rho       * Kappa_Planck[i_T      * n_rho + i_rho_left] +
     (1 - c_T) * (1 - c_rho) * Kappa_Planck[i_T      * n_rho + i_rho];
 
   if(T_gas > TMax_tau){
@@ -1601,7 +1601,7 @@ static void get_opacities_log(
 
   if(i_T == n_T - 1) i_T_left = n_T-1;
   if(i_rho == n_rho - 1) i_rho_left = n_rho-1;
-  
+
 
   double c_T, c_rho;
   double kappa_r, kappa_p;
@@ -1615,16 +1615,16 @@ static void get_opacities_log(
   if(i_rho == i_rho_left)
     c_rho = 0.;
 
-  kappa_r = pow(10, 
-		c_T       * c_rho       * log10(Kappa_Rossland[i_T_left * n_rho + i_rho_left]) + 
-		c_T       * (1 - c_rho) * log10(Kappa_Rossland[i_T_left * n_rho + i_rho]) + 
-		(1 - c_T) * c_rho       * log10(Kappa_Rossland[i_T      * n_rho + i_rho_left]) + 
+  kappa_r = pow(10,
+		c_T       * c_rho       * log10(Kappa_Rossland[i_T_left * n_rho + i_rho_left]) +
+		c_T       * (1 - c_rho) * log10(Kappa_Rossland[i_T_left * n_rho + i_rho]) +
+		(1 - c_T) * c_rho       * log10(Kappa_Rossland[i_T      * n_rho + i_rho_left]) +
 		(1 - c_T) * (1 - c_rho) * log10(Kappa_Rossland[i_T      * n_rho + i_rho]));
 
-  kappa_p = pow(10, 
-		c_T       * c_rho       * log10(Kappa_Planck[i_T_left * n_rho + i_rho_left]) + 
-		c_T       * (1 - c_rho) * log10(Kappa_Planck[i_T_left * n_rho + i_rho]) + 
-		(1 - c_T) * c_rho       * log10(Kappa_Planck[i_T      * n_rho + i_rho_left]) + 
+  kappa_p = pow(10,
+		c_T       * c_rho       * log10(Kappa_Planck[i_T_left * n_rho + i_rho_left]) +
+		c_T       * (1 - c_rho) * log10(Kappa_Planck[i_T_left * n_rho + i_rho]) +
+		(1 - c_T) * c_rho       * log10(Kappa_Planck[i_T      * n_rho + i_rho_left]) +
 		(1 - c_T) * (1 - c_rho) * log10(Kappa_Planck[i_T      * n_rho + i_rho]));
 
   *kappa_Rossland = kappa_r;
@@ -1642,7 +1642,7 @@ double  beta_esc(double tau_L,double tau_C){
     beta_esc = exp(-tau_C);
   else
     beta_esc = exp(-tau_C)*(1.-exp(-tau_L))/tau_L;
-  
+
   return beta_esc;
 }
 
@@ -1689,13 +1689,13 @@ double H_criticaldensity(double xnH, double T_K,double xNc_H, double y_H,double 
   //- collision with atomic hydrogen
   gamma_H_H_21 = 7.89e-15 * (r_low*r_low/r_up/r_up)
     * pow(1./r_low/r_low-1./r_up/r_up,-2.)
-    * f_21 * sqrt(T_K)                                                
-    * (1.+1.27e-5    /(1./r_low/r_low-1./r_up/r_up)     *T_K)          
+    * f_21 * sqrt(T_K)
+    * (1.+1.27e-5    /(1./r_low/r_low-1./r_up/r_up)     *T_K)
     / (1.+4.76e-17*pow(1./r_low/r_low-1./r_up/r_up,-2.0)*T_K);
   ncrit_H_2 = esc_21*A_21 / gamma_H_H_21;
 
   n_crit_2  = 1. / (y_H/ncrit_H_2 + y_e/ncrit_e_2);
-  
+
   fraction_2 = xnH/(n_crit_2+xnH) * g2/g1 * exp(-Q);
   fraction_1 = 1. - fraction_2;
 
@@ -1710,7 +1710,7 @@ double H_criticaldensity(double xnH, double T_K,double xNc_H, double y_H,double 
     fraction_2 = xnH/(n_crit_2+xnH) * g2/g1 * exp(-Q);
     fraction_1 = 1. - fraction_2;
   }
-     
+
   tau_line_31 = (A_31/(8.*M_PI)) * pow(PLANCK*c_ph/(DE_31*eV_to_erg),3) * (g3/g1)*fraction_1 * (xNc_H/v_D);
   tau_line_32 = (A_32/(8.*M_PI)) * pow(PLANCK*c_ph/(DE_32*eV_to_erg),3) * (g3/g2)*fraction_2 * (xNc_H/v_D);
 
@@ -1727,19 +1727,19 @@ double H_criticaldensity(double xnH, double T_K,double xNc_H, double y_H,double 
   gamma_H_e_32 = 1.e-8 * pow(r_low*r_low/(r_up*r_up-r_low*r_low),1.5) * pow(r_low,3)/pow(r_up,2) * alpha_32 * sqrt(Q*(Q+1.))/(Q+chi_32);
 
   ncrit_e_3 = (esc_31*A_31+esc_32*A_32) / (gamma_H_e_31+gamma_H_e_32);
-  
-  gamma_H_H_31 = 
+
+  gamma_H_H_31 =
     7.89e-15 * (r_low*r_low/r_up/r_up)
-    * pow(1./r_low/r_low-1./r_up/r_up,-2)                     
-    * f_31 * sqrt(T_K)                                                
-    * (1. + 1.27e-5 / (1./(r_low*r_low) - 1./(r_up*r_up)) * T_K)          
+    * pow(1./r_low/r_low-1./r_up/r_up,-2)
+    * f_31 * sqrt(T_K)
+    * (1. + 1.27e-5 / (1./(r_low*r_low) - 1./(r_up*r_up)) * T_K)
     / (1. + 4.76e-17 * pow(1./r_low/r_low-1./r_up/r_up, -2.0) * T_K);
 
   r_low = 2.;
   gamma_H_H_32 = 7.89e-15 * (r_low*r_low/r_up/r_up)
-    * pow(1./r_low/r_low-1./r_up/r_up,-2.0)                     
-    * f_32 * sqrt(T_K)                                                
-    * (1.+1.27e-5/(1./r_low/r_low-1./r_up/r_up)*T_K)          
+    * pow(1./r_low/r_low-1./r_up/r_up,-2.0)
+    * f_32 * sqrt(T_K)
+    * (1.+1.27e-5/(1./r_low/r_low-1./r_up/r_up)*T_K)
     / (1.+4.76e-17*pow(1./r_low/r_low-1./r_up/r_up,-2.0)*T_K);
   ncrit_H_3 = (esc_31*A_31+esc_32*A_32) / (gamma_H_H_31+gamma_H_H_32);
 
@@ -1792,14 +1792,14 @@ double fesc_Lya(double xnH,double T_K,double y_H,double y_e,double rr,double vel
   Q_21   = DE_21*eV_to_erg / (boltz*T_K);
   gamma_H_H_21 = 7.89e-15 * (r_low*r_low/r_up/r_up)
     * pow(1./r_low/r_low-1./r_up/r_up, -2.0)
-    * f_21 * sqrt(T_K)                                        
-    * (1.+1.27e-5 *pow(1./r_low/r_low-1./r_up/r_up,-1.0)*T_K)  
+    * f_21 * sqrt(T_K)
+    * (1.+1.27e-5 *pow(1./r_low/r_low-1./r_up/r_up,-1.0)*T_K)
     / (1.+4.76e-17*pow(1./r_low/r_low-1./r_up/r_up,-2.0)*T_K*T_K);
 
   gamma_H_e_21 = 1.e-8 * pow(r_low*r_low/(r_up*r_up-r_low*r_low),1.5)
     * r_low*r_low*r_low/r_up/r_up * alpha_21 *
     sqrt(Q_21*(Q_21+1.))/(Q_21+chi_21);
-  
+
   A_21  = A_2p1s * 1.     / (1.+r_2s2p);
   A_2ph = A_2s1s * r_2s2p / (1.+r_2s2p);
   C_21  = n_e*gamma_H_e_21 + n_H*gamma_H_H_21;
@@ -1812,7 +1812,7 @@ double fesc_Lya(double xnH,double T_K,double y_H,double y_e,double rr,double vel
   sigma_Ly = 5.9e-14/sqrt(T_4);
   tau_21   = sigma_Ly*n_H*rr;
 
-  N_ref = 15.*pow(tau_21/pow(10.,5.5), 1.0/3.0);  
+  N_ref = 15.*pow(tau_21/pow(10.,5.5), 1.0/3.0);
 
   V_ratio = vel/c_ph;
   fesc_Lya = pow(p_21, N_ref)/(1.+N_ref)*exp(-3.*N_ref*V_ratio);
@@ -1842,5 +1842,3 @@ double fesc_Lya(double xnH,double T_K,double y_H,double y_e,double rr,double vel
   return fesc_Lya;
 }
 #endif
-
- 

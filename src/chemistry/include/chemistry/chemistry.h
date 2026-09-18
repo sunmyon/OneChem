@@ -22,6 +22,16 @@ ChemistryStatus chemistry_context_create(const ChemistryConfig *config,
                                          ChemistryContext **context);
 void chemistry_context_destroy(ChemistryContext *context);
 
+/* Reconcile stored elemental budgets before chemistry: preserve ratios in
+ * He, D and C families, then scale oxygen without carbon after accounting for
+ * oxygen in carbon-bearing species. Species membership and charge use the
+ * shared metadata. Reconstruct electrons from all stored ions. H-only species
+ * are unchanged; changes in H bound to other families are not compensated.
+ * Missing positive-target families or incompatible budgets/charge are errors.
+ * Failure leaves the caller's abundance array unchanged. */
+ChemistryStatus chemistry_normalize_abundances(double *abundance, size_t count,
+                                               double metallicity);
+
 size_t chemistry_species_count(const ChemistryContext *context);
 const char *chemistry_species_name(const ChemistryContext *context,
                                    size_t species_index);
@@ -37,6 +47,10 @@ ChemistryStatus chemistry_step_prepare(
     const ChemistryContext *context,
     const ChemistryGlobalEnvironment *global_environment,
     ChemistryStepContext *step);
+
+ChemistryStatus chemistry_dust_opacities(
+    const ChemistryContext *context, double temperature,
+    double *kappa_rosseland, double *kappa_planck);
 
 /* Performs no file I/O, hidden initialization, or run-lifetime allocation. */
 ChemistryStatus chemistry_advance(

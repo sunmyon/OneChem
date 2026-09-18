@@ -352,10 +352,18 @@ ChemistryStatus evaluate_radiative_cooling(const ChemEnvironment *environment, c
   /* --------- Photoinization heating */
   double edot_radHI   = step->piHI  *state->abund[sHI]  *n_nuclei;
 #ifdef HELIUM
-  /* The portable input currently exposes only H photoheating.  Preserve the
-   * historical no-He-radiation default without extending that public input. */
-  double edot_radHeI = 0.0;
-  double edot_radHeII = 0.0;
+  double edot_radHeI = step->photoheating_rate_HeI * state->abund[sHeI] * n_nuclei;
+  double edot_radHeII = step->photoheating_rate_HeII * state->abund[sHeII] * n_nuclei;
+#endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+  const enum SPECIES carbon_ions[3] = {sCI, sCII, sCIII};
+  const enum SPECIES oxygen_ions[3] = {sOI, sOII, sOIII};
+  double edot_radCO = 0.0;
+  for(int stage = 0; stage < 3; stage++)
+    edot_radCO +=
+        (step->photoheating_rate_C[stage] * state->abund[carbon_ions[stage]] +
+         step->photoheating_rate_O[stage] * state->abund[oxygen_ions[stage]]) *
+        n_nuclei;
 #endif
 
   /* ========= net cooling rate in erg/sec/cm3 ================================================= */
@@ -395,6 +403,9 @@ ChemistryStatus evaluate_radiative_cooling(const ChemEnvironment *environment, c
     + edot_radHI
 #ifdef HELIUM
     + edot_radHeI + edot_radHeII
+#endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+    + edot_radCO
 #endif
     ;
 
@@ -530,6 +541,20 @@ ChemistryStatus radiative_cooling_high_T(const ChemEnvironment *environment, con
   /* ========= Heating functions ============================================================== */
   /* --------- Photoinization heating */
   double edot_radHI   = step->piHI  *state->abund[sHI] *n_nuclei;
+#ifdef HELIUM
+  double edot_radHeI = step->photoheating_rate_HeI * state->abund[sHeI] * n_nuclei;
+  double edot_radHeII = step->photoheating_rate_HeII * state->abund[sHeII] * n_nuclei;
+#endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+  const enum SPECIES carbon_ions[3] = {sCI, sCII, sCIII};
+  const enum SPECIES oxygen_ions[3] = {sOI, sOII, sOIII};
+  double edot_radCO = 0.0;
+  for(int stage = 0; stage < 3; stage++)
+    edot_radCO +=
+        (step->photoheating_rate_C[stage] * state->abund[carbon_ions[stage]] +
+         step->photoheating_rate_O[stage] * state->abund[oxygen_ions[stage]]) *
+        n_nuclei;
+#endif
 
   /* ========= net cooling rate in erg/sec/cm3 ================================================= */
   double edot = edot_reHI + edot_brem
@@ -539,7 +564,14 @@ ChemistryStatus radiative_cooling_high_T(const ChemEnvironment *environment, con
 #ifdef CONTINUUM_COOLING_MATSUKOBA
     + edot_cont
 #endif
-    + edot_radHI;
+    + edot_radHI
+#ifdef HELIUM
+    + edot_radHeI + edot_radHeII
+#endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+    + edot_radCO
+#endif
+    ;
 
   if(!isfinite(edot)) {
     work->status = CHEMISTRY_STATUS_INTERNAL_ERROR;

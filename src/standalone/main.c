@@ -143,6 +143,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
 
   double nH = -1.0, n_nuclei = -1.0, temperature = -1.0, metallicity = -1.0, dt = -1.0;
   double cmb_temperature = -1.0, utherm_input_cgs = -1.0, gamma_input = -1.0;
+  double timescale_safety_factor = All.Epsilon;
   double simulation_time = All.Time, scale_factor = All.cf_atime;
   int comoving_integration = All.ComovingIntegrationOn;
   MyIDType diagnostic_id = 0;
@@ -166,6 +167,15 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
 #endif
 #ifdef IONIZATION_PHOTON
   double photoionization_rate_HI = 0.0, photoheating_rate_HI = 0.0;
+#endif
+#ifdef HELIUM
+  double photoionization_rate_HeI = 0.0, photoheating_rate_HeI = 0.0;
+  double photoionization_rate_HeII = 0.0, photoheating_rate_HeII = 0.0;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double photoionization_rate_C[3] = {0}, photoheating_rate_C[3] = {0};
+  double photoionization_rate_O[3] = {0}, photoheating_rate_O[3] = {0};
+  double rate_CO_diss = 0.0;
 #endif
 #ifdef THERMAL_FEEDBACK
   double stellar_radiation_flux = 0.0;
@@ -214,6 +224,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
     else if(strcmp(key, "Z") == 0 || strcmp(key, "metallicity") == 0) metallicity = value;
     else if(strcmp(key, "dt_s") == 0 || strcmp(key, "dt") == 0) dt = value;
     else if(strcmp(key, "Utherm_cgs") == 0 || strcmp(key, "utherm_cgs") == 0) utherm_input_cgs = value;
+    else if(strcmp(key, "timescale_safety_factor") == 0) timescale_safety_factor = value;
     else if(strcmp(key, "Gamma") == 0 || strcmp(key, "gamma") == 0) gamma_input = value;
     else if(strcmp(key, "diagnostic_id") == 0) diagnostic_id = (MyIDType)value;
     else if(strcmp(key, "comoving_integration") == 0) comoving_integration = value != 0.0;
@@ -248,6 +259,27 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
     else if(strcmp(key, "photoheating_rate_HI_erg_s-1") == 0) photoheating_rate_HI = value;
     else if(strcmp(key, "photoionization_rate_HI") == 0) photoionization_rate_HI = value;
     else if(strcmp(key, "photoheating_rate_HI") == 0) photoheating_rate_HI = value;
+#endif
+#ifdef HELIUM
+    else if(strcmp(key, "photoionization_rate_HeI") == 0) photoionization_rate_HeI = value;
+    else if(strcmp(key, "photoheating_rate_HeI") == 0) photoheating_rate_HeI = value;
+    else if(strcmp(key, "photoionization_rate_HeII") == 0) photoionization_rate_HeII = value;
+    else if(strcmp(key, "photoheating_rate_HeII") == 0) photoheating_rate_HeII = value;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+    else if(strcmp(key, "photoionization_rate_CI") == 0) photoionization_rate_C[0] = value;
+    else if(strcmp(key, "photoionization_rate_CII") == 0) photoionization_rate_C[1] = value;
+    else if(strcmp(key, "photoionization_rate_CIII") == 0) photoionization_rate_C[2] = value;
+    else if(strcmp(key, "photoheating_rate_CI") == 0) photoheating_rate_C[0] = value;
+    else if(strcmp(key, "photoheating_rate_CII") == 0) photoheating_rate_C[1] = value;
+    else if(strcmp(key, "photoheating_rate_CIII") == 0) photoheating_rate_C[2] = value;
+    else if(strcmp(key, "photoionization_rate_OI") == 0) photoionization_rate_O[0] = value;
+    else if(strcmp(key, "photoionization_rate_OII") == 0) photoionization_rate_O[1] = value;
+    else if(strcmp(key, "photoionization_rate_OIII") == 0) photoionization_rate_O[2] = value;
+    else if(strcmp(key, "photoheating_rate_OI") == 0) photoheating_rate_O[0] = value;
+    else if(strcmp(key, "photoheating_rate_OII") == 0) photoheating_rate_O[1] = value;
+    else if(strcmp(key, "photoheating_rate_OIII") == 0) photoheating_rate_O[2] = value;
+    else if(strcmp(key, "local_rate_CO_diss") == 0 || strcmp(key, "rate_CO_diss") == 0) rate_CO_diss = value;
 #endif
 #ifdef THERMAL_FEEDBACK
     else if(strcmp(key, "stellar_radiation_flux") == 0) stellar_radiation_flux = value;
@@ -289,6 +321,17 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
     fprintf(stderr, "chemistry-step input requires nH_cm3 or n_nuclei_cm3, T_K, Z, and dt_s\n");
     return 2;
   }
+  if(!(timescale_safety_factor > 0.0) || !isfinite(timescale_safety_factor)) {
+    fprintf(stderr, "%s: timescale_safety_factor must be positive and finite\n", path);
+    return 2;
+  }
+  All.Epsilon = timescale_safety_factor;
+#ifdef CHEMISTRY_PORTABLE
+  if(!chemistry_standalone_set_timescale_safety_factor(timescale_safety_factor)) {
+    fprintf(stderr, "%s: standalone chemistry is not initialized\n", path);
+    return 2;
+  }
+#endif
   if(cmb_temperature > 0.0)
     All.T_CMB = cmb_temperature;
   All.Time = simulation_time;
@@ -343,6 +386,21 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
 #ifdef IONIZATION_PHOTON
   sph_in.k22 = photoionization_rate_HI;
   sph_in.piHI = photoheating_rate_HI;
+#endif
+#ifdef HELIUM
+  sph_in.photoionization_rate_HeI = photoionization_rate_HeI;
+  sph_in.photoheating_rate_HeI = photoheating_rate_HeI;
+  sph_in.photoionization_rate_HeII = photoionization_rate_HeII;
+  sph_in.photoheating_rate_HeII = photoheating_rate_HeII;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  for(int stage = 0; stage < 3; stage++) {
+    sph_in.photoionization_rate_C[stage] = photoionization_rate_C[stage];
+    sph_in.photoheating_rate_C[stage] = photoheating_rate_C[stage];
+    sph_in.photoionization_rate_O[stage] = photoionization_rate_O[stage];
+    sph_in.photoheating_rate_O[stage] = photoheating_rate_O[stage];
+  }
+  sph_in.rate_CO_diss = rate_CO_diss;
 #endif
 #ifdef THERMAL_FEEDBACK
   sph_in.stellar_rad_flux = stellar_radiation_flux;
@@ -1996,7 +2054,7 @@ int InitTable(void){
   ifunc = OH_cooling_table();
 #endif
 	
-#if defined(IONIZATION_PHOTON) || defined(X_RAY)
+#if (defined(IONIZATION_PHOTON) || defined(X_RAY)) && !defined(CHEM_REPLAY_EXTERNAL_RADIATION)
   init_ionization_rad();
 #endif
 
@@ -2014,7 +2072,7 @@ int InitTable(void){
   ifunc = InitChem(); // tabulate reaction rates
 #endif
 
-#ifdef IONIZATION_PHOTON
+#if defined(IONIZATION_PHOTON) && !defined(CHEM_REPLAY_EXTERNAL_RADIATION)
   make_ionization_rate_table();
 #else
 #ifdef X_RAY

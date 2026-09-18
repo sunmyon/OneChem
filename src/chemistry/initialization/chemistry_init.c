@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
 
 #include "chemistry_core.h"
 #include "chemistry_constants.h"
@@ -357,9 +358,13 @@ int chem_tabulate(ChemistryRateTables *tables)
     dE   = (chem_e[sH2I] + chem_e[sHII] - chem_e[sH2II] - chem_e[sHI]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_H2I * z_HII / z_HI / z_H2II;
     Mass = m_H2I * m_HII / m_HI / m_H2II;
-    K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);
-    //k_table_inverse[10][i] = k_table[10][i] * K_T;
-    k_table[10][i] = k_table[12][i] * K_T;
+    /* Combining in log space avoids underflow * overflow at low T.
+     * The extreme table tail can exceed double range even in log space;
+     * saturate it with headroom for interpolation, not a NaN/inf table entry.
+     * This numerical ceiling is not a physical extrapolation of the fit. */
+    const double log_k10 = chemistry_log_forward_rate_12(T_table[i]) +
+        log(Z_pf) + 1.5 * log(Mass) - dE/T_table[i];
+    k_table[10][i] = exp(fmin(log_k10, log(DBL_MAX) - 2.0));
 #endif
 
     if(T_table[i]>200.){

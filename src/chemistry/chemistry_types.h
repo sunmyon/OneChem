@@ -54,18 +54,21 @@ typedef struct {
 #endif
   double G0;
   double stellar_radiation_flux; /* erg cm^-2 s^-1 */
-  
+
   double photoionization_rate_HI;
   double photoheating_rate_HI;
 
 #ifdef HELIUM
-  /* Future host-radiation inputs; currently not consumed by the network. */
   double photoionization_rate_HeI;
   double photoheating_rate_HeI;
   double photoionization_rate_HeII;
   double photoheating_rate_HeII;
 #endif
 #ifdef CARBON_OXYGEN_CHEMISTRY
+  double photoionization_rate_C[3];
+  double photoheating_rate_C[3];
+  double photoionization_rate_O[3];
+  double photoheating_rate_O[3];
   double rate_CO_diss;
 #endif
 
@@ -97,6 +100,18 @@ typedef struct {
   double G0;
   double k22;
   double piHI;
+#ifdef HELIUM
+  double photoionization_rate_HeI;
+  double photoheating_rate_HeI;
+  double photoionization_rate_HeII;
+  double photoheating_rate_HeII;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double photoionization_rate_C[3];
+  double photoheating_rate_C[3];
+  double photoionization_rate_O[3];
+  double photoheating_rate_O[3];
+#endif
 } ChemStepData;
 
 typedef struct {

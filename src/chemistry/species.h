@@ -69,3 +69,7 @@ extern const size_t chemistry_random_initialization_count;
 
 const ChemSpeciesDefinition *chemistry_species_definition(enum SPECIES species);
 int chemistry_species_from_name(const char *name, enum SPECIES *species);
+double chemistry_net_charge(const double *abundance);
+double chemistry_neutral_electron_abundance(const double *abundance);
+void chemistry_explicit_enforce_constraints(double metallicity,
+                                            double *abundance);

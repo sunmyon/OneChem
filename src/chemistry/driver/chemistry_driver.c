@@ -4,6 +4,8 @@
 #include <math.h>
 
 #include "chemistry_core.h"
+#include "include/chemistry/chemistry.h"
+#include "species.h"
 #include "chemistry_constants.h"
 #include "chemistry_cooling.h"
 #include "chemistry_diagnostics.h"
@@ -56,6 +58,22 @@ void chemistry_prepare_step_data(const ChemEnvironment *environment, const ChemS
   step->G0 = environment->G0 + environment->global->background_G0;
   step->k22 = environment->photoionization_rate_HI;
   step->piHI = environment->photoheating_rate_HI;
+#ifdef HELIUM
+  step->photoionization_rate_HeI = environment->photoionization_rate_HeI;
+  step->photoheating_rate_HeI = environment->photoheating_rate_HeI;
+  step->photoionization_rate_HeII = environment->photoionization_rate_HeII;
+  step->photoheating_rate_HeII = environment->photoheating_rate_HeII;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  for(int stage = 0; stage < 3; stage++) {
+    step->photoionization_rate_C[stage] =
+        environment->photoionization_rate_C[stage];
+    step->photoheating_rate_C[stage] = environment->photoheating_rate_C[stage];
+    step->photoionization_rate_O[stage] =
+        environment->photoionization_rate_O[stage];
+    step->photoheating_rate_O[stage] = environment->photoheating_rate_O[stage];
+  }
+#endif
 
 #ifdef IONIZATION_PHOTON
   const double recombination_rate = 2.6e-13;
@@ -99,6 +117,10 @@ static void evaluate_high_temperature_cooling(const ChemEnvironment *environment
                  n_nuclei * n_nuclei;
 #endif
   energy_rate += step->piHI * state->abund[sHI] * n_nuclei;
+#ifdef HELIUM
+  energy_rate += step->photoheating_rate_HeI * state->abund[sHeI] * n_nuclei;
+  energy_rate += step->photoheating_rate_HeII * state->abund[sHeII] * n_nuclei;
+#endif
 
   workspace->evaluation.rhoU_dot_rad = energy_rate;
   if(fabs(energy_rate) < 1.e-40) {
@@ -197,6 +219,21 @@ ChemistryStatus chemistry_core_advance(int mode,
   int ifunc;
   ChemistryStatus status = CHEMISTRY_STATUS_OK;
   workspace->status = CHEMISTRY_STATUS_OK;
+  /* Reconcile input composition once, before thermodynamics, rates and the
+   * old state used for chemical heating. This also covers direct core calls. */
+#ifdef CHEMISTRY_NORMALIZE_ABUNDANCES
+  status = chemistry_normalize_abundances(
+      state->abund, TGCHEM_NUM_ABUNDANCES, environment->metallicity);
+  if(status != CHEMISTRY_STATUS_OK)
+    return status;
+#else
+  /* Keep the existing charge-only reconstruction when normalization is off. */
+  const double neutral_electron =
+      chemistry_neutral_electron_abundance(state->abund);
+  if(!isfinite(neutral_electron) || neutral_electron < 0.0)
+    return CHEMISTRY_STATUS_INCOMPATIBLE_STATE;
+  state->abund[sELEC] = neutral_electron;
+#endif
   ChemStepData step;
   update_thermodynamic_state(state, &workspace->thermodynamics);
   double T_gas = workspace->thermodynamics.temperature;

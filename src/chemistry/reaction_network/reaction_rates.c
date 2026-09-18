@@ -167,7 +167,23 @@ int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepDa
 
 #ifdef IONIZATION_PHOTON
   workspace->rates.forward[22] = step->k22;
-  workspace->rates.forward[23] = workspace->rates.forward[24] = 0.;
+#ifdef HELIUM
+  workspace->rates.forward[23] = step->photoionization_rate_HeI;
+  workspace->rates.forward[24] = step->photoionization_rate_HeII;
+#endif
+#endif
+
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+  for(int stage = 0; stage < 3; stage++) {
+    workspace->rates.forward[153 + stage] =
+        step->photoionization_rate_C[stage];
+    workspace->rates.forward[156 + stage] =
+        step->photoionization_rate_O[stage];
+  }
+#endif
+
+#ifdef RYTR_NCO
+  workspace->rates.forward[171] = environment->rate_CO_diss;
 #endif
 
 #ifdef LYMANWERNER    /* with Photo-Dissociation */
@@ -269,9 +285,9 @@ int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepDa
   workspace->continuum.dust_cooling_rate = edot_dust;
 
 #ifdef RYTR_TAU_DUST
-  workspace->continuum.kappa_dust_Planck = opac.kappa_dust_Planck;
-  if(workspace->continuum.kappa_dust_Planck > 2.06 * metallicity)
-    workspace->continuum.kappa_dust_Planck = 2.06 * metallicity;
+  workspace->continuum.dust_kappa_planck = opac.kappa_dust_Planck;
+  if(workspace->continuum.dust_kappa_planck > 2.06 * metallicity)
+    workspace->continuum.dust_kappa_planck = 2.06 * metallicity;
 #endif
 
   tau_cont = opac.tau;

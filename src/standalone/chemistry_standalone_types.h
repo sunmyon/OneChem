@@ -39,6 +39,19 @@ typedef struct chemdata_in
   double k22;
   double piHI;
 #endif
+#ifdef HELIUM
+  double photoionization_rate_HeI;
+  double photoheating_rate_HeI;
+  double photoionization_rate_HeII;
+  double photoheating_rate_HeII;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double photoionization_rate_C[3];
+  double photoheating_rate_C[3];
+  double photoionization_rate_O[3];
+  double photoheating_rate_O[3];
+  double rate_CO_diss;
+#endif
 } chemdata_in;
 
 typedef struct chemdata_out

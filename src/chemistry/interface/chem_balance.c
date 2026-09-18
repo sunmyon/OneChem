@@ -46,6 +46,9 @@ struct chemcomm_in
 #ifdef LW_RADIATION_LOCAL
   double rate_Hminus_pd;
   double rate_H2_diss;
+#ifdef RYTR_NCO
+  double rate_CO_diss;
+#endif
   double J21;
 #ifdef HD
   double rate_HD_diss;
@@ -58,6 +61,14 @@ struct chemcomm_in
 
 #ifdef IONIZATION_PHOTON
   double k22, piHI;
+#ifdef RYTR_HELIUM_IONIZATION
+  double photoionization_rate_HeI, photoheating_rate_HeI;
+  double photoionization_rate_HeII, photoheating_rate_HeII;
+#endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+  double photoionization_rate_C[3], photoheating_rate_C[3];
+  double photoionization_rate_O[3], photoheating_rate_O[3];
+#endif
 #endif
 
 #if defined(METALLICITY) && defined(METAL_ADVECTION_SC) && !defined(CONSTANT_METALLICITY)
@@ -155,6 +166,9 @@ static inline void particle2in_arepo(int i, ChemArepoCell *cell,
 #if defined(LYMANWERNER) && defined(LW_RADIATION_LOCAL)
   cell->rate_Hminus_pd = SphP[i].rate_Hminus_pd;
   cell->rate_H2_diss = SphP[i].rate_H2_diss;
+#ifdef RYTR_NCO
+  cell->rate_CO_diss = SphP[i].rate_CO_diss;
+#endif
   cell->J21 = SphP[i].J21;
 #ifdef HD
   cell->rate_HD_diss = SphP[i].rate_HD_diss;
@@ -171,6 +185,22 @@ static inline void particle2in_arepo(int i, ChemArepoCell *cell,
 #ifdef IONIZATION_PHOTON
   cell->photoionization_rate_HI = SphP[i].k22;
   cell->photoheating_rate_HI = SphP[i].piHI;
+#ifdef RYTR_HELIUM_IONIZATION
+  cell->photoionization_rate_HeI = SphP[i].photoionization_rate_HeI;
+  cell->photoheating_rate_HeI = SphP[i].photoheating_rate_HeI;
+  cell->photoionization_rate_HeII = SphP[i].photoionization_rate_HeII;
+  cell->photoheating_rate_HeII = SphP[i].photoheating_rate_HeII;
+#endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+  for(int stage = 0; stage < 3; stage++) {
+    cell->photoionization_rate_C[stage] =
+        SphP[i].photoionization_rate_C[stage];
+    cell->photoheating_rate_C[stage] = SphP[i].photoheating_rate_C[stage];
+    cell->photoionization_rate_O[stage] =
+        SphP[i].photoionization_rate_O[stage];
+    cell->photoheating_rate_O[stage] = SphP[i].photoheating_rate_O[stage];
+  }
+#endif
 #endif
 
   state->utherm_cgs = SphP[i].Utherm * All.UnitEnergy_in_cgs/All.UnitMass_in_g;
@@ -571,6 +601,9 @@ void chem_evaluate(int target,
 #ifdef LW_RADIATION_LOCAL
   cell.rate_Hminus_pd = ChemDataGet[target].rate_Hminus_pd;
   cell.rate_H2_diss = ChemDataGet[target].rate_H2_diss;
+#ifdef RYTR_NCO
+  cell.rate_CO_diss = ChemDataGet[target].rate_CO_diss;
+#endif
   cell.J21 = ChemDataGet[target].J21;
 #ifdef HD
   cell.rate_HD_diss = ChemDataGet[target].rate_HD_diss;
@@ -588,6 +621,24 @@ void chem_evaluate(int target,
 #ifdef IONIZATION_PHOTON
   cell.photoionization_rate_HI = ChemDataGet[target].k22;
   cell.photoheating_rate_HI = ChemDataGet[target].piHI;
+#ifdef RYTR_HELIUM_IONIZATION
+  cell.photoionization_rate_HeI = ChemDataGet[target].photoionization_rate_HeI;
+  cell.photoheating_rate_HeI = ChemDataGet[target].photoheating_rate_HeI;
+  cell.photoionization_rate_HeII = ChemDataGet[target].photoionization_rate_HeII;
+  cell.photoheating_rate_HeII = ChemDataGet[target].photoheating_rate_HeII;
+#endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+  for(int stage = 0; stage < 3; stage++) {
+    cell.photoionization_rate_C[stage] =
+        ChemDataGet[target].photoionization_rate_C[stage];
+    cell.photoheating_rate_C[stage] =
+        ChemDataGet[target].photoheating_rate_C[stage];
+    cell.photoionization_rate_O[stage] =
+        ChemDataGet[target].photoionization_rate_O[stage];
+    cell.photoheating_rate_O[stage] =
+        ChemDataGet[target].photoheating_rate_O[stage];
+  }
+#endif
 #endif
 
   ChemArepoState state;
@@ -658,6 +709,9 @@ static inline void particle2in_chem(struct chemcomm_in *in, int i)
 #ifdef LW_RADIATION_LOCAL
   in->rate_Hminus_pd = SphP[i].rate_Hminus_pd;
   in->rate_H2_diss = SphP[i].rate_H2_diss;
+#ifdef RYTR_NCO
+  in->rate_CO_diss = SphP[i].rate_CO_diss;
+#endif
   in->J21 = SphP[i].J21;
 #ifdef HD
   in->rate_HD_diss = SphP[i].rate_HD_diss;
@@ -675,6 +729,22 @@ static inline void particle2in_chem(struct chemcomm_in *in, int i)
 #ifdef IONIZATION_PHOTON
   in->k22  = SphP[i].k22;
   in->piHI = SphP[i].piHI;
+#ifdef RYTR_HELIUM_IONIZATION
+  in->photoionization_rate_HeI = SphP[i].photoionization_rate_HeI;
+  in->photoheating_rate_HeI = SphP[i].photoheating_rate_HeI;
+  in->photoionization_rate_HeII = SphP[i].photoionization_rate_HeII;
+  in->photoheating_rate_HeII = SphP[i].photoheating_rate_HeII;
+#endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+  for(int stage = 0; stage < 3; stage++) {
+    in->photoionization_rate_C[stage] =
+        SphP[i].photoionization_rate_C[stage];
+    in->photoheating_rate_C[stage] = SphP[i].photoheating_rate_C[stage];
+    in->photoionization_rate_O[stage] =
+        SphP[i].photoionization_rate_O[stage];
+    in->photoheating_rate_O[stage] = SphP[i].photoheating_rate_O[stage];
+  }
+#endif
 #endif
 
   double dt = (P[i].TimeBinHydro ? (((integertime)1) << P[i].TimeBinHydro) : 0) * All.Timebase_interval;

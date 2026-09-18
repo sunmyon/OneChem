@@ -23,6 +23,8 @@ forward	19	implicit,explicit	H2_PLUS	HM + HII	H2II + ELEC
 forward	20	implicit,explicit	H2_PLUS	H2II + ELEC	2*HI
 forward	21	implicit,explicit	H2_PLUS	H2II + HM	HI + H2I
 photo	22	implicit,explicit	IONIZATION_PHOTON	HI	HII + ELEC
+photo	23	implicit,explicit	HELIUM,IONIZATION_PHOTON	HeI	HeII + ELEC
+photo	24	implicit,explicit	HELIUM,IONIZATION_PHOTON	HeII	HeIII + ELEC
 photo	25	implicit,explicit	LYMANWERNER	HM	HI + ELEC
 photo	29	implicit,explicit	LYMANWERNER	H2I	2*HI
 forward	30	implicit,explicit	always	2*HI	HI + HII + ELEC
@@ -93,3 +95,35 @@ forward	133	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HI + CH	CI + H2I
 forward	134	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H2I + CH	CH2 + HI
 forward	135	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	HI + CH2	CH + H2I
 forward	140	implicit,explicit	CARBON_OXYGEN_CHEMISTRY	H2I + CI	CH2
+# C/O ionization chains: electron impact, recombination, photoionization,
+# charge-transfer recombination with HI, and charge-transfer ionization with HII.
+forward	141	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CI + ELEC	CII + 2*ELEC
+forward	142	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CII + ELEC	CIII + 2*ELEC
+forward	143	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CIII + ELEC	CIV + 2*ELEC
+forward	144	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OI + ELEC	OII + 2*ELEC
+forward	145	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OII + ELEC	OIII + 2*ELEC
+forward	146	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OIII + ELEC	OIV + 2*ELEC
+forward	148	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CIII + ELEC	CII
+forward	149	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CIV + ELEC	CIII
+forward	150	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OII + ELEC	OI
+forward	151	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OIII + ELEC	OII
+forward	152	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OIV + ELEC	OIII
+photo	153	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION,RYTR_CARBON_OXYGEN_IONIZATION	CI	CII + ELEC
+photo	154	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION,RYTR_CARBON_OXYGEN_IONIZATION	CII	CIII + ELEC
+photo	155	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION,RYTR_CARBON_OXYGEN_IONIZATION	CIII	CIV + ELEC
+photo	156	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION,RYTR_CARBON_OXYGEN_IONIZATION	OI	OII + ELEC
+photo	157	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION,RYTR_CARBON_OXYGEN_IONIZATION	OII	OIII + ELEC
+photo	158	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION,RYTR_CARBON_OXYGEN_IONIZATION	OIII	OIV + ELEC
+forward	159	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CII + HI	CI + HII
+forward	160	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CIII + HI	CII + HII
+forward	161	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CIV + HI	CIII + HII
+forward	163	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OIII + HI	OII + HII
+forward	164	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OIV + HI	OIII + HII
+forward	165	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CI + HII	CII + HI
+forward	166	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CII + HII	CIII + HI
+forward	167	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	CIII + HII	CIV + HI
+forward	169	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OII + HII	OIII + HI
+forward	170	implicit,explicit	CARBON_OXYGEN_HIGH_IONIZATION	OIII + HII	OIV + HI
+# CO photodissociation produces neutral atoms; CI photoionization is evolved
+# separately when RYTR_CARBON_OXYGEN_IONIZATION is enabled.
+photo	171	implicit,explicit	RYTR_NCO	CO	CI + OI

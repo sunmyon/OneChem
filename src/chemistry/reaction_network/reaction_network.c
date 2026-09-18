@@ -132,11 +132,21 @@ static int compiled_option_enabled(const char *name)
 #ifdef CARBON_OXYGEN_CHEMISTRY
   if(strcmp(name, "CARBON_OXYGEN_CHEMISTRY") == 0) return 1;
 #endif
+#ifdef RYTR_CARBON_OXYGEN_IONIZATION
+  if(strcmp(name, "RYTR_CARBON_OXYGEN_IONIZATION") == 0) return 1;
+#endif
+#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+  if(strcmp(name, "CARBON_OXYGEN_HIGH_IONIZATION") == 0) return 1;
+#endif
+#ifdef RYTR_NCO
+  if(strcmp(name, "RYTR_NCO") == 0) return 1;
+#endif
 
   static const char *known_options[] = {
     "HELIUM", "H2_PLUS", "HD", "HD_PLUS", "DMINUS", "IONIZATION_PHOTON",
     "LYMANWERNER", "H2_FORMATION_ON_DUST", "THREEBODY", "INVERSE_REACTIONS",
-    "CARBON_OXYGEN_CHEMISTRY"
+    "CARBON_OXYGEN_CHEMISTRY", "CARBON_OXYGEN_HIGH_IONIZATION",
+    "RYTR_CARBON_OXYGEN_IONIZATION", "RYTR_NCO"
   };
   for(size_t i = 0; i < sizeof(known_options) / sizeof(known_options[0]); i++)
     if(strcmp(name, known_options[i]) == 0)
@@ -558,7 +568,7 @@ void chemistry_network_jacobian_column(const ChemReactionNetwork *network, unsig
 
     for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
       const ChemReactionTerm *term = &reaction->terms[term_index];
-      if(term->species == differentiated_species)
+      if(term->species == (enum SPECIES) differentiated_species)
         differentiated_order = term->reactant_order;
     }
     if(differentiated_order == 0)
@@ -568,7 +578,7 @@ void chemistry_network_jacobian_column(const ChemReactionNetwork *network, unsig
     for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
       const ChemReactionTerm *term = &reaction->terms[term_index];
       unsigned char exponent = term->reactant_order;
-      if(term->species == differentiated_species)
+      if(term->species == (enum SPECIES) differentiated_species)
         exponent--;
       derivative *= integer_power(number_density[term->species], exponent);
     }

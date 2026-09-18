@@ -312,6 +312,13 @@ $(BUILDDIR)/%.o: %.c $(INCL)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-.PHONY: clean
+.PHONY: clean check-chemistry-initialization
+
+$(BUILDDIR)/initialization_regression: src/chemistry/tests/initialization_regression.c $(filter-out $(BUILDDIR)/src/standalone/main.o,$(OBJDIR_OBJS))
+	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
+
+check-chemistry-initialization: $(BUILDDIR)/initialization_regression
+	./$(BUILDDIR)/initialization_regression src/chemistry
+
 clean:
 	rm -rf $(BUILDDIR) $(EXEC)

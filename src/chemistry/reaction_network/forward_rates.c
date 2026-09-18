@@ -58,6 +58,132 @@ static double rate_Z33(double T) { (void)T; return 4.98e-11; }
 static double rate_Z34(double T) { return 2.38e-10 * exp(-1760.0 / T); }
 static double rate_Z35(double T) { (void)T; return 2.70e-10; }
 static double rate_Z40(double T) { (void)T; return 1.00e-17; }
+
+#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+#define METAL_ION_KB_EV 8.617385e-5
+
+typedef struct { double threshold, p, a, x, k; } MetalCollisionalFit;
+typedef struct { double a, b, t0, t1; } MetalRadiativeFit;
+typedef struct { double a, b, c, d, tmin, tmax; } MetalChargeTransferFit;
+typedef struct {
+  double a, b, c, d, tmin, tmax, delta_t;
+} MetalChargeTransferIonizationFit;
+typedef struct { int count; double c[6], energy[6]; } MetalDielectronicFit;
+
+/* C I--III followed by O I--III. Fits match the Gadget3 reference module. */
+static const MetalCollisionalFit metal_collisional_fit[6] = {
+  {11.3, 0., 6.85e-8, .1930, .25}, {24.4, 1., 1.86e-8, .2860, .24},
+  {47.9, 1., 6.35e-9, .4270, .21}, {13.6, 0., 3.59e-8, .0730, .34},
+  {35.1, 1., 1.39e-8, .2120, .22}, {54.9, 1., 9.31e-9, .2700, .27}
+};
+static const MetalRadiativeFit metal_radiative_fit[6] = {
+  {7.651e-9, .8027, .001193, 9.334e12},
+  {8.577e-10, .7837, .7286, 1.140e7},
+  {2.020e-9, .7798, .6690, 2.425e6},
+  {1.341e-10, .6159, 1.673, 6.366e16},
+  {1.816e-8, .7170, .006717, 3.286e12},
+  {3.672e-9, .7676, .2900, 8.521e7}
+};
+static const MetalDielectronicFit metal_dielectronic_fit[6] = {
+  {5, {6.346e-9, 9.793e-9, 1.634e-6, 8.369e-4, 3.355e-4},
+      {12.17, 73.8, 1.523e4, 1.207e5, 2.144e5}},
+  {6, {3.489e-6, 2.222e-7, 1.954e-5, 4.212e-3, 2.037e-4, 2.936e-4},
+      {2660., 3756., 2.566e4, 1.400e5, 1.801e6, 4.307e6}},
+  {6, {4.673e-7, 1.887e-5, 1.305e-5, 3.099e-3, 3.001e-4, 2.553e-3},
+      {723.3, 2847., 1.054e4, 8.915e4, 2.812e5, 3.254e6}},
+  {4, {5.629e-8, 2.550e-7, 6.173e-4, 1.627e-4},
+      {5395., 1.770e4, 1.671e5, 2.687e5}},
+  {6, {1.627e-7, 1.262e-7, 6.663e-7, 3.925e-6, 2.406e-3, 1.146e-3},
+      {45.35, 284.7, 4166., 2.877e4, 1.953e5, 3.646e5}},
+  {5, {3.932e-7, 2.523e-7, 3.447e-5, 5.776e-3, 5.101e-3},
+      {150.9, 621.1, 1.562e4, 1.936e5, 4.700e5}}
+};
+static const MetalChargeTransferFit metal_ct_recombination_fit[6] = {
+  {1.60e-4, 2.80, 350., -4.20, 5.e3, 5.e4},
+  {3.65, .25, 0., 0., 5.e3, 5.e4},
+  {.76, 1.40, 0., 0., 1.e3, 1.e4},
+  {.80, .43, 0., 0., 5.e3, 5.e4},
+  {.85, .44, 0., 0., 5.e3, 5.e4},
+  {.31, .44, 0., 0., 1.e3, 3.e4}
+};
+static const MetalChargeTransferIonizationFit metal_ct_ionization_fit[6] = {
+  {1.07e-6, 3.15, 176.43, -4.29, 1.e3, 1.e5, 0.},
+  {0., 0., 0., 0., 0., 0., 0.},
+  {0., 0., 0., 0., 0., 0., 0.},
+  {7.40e-2, .47, 24.37, -.74, 1.e1, 1.e4, .023},
+  {0., 0., 0., 0., 0., 0., 0.},
+  {0., 0., 0., 0., 0., 0., 0.}
+};
+
+static double metal_collisional_rate(int transition, double T)
+{
+  const MetalCollisionalFit *fit = &metal_collisional_fit[transition];
+  if(T <= 0.0)
+    return 0.0;
+  const double u = fit->threshold / (METAL_ION_KB_EV * T);
+  if(u > 80.0)
+    return 0.0;
+  return fit->a * (1.0 + fit->p * sqrt(u)) / (fit->x + u) *
+      pow(u, fit->k) * exp(-u);
+}
+
+static double metal_recombination_rate(int transition, double T)
+{
+  const MetalRadiativeFit *radiative = &metal_radiative_fit[transition];
+  const MetalDielectronicFit *dielectronic =
+      &metal_dielectronic_fit[transition];
+  if(T <= 0.0)
+    return 0.0;
+  const double x = sqrt(T / radiative->t0);
+  double rate = radiative->a /
+      (x * pow(1.0 + x, 1.0 - radiative->b) *
+       pow(1.0 + sqrt(T / radiative->t1), 1.0 + radiative->b));
+  double sum = 0.0;
+  for(int term = 0; term < dielectronic->count; term++)
+    sum += dielectronic->c[term] * exp(-dielectronic->energy[term] / T);
+  return rate + fmax(0.0, sum * pow(T, -1.5));
+}
+
+static double metal_ct_recombination_rate(int transition, double T)
+{
+  const MetalChargeTransferFit *fit =
+      &metal_ct_recombination_fit[transition];
+  if(T <= 0.0 || fit->a <= 0.0)
+    return 0.0;
+  const double limited_T = fmin(fmax(T, fit->tmin), fit->tmax);
+  return 1.0e-9 * fit->a * pow(limited_T / 1.0e4, fit->b) *
+      (1.0 + fit->c * exp(fit->d * limited_T / 1.0e4));
+}
+
+static double metal_ct_ionization_rate(int transition, double T)
+{
+  const MetalChargeTransferIonizationFit *fit =
+      &metal_ct_ionization_fit[transition];
+  if(T <= 0.0 || fit->a <= 0.0)
+    return 0.0;
+  const double limited_T = fmin(fmax(T, fit->tmin), fit->tmax);
+  return 1.0e-9 * fit->a * pow(limited_T / 1.0e4, fit->b) *
+      (1.0 + fit->c * exp(fit->d * limited_T / 1.0e4)) *
+      exp(-fit->delta_t * 1.0e4 / T);
+}
+
+#define DEFINE_METAL_RATE_WRAPPERS(index) \
+  static double rate_metal_ci_##index(double T) \
+    { return metal_collisional_rate(index, T); } \
+  static double rate_metal_rr_##index(double T) \
+    { return metal_recombination_rate(index, T); } \
+  static double rate_metal_ctr_##index(double T) \
+    { return metal_ct_recombination_rate(index, T); } \
+  static double rate_metal_cti_##index(double T) \
+    { return metal_ct_ionization_rate(index, T); }
+DEFINE_METAL_RATE_WRAPPERS(0)
+DEFINE_METAL_RATE_WRAPPERS(1)
+DEFINE_METAL_RATE_WRAPPERS(2)
+DEFINE_METAL_RATE_WRAPPERS(3)
+DEFINE_METAL_RATE_WRAPPERS(4)
+DEFINE_METAL_RATE_WRAPPERS(5)
+#undef DEFINE_METAL_RATE_WRAPPERS
+#endif
 #endif
 
 static double rate_1(double T)
@@ -180,7 +306,7 @@ static double rate_5(double T)
 {
   double x, x2, x3, x4, x5, x6, x7, x8;
 
-  if(T/eV_to_K < 0.01)
+  if(T/eV_to_K < 0.8)
     return 0.;
 
   x = log(T/eV_to_K);
@@ -299,6 +425,13 @@ static double rate_11_enzo(double T)
   return 1.0670825e-10*pow(T_eV, 2.012)/(exp(4.463/T_eV)*pow(1. + 0.2472*T_eV, 3.512));
 }
 
+static double log_rate_12_default(double T)
+{
+  if(T < 10000.)
+    return log(3.0e-10) - 21050.0/T;
+  return log(1.5e-10) - 14000.0/T;
+}
+
 static double rate_12_default(double T)
 {
   if(T < 10000.)
@@ -306,7 +439,7 @@ static double rate_12_default(double T)
   return 1.5e-10*exp(-14000.0/T);
 }
 
-static double rate_12_enzo(double T)
+static double log_rate_12_enzo(double T)
 {
   double x, x2, x3, x4, x5, x6, x7, x8;
   x = log(T/eV_to_K);
@@ -317,7 +450,7 @@ static double rate_12_enzo(double T)
   x6 = x*x5;
   x7 = x*x6;
   x8 = x*x7;
-  return exp(-24.249146877095
+  return -24.249146877095
              + 3.400824447095291     * x
              - 3.898003964650152     * x2
              + 2.045587822403071     * x3
@@ -325,7 +458,21 @@ static double rate_12_enzo(double T)
              + 0.0841077503763412    * x5
              - 0.007879026154483455  * x6
              + 0.0004138398421504563 * x7
-             - 9.36345888928611e-6   * x8);
+             - 9.36345888928611e-6   * x8;
+}
+
+static double rate_12_enzo(double T)
+{
+  return exp(log_rate_12_enzo(T));
+}
+
+double chemistry_log_forward_rate_12(double temperature)
+{
+#ifdef ENZO_CHEM
+  return log_rate_12_enzo(temperature);
+#else
+  return log_rate_12_default(temperature);
+#endif
 }
 
 static double rate_13_default(double T)
@@ -618,8 +765,13 @@ const ForwardRateFunction forward_rate_table[CHEM_RATE_COUNT] = {
   [57] = rate_57,
   [58] = rate_58,
 #ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+  [101] = rate_metal_ctr_3,
+  [102] = rate_metal_cti_3,
+#else
   [101] = rate_Z1,
   [102] = rate_Z2,
+#endif
   [103] = rate_Z3,
   [104] = rate_Z4,
   [105] = rate_Z5,
@@ -645,7 +797,11 @@ const ForwardRateFunction forward_rate_table[CHEM_RATE_COUNT] = {
   [125] = rate_Z25,
   [126] = rate_Z26,
   [127] = rate_Z27,
+#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+  [128] = rate_metal_rr_0,
+#else
   [128] = rate_Z28,
+#endif
   [129] = rate_Z29,
   [130] = rate_Z30,
   [131] = rate_Z31,
@@ -654,5 +810,28 @@ const ForwardRateFunction forward_rate_table[CHEM_RATE_COUNT] = {
   [134] = rate_Z34,
   [135] = rate_Z35,
   [140] = rate_Z40,
+#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+  [141] = rate_metal_ci_0,
+  [142] = rate_metal_ci_1,
+  [143] = rate_metal_ci_2,
+  [144] = rate_metal_ci_3,
+  [145] = rate_metal_ci_4,
+  [146] = rate_metal_ci_5,
+  [148] = rate_metal_rr_1,
+  [149] = rate_metal_rr_2,
+  [150] = rate_metal_rr_3,
+  [151] = rate_metal_rr_4,
+  [152] = rate_metal_rr_5,
+  [159] = rate_metal_ctr_0,
+  [160] = rate_metal_ctr_1,
+  [161] = rate_metal_ctr_2,
+  [163] = rate_metal_ctr_4,
+  [164] = rate_metal_ctr_5,
+  [165] = rate_metal_cti_0,
+  [166] = rate_metal_cti_1,
+  [167] = rate_metal_cti_2,
+  [169] = rate_metal_cti_4,
+  [170] = rate_metal_cti_5,
+#endif
 #endif
 };

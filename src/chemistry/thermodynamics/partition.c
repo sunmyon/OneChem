@@ -33,7 +33,7 @@ void check_partition_functions_H2(void){
   FILE *fp = fopen("partition_functions_H2.dat", "w");
   if(fp == NULL)
     return;
-  
+
   const int sample_count = 1000;
   int i;
   double T_max, T_min, dln_T;
@@ -62,14 +62,14 @@ void check_partition_functions_H2(void){
 double partition_H2_Rossi1985(double T_gas)
 {
   double z_H2, Z, lnQ;
-  
-  /* rossi partition function 1985 */    
+
+  /* rossi partition function 1985 */
   Z = T_gas/1000.0;
-  
+
   lnQ = ra0*log(Z) + ra1*Z/2.0 + ra2*Z*Z/6.0 + ra3*Z*Z*Z/12.0 + ra4*Z*Z*Z*Z/20.0 - ra5/Z + ra6;
-  
+
   z_H2=exp(lnQ);
-  
+
   if(T_gas > 6000.0) /* rossi fit diverges for T>1.0e4, my new fit */
     z_H2 = 1.0635e-5 * pow(T_gas, 1.8) * exp(-T_gas/5.0e4);
 
@@ -81,9 +81,9 @@ double partition_H2_Rossi1985(double T_gas)
 
 double partition_H2_Irwin1987(double T_gas)
 {
-  /* Irwin partition function 1987 */    
-  double Z = log10(5040.0/T_gas);  
-  double logQ = b0 + b1*Z + b2*Z*Z + b3*Z*Z*Z + b4*pow(Z, 4) + b5*pow(Z, 5) + b6*pow(Z, 6) + b7*pow(Z, 7); 
+  /* Irwin partition function 1987 */
+  double Z = log10(5040.0/T_gas);
+  double logQ = b0 + b1*Z + b2*Z*Z + b3*Z*Z*Z + b4*pow(Z, 4) + b5*pow(Z, 5) + b6*pow(Z, 6) + b7*pow(Z, 7);
   double z_H2 = pow(10.0,logQ);
 
   return z_H2;
@@ -105,17 +105,17 @@ double partition_H2_EBM1989(double T_K){
   for(iv=0;iv<=iv_max;iv++){
     for(j=0;j<=j_max;j++){
       if(ET[iv][j]-ET[0][0] <= ET_diss){
-         if(j%2 == 0) 
+         if(j%2 == 0)
 	   z_p += (2*j+1) * exp(-(ET[iv][j]-ET[0][0])/T_K);
 	 else
 	   z_o += (2*j+1) * exp(-(ET[iv][j]-ET[0][1])/T_K);
       }
     }
   }
-   
+
 
   pf = 0.25*z_p + 0.75*z_o;
-  
+
   return pf;
 }
 
@@ -124,7 +124,7 @@ double partition_H2_EBM1989_fitted_by_Matsukoba(double T_K){
   double a0,a1,a2,a3,a4,a5;
   double lgT1,lgT2,lgT3,lgT4,lgT5;
   double lg_pf;
-    
+
   a0 = -20.2721571192088;
   a1 =  33.6402868140006;
   a2 = -21.086890724525;
@@ -240,7 +240,7 @@ double E_H2_BFM(int iv,int J){
 double partition_H(double T_gas)
 {
   double z_H = 2.0;
-  
+
   if(T_gas > 1.0e4){
     z_H=0.0;
     int nlevel;
@@ -250,10 +250,10 @@ double partition_H(double T_gas)
       z_H += 2.0 * dn*dn * exp(- En/(BOLTZMANN * T_gas));
     }
   }
-  
+
   return z_H;
 }
-  
+
 
 double pf_z_H(double T_K){
   double pf;
@@ -279,21 +279,21 @@ double pf_z_H(double T_K){
 double linear(double *xa,double *ya,int m,double x);
 
 double pf_z_H2p(double T_K){
-  double xTBC[] = 
-    {1.00000e0, 1.30000e0, 1.70000e0, 2.00000e0, 3.00000e0,  
-     5.00000e0, 7.00000e0, 1.00000e1, 1.50000e1, 2.00000e1,  
-     3.00000e1, 5.00000e1, 7.00000e1, 1.00000e2, 1.30000e2,  
-     1.70000e2, 2.00000e2, 2.50000e2, 3.00000e2, 5.00000e2,  
-     7.00000e2, 1.00000e3, 1.50000e3, 2.00000e3, 3.00000e3,  
-     4.00000e3, 5.00000e3, 6.00000e3, 7.00000e3, 8.00000e3,  
+  double xTBC[] =
+    {1.00000e0, 1.30000e0, 1.70000e0, 2.00000e0, 3.00000e0,
+     5.00000e0, 7.00000e0, 1.00000e1, 1.50000e1, 2.00000e1,
+     3.00000e1, 5.00000e1, 7.00000e1, 1.00000e2, 1.30000e2,
+     1.70000e2, 2.00000e2, 2.50000e2, 3.00000e2, 5.00000e2,
+     7.00000e2, 1.00000e3, 1.50000e3, 2.00000e3, 3.00000e3,
+     4.00000e3, 5.00000e3, 6.00000e3, 7.00000e3, 8.00000e3,
      9.00000e3, 1.00000e4};
-  double xqh2p[] = 
-    { 5.00000e-1, 5.00000e-1, 5.00000e-1, 5.00000e-1, 5.00000e-1,  
-      5.00000e-1, 5.00024e-1, 5.00921e-1, 5.15632e-1, 5.64397e-1,  
-      7.65738e-1, 1.33880e0 , 1.91022e0 , 2.68536e0 , 3.40918e0,  
-      4.35256e0 , 5.05717e0 , 6.23172e0 , 7.40726e0 , 1.21361e1,  
-      1.70214e1 , 2.50338e1 , 4.11228e1 , 6.13523e1 , 1.16205e2,  
-      1.93054e2 , 2.94603e2 , 4.22340e2 , 5.76489e2 , 7.56297e2,  
+  double xqh2p[] =
+    { 5.00000e-1, 5.00000e-1, 5.00000e-1, 5.00000e-1, 5.00000e-1,
+      5.00000e-1, 5.00024e-1, 5.00921e-1, 5.15632e-1, 5.64397e-1,
+      7.65738e-1, 1.33880e0 , 1.91022e0 , 2.68536e0 , 3.40918e0,
+      4.35256e0 , 5.05717e0 , 6.23172e0 , 7.40726e0 , 1.21361e1,
+      1.70214e1 , 2.50338e1 , 4.11228e1 , 6.13523e1 , 1.16205e2,
+      1.93054e2 , 2.94603e2 , 4.22340e2 , 5.76489e2 , 7.56297e2,
       9.60417e2 , 1.18728e3};
 
   double pf_z_H2p = linear(xTBC,xqh2p,32,T_K);
@@ -308,7 +308,7 @@ double linear(double *xa,double *ya,int m,double x){
   double y;
   int ms, i;
   double t, y1, y2;
-      
+
   ms = 0;
   for(i=0;i<m;i++){
     if(x-xa[i] <= 0. || i==m-1){
@@ -324,5 +324,5 @@ double linear(double *xa,double *ya,int m,double x){
   t  = (x - xa[ms-1])/(xa[ms] - xa[ms-1]);
   y  = (1.-t)*y1 + t*y2;
 
-  return y;  
+  return y;
 }

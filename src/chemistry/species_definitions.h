@@ -58,12 +58,30 @@
 #endif
 
 #ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+#define CHEM_SPECIES_CARBON_HIGH_IONS(X) \
+  X(CIII, "CIII", 2, 0, 0, 0, 1, 0) \
+  X(CIV,  "CIV",  3, 0, 0, 0, 1, 0)
+#define CHEM_SPECIES_OXYGEN_HIGH_IONS(X) \
+  X(OII,  "OII",  1, 0, 0, 0, 0, 1) \
+  X(OIII, "OIII", 2, 0, 0, 0, 0, 1) \
+  X(OIV,  "OIV",  3, 0, 0, 0, 0, 1)
+#define CHEM_SPECIES_OII_INTERMEDIATE(X)
+#else
+#define CHEM_SPECIES_CARBON_HIGH_IONS(X)
+#define CHEM_SPECIES_OXYGEN_HIGH_IONS(X)
+#define CHEM_SPECIES_OII_INTERMEDIATE(X) \
+  X(OII,   "OII",   1, 0, 0, 0, 0, 1)
+#endif
+
 #define CHEM_SPECIES_CARBON_OXYGEN_STORED(X) \
   X(CI,   "CI",    0, 0, 0, 0, 1, 0) \
   X(CII,  "CII",   1, 0, 0, 0, 1, 0) \
+  CHEM_SPECIES_CARBON_HIGH_IONS(X) \
   X(CO,   "CO",    0, 0, 0, 0, 1, 1) \
   X(CO2,  "CO2",   0, 0, 0, 0, 1, 2) \
   X(OI,   "OI",    0, 0, 0, 0, 0, 1) \
+  CHEM_SPECIES_OXYGEN_HIGH_IONS(X) \
   X(OH,   "OH",    0, 1, 0, 0, 0, 1) \
   X(H2O,  "H2O",   0, 2, 0, 0, 0, 1) \
   X(O2,   "O2",    0, 0, 0, 0, 0, 2)
@@ -72,12 +90,15 @@
   X(COII,  "COII",  1, 0, 0, 0, 1, 1) \
   X(CH,    "CH",    0, 1, 0, 0, 1, 0) \
   X(CH2,   "CH2",   0, 2, 0, 0, 1, 0) \
-  X(OII,   "OII",   1, 0, 0, 0, 0, 1) \
+  CHEM_SPECIES_OII_INTERMEDIATE(X) \
   X(OHII,  "OHII",  1, 1, 0, 0, 0, 1) \
   X(H2OII, "H2OII", 1, 2, 0, 0, 0, 1) \
   X(H3OII, "H3OII", 1, 3, 0, 0, 0, 1) \
   X(O2II,  "O2II",  1, 0, 0, 0, 0, 2)
 #else
+#define CHEM_SPECIES_CARBON_HIGH_IONS(X)
+#define CHEM_SPECIES_OXYGEN_HIGH_IONS(X)
+#define CHEM_SPECIES_OII_INTERMEDIATE(X)
 #define CHEM_SPECIES_CARBON_OXYGEN_STORED(X)
 #define CHEM_SPECIES_CARBON_OXYGEN_INTERMEDIATES(X)
 #endif
@@ -103,18 +124,6 @@
   CHEM_SPECIES_DEUTERIUM(X) \
   CHEM_SPECIES_CARBON_OXYGEN_STORED(X) \
   CHEM_SPECIES_FULLY_SOLVED_INTERMEDIATES(X)
-
-/* Preserve the established sequential explicit update order. Optional family
- * macros expand to nothing when that chemistry is not compiled. */
-#define CHEM_SPECIES_EXPLICIT_SEQUENCE(X) \
-  CHEM_SPECIES_ATOMIC_HYDROGEN(X) \
-  CHEM_SPECIES_HELIUM(X) \
-  CHEM_SPECIES_ELECTRON(X) \
-  CHEM_SPECIES_NEGATIVE_HYDROGEN(X) \
-  CHEM_SPECIES_H2_PLUS(X) \
-  CHEM_SPECIES_MOLECULAR_HYDROGEN(X) \
-  CHEM_SPECIES_DEUTERIUM(X) \
-  CHEM_SPECIES_CARBON_OXYGEN_STORED(X)
 
 #define CHEM_SPECIES_LIST(X) \
   CHEM_SPECIES_STORED_LIST(X) \
@@ -229,12 +238,24 @@
 #define CHEM_SPECIES_INITIALIZATION_CARBON_OXYGEN(X) \
   X(CI,  1.e-16, 0.0, 0.0, 0, 1) \
   X(CII, 1.e-16, 0.0, 0.0, 0, 1) \
+  CHEM_SPECIES_INITIALIZATION_CARBON_HIGH_IONS(X) \
   X(OI,  1.e-16, 0.0, 0.0, 0, 1)
+#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+#define CHEM_SPECIES_INITIALIZATION_CARBON_HIGH_IONS(X) \
+  X(CIII, 1.e-30, 0.0, 0.0, 0, 1) \
+  X(CIV,  1.e-30, 0.0, 0.0, 0, 1) \
+  X(OII,  1.e-30, 0.0, 0.0, 0, 1) \
+  X(OIII, 1.e-30, 0.0, 0.0, 0, 1) \
+  X(OIV,  1.e-30, 0.0, 0.0, 0, 1)
+#else
+#define CHEM_SPECIES_INITIALIZATION_CARBON_HIGH_IONS(X)
+#endif
 #else
 #define CHEM_CARBON_RESERVOIRS(X)
 #define CHEM_OXYGEN_RESERVOIRS(X)
 #define CHEM_ELEMENT_CONSERVATION_CARBON_OXYGEN(X)
 #define CHEM_SPECIES_INITIALIZATION_CARBON_OXYGEN(X)
+#define CHEM_SPECIES_INITIALIZATION_CARBON_HIGH_IONS(X)
 #endif
 
 #ifdef H2_PLUS

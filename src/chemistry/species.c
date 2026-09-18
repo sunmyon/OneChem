@@ -102,3 +102,117 @@ int chemistry_species_from_name(const char *name, enum SPECIES *species)
   }
   return 0;
 }
+
+double chemistry_net_charge(const double *abundance)
+{
+  double charge = 0.0;
+
+  for(int species = 0; species < N_SP; species++)
+    charge += species_definitions[species].charge * abundance[species];
+
+  return charge;
+}
+
+double chemistry_neutral_electron_abundance(const double *abundance)
+{
+  double electron = 0.0;
+
+  for(int species = 0; species < N_SP; species++)
+    if(species != sELEC)
+      electron += species_definitions[species].charge * abundance[species];
+
+  return electron;
+}
+
+void chemistry_explicit_enforce_constraints(double metallicity,
+                                            double *abundance)
+{
+  double element_total[CHEM_ELEMENT_COUNT] = {0.0};
+  double element_content[CHEM_ELEMENT_COUNT] = {0.0};
+  double element_scale[CHEM_ELEMENT_COUNT] = {1.0, 1.0, 1.0, 1.0, 1.0};
+
+  for(size_t index = 0; index < chemistry_element_conservation_count; index++){
+    const ChemElementConservationDefinition *element =
+        &chemistry_element_conservation[index];
+    double total = XH * element->total_per_hydrogen;
+
+    if(element->metallicity_scaled)
+      total *= metallicity;
+
+    element_total[element->element] = total;
+  }
+
+  /* Conservation is a property of the compiled network, not of the chosen
+   * explicit update order. Include both evolved and algebraic intermediates. */
+  for(int species = 0; species < N_SP; species++) {
+    const ChemSpeciesDefinition *definition = &species_definitions[species];
+    double species_abundance = abundance[species];
+
+    if(definition->nuclei[CHEM_ELEMENT_H] > 0 &&
+       definition->nuclei[CHEM_ELEMENT_C] == 0 &&
+       definition->nuclei[CHEM_ELEMENT_O] == 0)
+      element_content[CHEM_ELEMENT_H] +=
+          definition->nuclei[CHEM_ELEMENT_H] * species_abundance;
+
+    element_content[CHEM_ELEMENT_HE] +=
+        definition->nuclei[CHEM_ELEMENT_HE] * species_abundance;
+    element_content[CHEM_ELEMENT_D] +=
+        definition->nuclei[CHEM_ELEMENT_D] * species_abundance;
+    element_content[CHEM_ELEMENT_C] +=
+        definition->nuclei[CHEM_ELEMENT_C] * species_abundance;
+  }
+
+  for(int element = CHEM_ELEMENT_H; element <= CHEM_ELEMENT_C; element++)
+    if(element_content[element] > 0.0)
+      element_scale[element] =
+          element_total[element] / element_content[element];
+
+  for(int species = 0; species < N_SP; species++) {
+    const ChemSpeciesDefinition *definition = &species_definitions[species];
+
+    if(definition->nuclei[CHEM_ELEMENT_H] > 0 &&
+       definition->nuclei[CHEM_ELEMENT_D] == 0 &&
+       definition->nuclei[CHEM_ELEMENT_C] == 0 &&
+       definition->nuclei[CHEM_ELEMENT_O] == 0)
+      abundance[species] *= element_scale[CHEM_ELEMENT_H];
+
+    if(definition->nuclei[CHEM_ELEMENT_HE] > 0)
+      abundance[species] *= element_scale[CHEM_ELEMENT_HE];
+
+    if(definition->nuclei[CHEM_ELEMENT_D] > 0)
+      abundance[species] *= element_scale[CHEM_ELEMENT_D];
+
+    if(definition->nuclei[CHEM_ELEMENT_C] > 0)
+      abundance[species] *= element_scale[CHEM_ELEMENT_C];
+  }
+
+  double oxygen_in_carbon = 0.0;
+  double oxygen_only_content = 0.0;
+
+  for(int species = 0; species < N_SP; species++) {
+    const ChemSpeciesDefinition *definition = &species_definitions[species];
+    double oxygen_content =
+        definition->nuclei[CHEM_ELEMENT_O] * abundance[species];
+
+    if(definition->nuclei[CHEM_ELEMENT_C] > 0)
+      oxygen_in_carbon += oxygen_content;
+    else
+      oxygen_only_content += oxygen_content;
+  }
+
+  if(oxygen_only_content > 0.0 &&
+     element_total[CHEM_ELEMENT_O] >= oxygen_in_carbon)
+    element_scale[CHEM_ELEMENT_O] =
+        (element_total[CHEM_ELEMENT_O] - oxygen_in_carbon) /
+        oxygen_only_content;
+
+  for(int species = 0; species < N_SP; species++) {
+    const ChemSpeciesDefinition *definition = &species_definitions[species];
+
+    if(definition->nuclei[CHEM_ELEMENT_O] > 0 &&
+       definition->nuclei[CHEM_ELEMENT_C] == 0)
+      abundance[species] *= element_scale[CHEM_ELEMENT_O];
+  }
+
+  abundance[sELEC] = chemistry_neutral_electron_abundance(abundance);
+}

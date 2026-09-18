@@ -18,8 +18,9 @@ struct ChemistryDustTables {
   double inverse_log_temperature_step;
 };
 
-void get_dust_opacities(const ChemistryDustTables *tables, double T_dust,
-                        double *kappa_Rossland, double *kappa_Planck);
+void chemistry_dust_opacities_from_tables(
+    const ChemistryDustTables *tables, double T_dust,
+    double *kappa_Rossland, double *kappa_Planck);
 static void get_dust_opacities_with_derivative(
     const ChemistryDustTables *tables, double T_dust,
     double *kappa_Rossland, double *kappa_Planck,
@@ -129,7 +130,7 @@ double dust_cross_section(double *S){
       f = pow(a/a_min, -3.5);
     else
       f = pow(a_mid/a_min, -3.5) * pow(a/a_mid, -5.5);
-    
+
     sigma = M_PI * a * a;
     S_i   = sigma / (4.*M_PI/3. * a * a * a * rho_dust);
 
@@ -141,7 +142,7 @@ double dust_cross_section(double *S){
 
     a_old = a;
   }
-  
+
   sigma_eff = sum1 / norm;
   S_eff = sum2 / norm;
   //printf("sigma_eff=%g [cm^2] S_eff=%g [cm^2/g] rad=%g [um] sum=%g norm=%g\n", sigma_eff, S_eff, sqrt(sigma_eff/M_PI)*1.e5, sum1, norm);
@@ -162,7 +163,7 @@ double dust_temperature(const ChemistryDustTables *tables, double rho_cgs,
 #endif
   double tau_g = opac -> tau;
 
-  double tcoll_inv = rho_cgs / PROTONMASS * 1.1e-5 / DUST_TO_GAS_MASS_RATIO * sqrt(T_gas / 1000.) * (1. - 0.8 * exp(-75./T_gas));  
+  double tcoll_inv = rho_cgs / PROTONMASS * 1.1e-5 / DUST_TO_GAS_MASS_RATIO * sqrt(T_gas / 1000.) * (1. - 0.8 * exp(-75./T_gas));
 
   double T_radiation = pow(pow(radiation_temperature, 4) + stellar_flux / (4. * STEFAN), 0.25);
   double Td_S = fmin(2000., fmax(0., fmin(T_gas, T_radiation)));
@@ -181,7 +182,7 @@ double dust_temperature(const ChemistryDustTables *tables, double rho_cgs,
     double residual_scale = fabs(balance.Lambda_dust) + fabs(balance.Lambda_coll);
     if(fabs(resid) <= 1.e-5 * residual_scale)
       break;
-    
+
     if(resid > 0.){
       Td_L = T_dust;
     } else {
@@ -192,7 +193,7 @@ double dust_temperature(const ChemistryDustTables *tables, double rho_cgs,
     if(Td_L - Td_S <= temperature_tolerance){
       break;
     }
-    
+
     if(itr%2000==1999 || diagnostics_enabled)
       printf("[%02d] T_dust=%g dT=%g T_CMB=%g Trad=%G L_coll=%g L_dust=%g kapa=%g beta_esc=%g\n"
 	     ,itr , T_dust, T_gas - T_dust, radiation_temperature, pow(stellar_flux/4./STEFAN, 0.25), balance.Lambda_coll, balance.Lambda_dust, balance.kappa_P, balance.beta_esc);
@@ -225,7 +226,7 @@ double dust_temperature(const ChemistryDustTables *tables, double rho_cgs,
 
   opac -> kappa_dust_Rossland = balance.kappa_R * DUST_TO_GAS_MASS_RATIO * metallicity;
   opac -> kappa_dust_Planck = balance.kappa_P * DUST_TO_GAS_MASS_RATIO * metallicity;
-  
+
   opac -> tau = balance.tau;
   opac -> f_reduce = balance.beta_esc;
 
@@ -274,7 +275,7 @@ double dust_PEheating(double G0, double nH, double y_e, double T_gas,
 double H2form_on_grains(double rho_cgs, double T_gas, double T_dust, double metallicity)
 {
   double T2       = 0.01*T_gas;
-  double S_H      = 1.0/( 1.0 + 0.4*sqrt(T2+0.01*T_dust) + 0.2*T2 + 0.08*T2*T2);  
+  double S_H      = 1.0/( 1.0 + 0.4*sqrt(T2+0.01*T_dust) + 0.2*T2 + 0.08*T2*T2);
   double k_H2form = 6.0e-17 * sqrt(T_gas/300.) /(1. + exp(7.5e2*(1./75.-1./T_dust))) * S_H * metallicity * rho_cgs / PROTONMASS;
 
   //printf("k_H2form=%g epsilon=%g S_H=%g rho_d=%g sigma=%g vH_avr=%g\n", k_H2form, epsilon_H2, S_H, rho_dust, sigma_dust, vH_avr);
@@ -306,7 +307,7 @@ int dust_opacity_tables_create(const char *table_root,
     if(!(fp_r = open_chemistry_table(table_root, fname_dust_Rossland))){
       goto fail;
     }
-    
+
     if(!(fp_p = open_chemistry_table(table_root, fname_dust_Planck))){
       goto fail;
     }
@@ -321,13 +322,13 @@ int dust_opacity_tables_create(const char *table_root,
     while(fgets(buf, sizeof(buf), fp_r) != NULL){
       n = sscanf(buf, "%le %le", &T_dust, &kappa);
       if(n == 2)
-	count_r++;      
+	count_r++;
     }
 
     while(fgets(buf, sizeof(buf), fp_p) != NULL){
       n = sscanf(buf, "%le %le", &T_dust, &kappa);
       if(n == 2)
-	count_p++;      
+	count_p++;
     }
 
     if(count_r != count_p || count_r < 2){
@@ -357,12 +358,12 @@ int dust_opacity_tables_create(const char *table_root,
     }
 
     count_r = count_p = 0;
-        
-    while(fgets(buf, sizeof(buf), fp_r) != NULL){    
+
+    while(fgets(buf, sizeof(buf), fp_r) != NULL){
       n = sscanf(buf, "%le %le", &T_dust, &kappa);
       if(n == 2){
 	tables->temperature[count_r] = T_dust;
-	tables->rosseland[count_r] = kappa;	
+	tables->rosseland[count_r] = kappa;
 	count_r++;
 
 	//printf("[Ross]T_dust=%g kappa=%g\n", T_dust, kappa);
@@ -370,7 +371,7 @@ int dust_opacity_tables_create(const char *table_root,
 
     }
 
-    while(fgets(buf, sizeof(buf), fp_p) != NULL){    
+    while(fgets(buf, sizeof(buf), fp_p) != NULL){
       n = sscanf(buf, "%le %le", &T_dust, &kappa);
       if(n == 2){
 	if(fabs(tables->temperature[count_p]/T_dust-1.) > 1.e-3){
@@ -381,7 +382,7 @@ int dust_opacity_tables_create(const char *table_root,
 	  goto fail;
 	}
 
-	tables->planck[count_p] = kappa;	
+	tables->planck[count_p] = kappa;
 	count_p++;
 
 	//printf("[Planck]T_dust=%g kappa=%g\n", T_dust, kappa);
@@ -460,12 +461,12 @@ static void get_dust_opacities_with_derivative(
   if(i_T != i_T_left)
     c_T = (Kappa_Tdust[i_T]-T_dust) / (Kappa_Tdust[i_T] - Kappa_Tdust[i_T_left]);
 
-  kappa_r = 
-    c_T       * Kappa_Dust_Rossland[i_T_left] + 
+  kappa_r =
+    c_T       * Kappa_Dust_Rossland[i_T_left] +
     (1 - c_T) * Kappa_Dust_Rossland[i_T];
 
-  kappa_p = 
-    c_T       * Kappa_Dust_Planck[i_T_left] + 
+  kappa_p =
+    c_T       * Kappa_Dust_Planck[i_T_left] +
     (1 - c_T) * Kappa_Dust_Planck[i_T];
 
   *kappa_Rossland = kappa_r;
@@ -481,8 +482,9 @@ static void get_dust_opacities_with_derivative(
 	 );*/
 }
 
-void get_dust_opacities(const ChemistryDustTables *tables, double T_dust,
-                        double *kappa_Rossland, double *kappa_Planck){
+void chemistry_dust_opacities_from_tables(
+    const ChemistryDustTables *tables, double T_dust,
+    double *kappa_Rossland, double *kappa_Planck){
   double derivative;
   get_dust_opacities_with_derivative(tables, T_dust, kappa_Rossland,
                                      kappa_Planck, &derivative);

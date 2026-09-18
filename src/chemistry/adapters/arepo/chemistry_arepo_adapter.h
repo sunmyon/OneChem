@@ -30,11 +30,15 @@ typedef struct {
   double photoionization_rate_HI;
   double photoheating_rate_HI;
 
-  /* Reserved until AREPO supplies these radiation rates. */
+  /* Species-specific radiation rates supplied by AREPO. */
   double photoionization_rate_HeI;
   double photoheating_rate_HeI;
   double photoionization_rate_HeII;
   double photoheating_rate_HeII;
+  double photoionization_rate_C[3];
+  double photoheating_rate_C[3];
+  double photoionization_rate_O[3];
+  double photoheating_rate_O[3];
   double rate_CO_diss;
 
   int diagnostics_enabled;

@@ -21,6 +21,9 @@
 #ifndef CLIGHT_REAL
 #define CLIGHT_REAL 2.99792458e10
 #endif
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #define CHEM_DECLARE_SPECIES(symbol, name, charge, h, he, d, c, o) s##symbol,
 enum SPECIES {

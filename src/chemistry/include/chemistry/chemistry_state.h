@@ -34,12 +34,15 @@ typedef struct ChemistryCellEnvironment {
   double photoionization_rate_HI;      /* s^-1 */
   double photoheating_rate_HI;         /* erg s^-1 per HI */
 
-  /* Reserved radiation inputs. They remain zero and have no physical effect
-   * until the corresponding host transport and network reactions are added. */
+  /* Species-specific radiation inputs supplied by the host transport. */
   double photoionization_rate_HeI;     /* s^-1 */
   double photoheating_rate_HeI;        /* erg s^-1 per HeI */
   double photoionization_rate_HeII;    /* s^-1 */
   double photoheating_rate_HeII;       /* erg s^-1 per HeII */
+  double photoionization_rate_C[3];    /* CI, CII, CIII; s^-1 */
+  double photoheating_rate_C[3];       /* erg s^-1 per target ion */
+  double photoionization_rate_O[3];    /* OI, OII, OIII; s^-1 */
+  double photoheating_rate_O[3];       /* erg s^-1 per target ion */
   double local_rate_CO_diss;           /* s^-1 */
 
   double stellar_radiation_flux;       /* erg cm^-2 s^-1 */

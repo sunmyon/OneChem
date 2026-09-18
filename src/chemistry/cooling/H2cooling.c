@@ -58,23 +58,23 @@ double H2cool_LTEfit(double T_K){
   double xLmbd_H2;
   double xLmbd,xLmbdr=0.;
   double xlgT3,a;
-  
+
   if(T_K > 100.){
     xlgT3=log10(T_K*1.e-3);
     a=-20.584225
       +5.0194035*xlgT3
-      -1.5738805*pow(xlgT3,2) 
+      -1.5738805*pow(xlgT3,2)
       -4.7155769*pow(xlgT3,3)
       +2.4714161*pow(xlgT3,4)
       +5.4710750*pow(xlgT3,5)
       -3.9467356*pow(xlgT3,6)
       -2.2148338*pow(xlgT3,7)
       +1.8161874*pow(xlgT3,8);
-	
+
     xLmbd=pow(10.,a);
   }else
     xLmbd=0.;
-    
+
   /*if(T_rad > 100.){
     xlgT3=log10(T_rad*1.e-3);
     double ar=-20.584225
@@ -118,7 +118,7 @@ double fesc_fit(double T_K, double xNc_H2){
     a4= 8.24607e-13;
     a5= -7.65975e-16;
   }else if(T_K <4.e3){
-    a0=0.827472;       
+    a0=0.827472;
     a1= 0.000107697;
     a2= -8.25123e-8;
     a3= 1.92812e-12;
@@ -127,12 +127,12 @@ double fesc_fit(double T_K, double xNc_H2){
   }else{
     a0= 1.11569;
     a1= -0.000329302;
-    a2= 1.01846e-7;     
+    a2= 1.01846e-7;
     a3= -1.46666e-11;
     a4= 1.00764e-15;
     a5= -2.68873e-20;
   }
-  
+
   alpha=a0+a1*T_K+a2*T_K2+a3*T_K3+a4*T_K4+a5*T_K5;
 
   b0 = 24.0561;
@@ -206,7 +206,7 @@ double H2_cooling_GP12(double xnH,double T_K,double y_H,double y_H2,double y_He,
 			   + 0.43693353  * logT3_p3
 			   - 0.14913216  * logT3_p4
 			   - 0.033638326 * logT3_p5);
-  
+
 
 
   /* ----- H2-He : based on Flower+'98, Balakrishnan+'99 */
@@ -216,16 +216,16 @@ double H2_cooling_GP12(double xnH,double T_K,double y_H,double y_H2,double y_He,
 			   + 0.29036281 * logT3_p3
 			   - 0.16596184 * logT3_p4
 			   + 0.19191375 * logT3_p5);
-  
-  
+
+
   /* ----- H2-H+ : based on Gerlich'90 and Krstic'02; Fit accurate to within 5%. */
   cool_rate_G08_H2p = pow(10.0, -21.716699
 			  + 1.3865783   * logT3
 			  - 0.37915285  * logT3_p2
 			  + 0.11453688  * logT3_p3
 			  - 0.23214154  * logT3_p4
-			  + 0.058538864 * logT3_p5);  
-  
+			  + 0.058538864 * logT3_p5);
+
   /* ----- H2-e : based on Draine+'83*/
   if(T_K > 2.e2){
     cool_rate_G08_H2e = pow(10.0, -22.190316
@@ -242,7 +242,7 @@ double H2_cooling_GP12(double xnH,double T_K,double y_H,double y_H2,double y_He,
 			    -15.169160   * logT3_p4
 			    - 0.98120322 * logT3_p5);
   }
-  
+
   /* cooling rate per molecule [erg sec^-1] */
   cool_rate_H2 = (cool_rate_G08_H2H  * y_H
 		  + cool_rate_G08_H2H2 * y_H2
@@ -251,12 +251,12 @@ double H2_cooling_GP12(double xnH,double T_K,double y_H,double y_H2,double y_He,
 		  + cool_rate_G08_H2e  * y_e);
 
   double xLmbd_H2 = cool_rate_H2 * xnH * xnH * y_H2;
-  
+
   return xLmbd_H2;
 }
 
 /*-----------------------------------------------------------------------
-  ! low-density H2 cooling fit by Glover(2015) 
+  ! low-density H2 cooling fit by Glover(2015)
   !
   !     xLmbd_H2 : H2 cooling rate per unit volume
   !     !skeMeMo:I use this subroutine at n > 1.d8
@@ -304,7 +304,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   xlgT3_6 = xlgT3_5 * xlgT3;
   xlgT3_7 = xlgT3_6 * xlgT3;
   xlgT3_8 = xlgT3_7 * xlgT3;
-  
+
   if(T_K < 100.)
     xLd_oH2H=5.09e-27*sqrt(T3)*exp(-852.5/T_K);
   else{
@@ -337,7 +337,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   if(T_K < 100.){
     xLd_pH2H=8.16e-26*sqrt(T3)*exp(-509.85/T_K);
   }else{
-       xlgLd_pH2H=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
+       xlgLd_pH2H=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
 	 +a4*xlgT3_4+a5*xlgT3_5+a6*xlgT3_6+a7*xlgT3_7;
        xLd_pH2H=pow(10.,xlgLd_pH2H);
   }
@@ -353,7 +353,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   a3=0.28429361;
   a4=-0.20581113;
   a5=0.13112378;
-  xlgLd_pH2pH2=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
+  xlgLd_pH2pH2=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
     +a4*xlgT3_4+a5*xlgT3_5;
   xLd_pH2pH2=pow(10.,xlgLd_pH2pH2);
 
@@ -364,7 +364,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   a3=0.31074159;
   a4=-0.17455629;
   a5=0.18530758;
-  xlgLd_pH2oH2=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
+  xlgLd_pH2oH2=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
     +a4*xlgT3_4+a5*xlgT3_5;
   xLd_pH2oH2=pow(10.,xlgLd_pH2oH2);
 
@@ -375,7 +375,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   a3=0.54823768;
   a4=-0.33679759;
   a5=0.20771406;
-  xlgLd_oH2pH2=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
+  xlgLd_oH2pH2=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
     +a4*xlgT3_4+a5*xlgT3_5;
   xLd_oH2pH2=pow(10.,xlgLd_oH2pH2);
 
@@ -386,12 +386,12 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   a3=0.83561432;
   a4=-0.40772247;
   a5=0.096025713;
-  xlgLd_oH2oH2=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
+  xlgLd_oH2oH2=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
     +a4*xlgT3_4+a5*xlgT3_5;
   xLd_oH2oH2=pow(10.,xlgLd_oH2oH2);
 
 
-  xLd_H2H2=x_p*x_p*xLd_pH2pH2+x_p*x_o*xLd_pH2oH2 
+  xLd_H2H2=x_p*x_p*xLd_pH2pH2+x_p*x_o*xLd_pH2oH2
     +x_o*x_p*xLd_oH2pH2+x_o*x_o*xLd_oH2oH2;
 
   /***************     para-H2 with He      ****************/
@@ -401,7 +401,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   a3=0.42280623;
   a4=-0.30171138;
   a5=0.12872839;
-  xlgLd_pH2He=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
+  xlgLd_pH2He=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
     +a4*xlgT3_4+a5*xlgT3_5;
   xLd_pH2He=pow(10.,xlgLd_pH2He);
 
@@ -412,7 +412,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   a3=0.739874;
   a4=-0.258940;
   a5=0.120573;
-  xlgLd_oH2He=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
+  xlgLd_oH2He=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
     +a4*xlgT3_4+a5*xlgT3_5;
   xLd_oH2He=pow(10.,xlgLd_oH2He);
 
@@ -428,14 +428,14 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
     a3=-0.23619985;
     a4=-0.51002221;
     a5=0.32168730;
-       xlgLd_H2Hp=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
+       xlgLd_H2Hp=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
 	 +a4*xlgT3_4+a5*xlgT3_5;
        xLd_H2Hp=pow(10.,xlgLd_H2Hp);
   }else{
       xLd_H2Hp=0.;
   }
 
-   
+
   /******************     H2 with e (KS MODIFIED) **********/
   if(100.<T_K && T_K<500.){
     a0=-21.928796;
@@ -447,8 +447,8 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
     a6=801.81247;
     a7=364.14446;
     a8=70.609154;
-    xlgLd_H2e=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
-      +a4*xlgT3_4+a5*xlgT3_5+a6*xlgT3_6 
+    xlgLd_H2e=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
+      +a4*xlgT3_4+a5*xlgT3_5+a6*xlgT3_6
       +a7*xlgT3_7+a8*xlgT3_8;
     xLd_H2e=pow(10.,xlgLd_H2e);
   }else if(500.<T_K){
@@ -461,8 +461,8 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
     a6=8.9167183;
     a7=6.4380698;
     a8=-6.3701156;
-    xlgLd_H2e=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3 
-      +a4*xlgT3_4+a5*xlgT3_5+a6*xlgT3_6 
+    xlgLd_H2e=a0+a1*xlgT3+a2*xlgT3_2+a3*xlgT3_3
+      +a4*xlgT3_4+a5*xlgT3_5+a6*xlgT3_6
       +a7*xlgT3_7+a8*xlgT3_8;
     xLd_H2e=pow(10.,xlgLd_H2e);
   }else{
@@ -470,7 +470,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
   }
 
 
-  xLmbd_H2=xLd_H2H*y_H+xLd_H2H2*y_H2+xLd_H2He*y_He 
+  xLmbd_H2=xLd_H2H*y_H+xLd_H2H2*y_H2+xLd_H2He*y_He
     +xLd_H2Hp*y_Hp+xLd_H2e*y_e;
 
   xLmbd_H2 = xLmbd_H2 * xnH * xnH * y_H2;
@@ -494,16 +494,16 @@ double HD_cooling_GP12(double nH, double T_gas,
   /* ----- HD-H collision cooling : 1<n_H[cm^-3]<1E8 & 1E2<T_gas[K]<1E4 */
   /*       >> eq(4) & Table(1) in Lipovka et al. (2005) */
 
-  double n_HI; 
+  double n_HI;
   double log10n_HI1, log10n_HI2, log10n_HI3, log10n_HI4;
   n_HI  = yHI * nH;
   log10n_HI1 = log10(n_HI);
   log10n_HI2 = log10n_HI1*log10n_HI1;
   log10n_HI3 = log10n_HI2*log10n_HI1;
   log10n_HI4 = log10n_HI3*log10n_HI1;
-  
+
   if(nH > 1. && nH < 1.e7){
-    cool_rate_LOW_HD 
+    cool_rate_LOW_HD
       = pow(10.0,
 	    ( -42.57688 +0.92433*log10n_HI1 +0.54962*log10n_HI2 -0.07676 *log10n_HI3 +0.00275    *log10n_HI4 )
 	    + ( +21.93385 +0.77952*log10n_HI1 -1.06447*log10n_HI2 +0.11864 *log10n_HI3 -0.00366    *log10n_HI4 ) * log10T
@@ -516,9 +516,9 @@ double HD_cooling_GP12(double nH, double T_gas,
 
   /* HD : LTE(High-density) cooling function */
   /*       >> eq.(7) & Tanle(1) in Coppola et al. (2011) */
-  
-  cool_rate_LTE_HD 
-    = pow(10.0, 
+
+  cool_rate_LTE_HD
+    = pow(10.0,
 	  (- 55.5725
 	   + 56.649   * log10T
 	   - 37.9102  * pow(log10T, 2.)
@@ -529,10 +529,10 @@ double HD_cooling_GP12(double nH, double T_gas,
 
 
   rate = dmin(nH/1.e7, 1.);
-  cool_rate_HD = dmin(cool_rate_LTE_HD, cool_rate_LOW_HD*(1-rate) + cool_rate_LTE_HD*rate);  //=[erg sec^-1] 
+  cool_rate_HD = dmin(cool_rate_LTE_HD, cool_rate_LOW_HD*(1-rate) + cool_rate_LTE_HD*rate);  //=[erg sec^-1]
 
 
-  /* ---------- Heating by CMB */  
+  /* ---------- Heating by CMB */
   /* --------- Cooling by HD : Flower et al. 2000 */
   double aa,bb,omeg,phi,c1,c2,d1,d2,dens,y,x,w,dwdx;
   double T_CMB, heat_rate, edot_HD;
@@ -553,7 +553,7 @@ double HD_cooling_GP12(double nH, double T_gas,
   y = log10(dens);
 
   heat_rate = 0;
-  
+
   x = log10(radiation_temperature);
   w = 0.5 * y + aa * pow(x,bb) - sqrt( 0.25 * y*y + (c1*y+c2) * sin(omeg*x+phi) + (d1*y+d2) );
 
@@ -570,7 +570,7 @@ double HD_cooling_GP12(double nH, double T_gas,
 	   yHDI, nH, cool_rate_HD, cool_rate_LOW_HD, cool_rate_LTE_HD, rate, heat_rate);
   }
 #endif
-  
+
   /* ----- HD cooling rate per volume [erg/s/cm^3] */
   return edot_HD;
 }
@@ -621,9 +621,9 @@ double fesc_HD_fit(double T_K, double xNc_HD){
 
   lgNc = b0 + b1*lgT1 + b2*lgT2 + b3*lgT3 + b4*lgT4 + b5*lgT5;
   Ncr = pow(10., lgNc);
-            
+
   fesc = 1. * pow(1.+xNc_HD/Ncr,-alpha);
-            
+
   return fesc;
 }
 

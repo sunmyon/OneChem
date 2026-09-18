@@ -78,19 +78,15 @@ double compute_gamma_from_abund(const double *abund, double T_gas)
 }
 
 double chemistry_molecular_weight(const double *abund){
-  double sum_fraction =  abund[sELEC] + abund[sHI] + abund[sHII] + abund[sHM] + abund[sH2I]
-#ifdef H2_PLUS
-    + abund[sH2II]
+  double sum_fraction = 0.0;
+  for(int species = 0; species < sSTORED_END; species++)
+    sum_fraction += abund[species];
+
+  /* Without an evolved He network, helium remains a fixed neutral particle
+   * reservoir and therefore is not represented in abund[]. */
+#ifndef HELIUM
+  sum_fraction += XHe;
 #endif
-#ifdef HD
-    + D_number_fraction
-#endif
-    + XHe
-#ifdef CARBON_OXYGEN_CHEMISTRY
-    + abund[sCI] + abund[sCII] + abund[sCO] + abund[sCO2]
-    + abund[sOI] + abund[sOH] + abund[sH2O] + abund[sO2]
-#endif
-    ;
 
   return 1.0 / sum_fraction;
 }

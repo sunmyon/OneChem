@@ -3,6 +3,7 @@
 CHEMISTRY_ROOT ?= src/chemistry
 CHEMISTRY_PORTABLE_CORE_SOURCES += \
   $(CHEMISTRY_ROOT)/interface/chemistry_api.c \
+  $(CHEMISTRY_ROOT)/interface/chemistry_normalize.c \
   $(CHEMISTRY_ROOT)/driver/chemistry_driver.c \
   $(CHEMISTRY_ROOT)/species.c \
   $(CHEMISTRY_ROOT)/initialization/chemistry_init.c \

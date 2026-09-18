@@ -1,11 +1,13 @@
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "include/chemistry/chemistry.h"
 
 #include "chemistry_core.h"
+#include "dust_cooling.h"
 #include "chemistry_driver.h"
 #include "chemistry_init.h"
 #include "chemistry_types.h"
@@ -132,6 +134,23 @@ ChemistryStatus chemistry_step_prepare(
   return CHEMISTRY_STATUS_OK;
 }
 
+ChemistryStatus chemistry_dust_opacities(
+    const ChemistryContext *context, double temperature,
+    double *kappa_rosseland, double *kappa_planck)
+{
+  if(context == NULL || !isfinite(temperature) || temperature < 0.0 ||
+     kappa_rosseland == NULL || kappa_planck == NULL)
+    return CHEMISTRY_STATUS_INVALID_ARGUMENT;
+
+#ifdef DUST_COOLING
+  chemistry_dust_opacities_from_tables(context->run.dust_tables, temperature,
+                                        kappa_rosseland, kappa_planck);
+  return CHEMISTRY_STATUS_OK;
+#else
+  return CHEMISTRY_STATUS_INVALID_ARGUMENT;
+#endif
+}
+
 static void import_global_environment(const ChemistryStepContext *step,
                                       ChemGlobalStep *global)
 {
@@ -178,6 +197,14 @@ static void import_cell_environment(const ChemistryContext *context,
   environment->photoheating_rate_HeII = cell->photoheating_rate_HeII;
 #endif
 #ifdef CARBON_OXYGEN_CHEMISTRY
+  for(int stage = 0; stage < 3; stage++) {
+    environment->photoionization_rate_C[stage] =
+        cell->photoionization_rate_C[stage];
+    environment->photoheating_rate_C[stage] = cell->photoheating_rate_C[stage];
+    environment->photoionization_rate_O[stage] =
+        cell->photoionization_rate_O[stage];
+    environment->photoheating_rate_O[stage] = cell->photoheating_rate_O[stage];
+  }
   environment->rate_CO_diss = cell->local_rate_CO_diss;
 #endif
   environment->stellar_radiation_flux = cell->stellar_radiation_flux;

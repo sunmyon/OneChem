@@ -55,4 +55,46 @@ radiation-check:
 	./tests/radiation_rates_test
 	$(RM) tests/radiation_rates_test
 
+.PHONY: high-ionization-option-check metal-ionization-check photoionization-check co-photodissociation-check carbon-oxygen-normalization-check
+high-ionization-option-check:
+	@set -e; for options in "" "-DCARBON_OXYGEN_HIGH_IONIZATION -DEXPECT_HIGH_IONIZATION"; do \
+	  $(CC) $(CPPFLAGS) $(CFLAGS) -DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY -DMETALLICITY=-4. $$options \
+	    -I. -Icommon species.c tests/high_ionization_option_test.c -lm -o tests/high_ionization_option_test; \
+	  ./tests/high_ionization_option_test; \
+	done
+	$(RM) tests/high_ionization_option_test
+
+metal-ionization-check:
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-function -DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY \
+	  -DCARBON_OXYGEN_HIGH_IONIZATION -DRYTR_CARBON_OXYGEN_IONIZATION -DRYTR_NCO -DMETALLICITY=-4. \
+	  -I. -Icommon -Ireaction_network -Itables \
+	  species.c reaction_network/forward_rates.c reaction_network/reaction_network.c \
+	  tests/metal_ionization_network_test.c -lm -o tests/metal_ionization_network_test
+	./tests/metal_ionization_network_test
+	$(RM) tests/metal_ionization_network_test
+
+photoionization-check:
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I../radiation \
+	  ../radiation/photoionization_bins.c tests/photoionization_bins_test.c -lm \
+	  -o tests/photoionization_bins_test
+	./tests/photoionization_bins_test
+	$(RM) tests/photoionization_bins_test
+
+co-photodissociation-check:
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I../radiation \
+	  ../radiation/co_photodissociation.c tests/co_photodissociation_test.c -lm \
+	  -o tests/co_photodissociation_test
+	./tests/co_photodissociation_test
+	$(RM) tests/co_photodissociation_test
+
+carbon-oxygen-normalization-check:
+	@set -e; for options in "" "-DCARBON_OXYGEN_CHEMISTRY" \
+	  "-DCARBON_OXYGEN_CHEMISTRY -DCARBON_OXYGEN_HIGH_IONIZATION"; do \
+	  $(CC) $(CPPFLAGS) $(CFLAGS) -DCHEMISTRY_SC -DMETALLICITY -DHELIUM -DHD -DHD_PLUS -DDMINUS -DH2_PLUS $$options \
+	    -Iinclude -I. -Icommon species.c interface/chemistry_normalize.c tests/carbon_oxygen_normalization_test.c \
+	    -lm -o tests/carbon_oxygen_normalization_test; \
+	  ./tests/carbon_oxygen_normalization_test; \
+	done
+	$(RM) tests/carbon_oxygen_normalization_test
+
 check: api-check arepo-adapter-check arepo-adapter-compile-check arepo-background-check core-dependency-check global-state-check host-boundary-check no-lazy-init-check no-process-termination-check radiation-check

@@ -37,6 +37,14 @@ void chemistry_standalone_configure(const ChemRunContext *run,
   standalone_run_is_configured = 1;
 }
 
+int chemistry_standalone_set_timescale_safety_factor(double value)
+{
+  if(!standalone_run_is_configured || !isfinite(value) || value <= 0.0)
+    return 0;
+  standalone_run.timescale_safety_factor = value;
+  return 1;
+}
+
 void chemistry_standalone_prepare_step(const ChemGlobalStep *step)
 {
   if(step == NULL) {
@@ -80,6 +88,21 @@ static void import_environment(const chemdata_in *input,
 #ifdef IONIZATION_PHOTON
   environment->photoionization_rate_HI = input->k22;
   environment->photoheating_rate_HI = input->piHI;
+#endif
+#ifdef HELIUM
+  environment->photoionization_rate_HeI = input->photoionization_rate_HeI;
+  environment->photoheating_rate_HeI = input->photoheating_rate_HeI;
+  environment->photoionization_rate_HeII = input->photoionization_rate_HeII;
+  environment->photoheating_rate_HeII = input->photoheating_rate_HeII;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  for(int stage = 0; stage < 3; stage++) {
+    environment->photoionization_rate_C[stage] = input->photoionization_rate_C[stage];
+    environment->photoheating_rate_C[stage] = input->photoheating_rate_C[stage];
+    environment->photoionization_rate_O[stage] = input->photoionization_rate_O[stage];
+    environment->photoheating_rate_O[stage] = input->photoheating_rate_O[stage];
+  }
+  environment->rate_CO_diss = input->rate_CO_diss;
 #endif
   environment->ID = input->ID;
 }

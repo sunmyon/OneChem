@@ -49,6 +49,16 @@ static void import_environment(const ChemArepoCell *cell,
   environment->photoheating_rate_HeI = cell->photoheating_rate_HeI;
   environment->photoionization_rate_HeII = cell->photoionization_rate_HeII;
   environment->photoheating_rate_HeII = cell->photoheating_rate_HeII;
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  for(int stage = 0; stage < 3; stage++) {
+    environment->photoionization_rate_C[stage] =
+        cell->photoionization_rate_C[stage];
+    environment->photoheating_rate_C[stage] = cell->photoheating_rate_C[stage];
+    environment->photoionization_rate_O[stage] =
+        cell->photoionization_rate_O[stage];
+    environment->photoheating_rate_O[stage] = cell->photoheating_rate_O[stage];
+  }
+#endif
   environment->local_rate_CO_diss = cell->rate_CO_diss;
   environment->diagnostics_enabled = cell->diagnostics_enabled;
   environment->diagnostic_id = (uint64_t)cell->diagnostic_id;

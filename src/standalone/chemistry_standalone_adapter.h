@@ -14,6 +14,7 @@ typedef struct {
 /* Called once per run, after the standalone host has established its units. */
 void chemistry_standalone_configure(const ChemRunContext *run,
                                     const ChemStandaloneUnits *units);
+int chemistry_standalone_set_timescale_safety_factor(double value);
 
 /* Called once whenever CMB, scale factor, or uniform backgrounds change. */
 void chemistry_standalone_prepare_step(const ChemGlobalStep *step);
