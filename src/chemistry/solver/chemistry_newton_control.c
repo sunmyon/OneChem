@@ -67,6 +67,7 @@ double chemistry_newton_evaluate_residual(
 
   double constraint_residual[CHEM_MAX_CONSERVATION_CONSTRAINTS] = {0.0};
   double constraint_absolute[CHEM_MAX_CONSERVATION_CONSTRAINTS] = {0.0};
+  double constraint_gross[CHEM_MAX_CONSERVATION_CONSTRAINTS] = {0.0};
   double constraint_roundoff[CHEM_MAX_CONSERVATION_CONSTRAINTS] = {0.0};
   size_t constraint_terms[CHEM_MAX_CONSERVATION_CONSTRAINTS] = {0};
 
@@ -92,6 +93,8 @@ double chemistry_newton_evaluate_residual(
       double term = coefficient * species_residual[species];
       constraint_residual[constraint] += term;
       constraint_absolute[constraint] += fabs(term);
+      constraint_gross[constraint] += fabs(coefficient) *
+          (dt * (production[species] + loss[species]) + fabs(change));
       constraint_roundoff[constraint] +=
           fabs(coefficient) * independent_roundoff;
       constraint_terms[constraint]++;
@@ -109,6 +112,7 @@ double chemistry_newton_evaluate_residual(
       continue;
     double implied_residual = 0.0;
     double implied_absolute = 0.0;
+    double implied_gross = 0.0;
     double implied_roundoff = 0.0;
     for(int constraint = 0; constraint < conservation->count; constraint++) {
       double inverse = conservation->dependent_inverse[
@@ -116,6 +120,7 @@ double chemistry_newton_evaluate_residual(
       double term = inverse * constraint_residual[constraint];
       implied_residual -= term;
       implied_absolute += fabs(term);
+      implied_gross += fabs(inverse) * constraint_gross[constraint];
       implied_roundoff += fabs(inverse) * constraint_roundoff[constraint];
     }
     implied_roundoff += chemistry_newton_roundoff_factor(
@@ -123,8 +128,13 @@ double chemistry_newton_evaluate_residual(
     double change = abundance[species] - initial_abundance[species];
     double gross_scale = dt * (production[species] + loss[species]) +
                          fabs(change);
+    /* A dependent residual is reconstructed from independent residuals.
+     * Propagate their gross-reaction tolerance through the same inverse
+     * conservation map; otherwise a cancellation can make its test stricter
+     * than every independent equation it represents. */
     double component = fabs(implied_residual) /
-        (CHEM_NEWTON_GROSS_TOLERANCE * dmax(gross_scale, DBL_MIN) +
+        (CHEM_NEWTON_GROSS_TOLERANCE *
+             dmax(dmax(gross_scale, implied_gross), DBL_MIN) +
          implied_roundoff + DBL_MIN);
     if(component > certified_error)
       certified_error = component;
