@@ -4,6 +4,15 @@ EXEC   = 1ZONE
 
 OPT1  += -DOMUKAI05
 OPT1  += -DCHEMISTRY_STANDALONE_HOST
+# Every standalone entry point (--chem-step, --chem-replay-log, the SphP[]
+# particle loop, ...) supplies photoionization/photoheating rates as
+# external input (CLI record fields or loaded particle data), never by
+# computing them internally.  The legacy internal ionization-table
+# initializers main.c calls when IONIZATION_PHOTON is set and this is NOT
+# defined (init_ionization_rad(), make_ionization_rate_table()) only exist
+# in legacy/chemistry_old/, which is not linked into this (CHEMISTRY_PORTABLE)
+# build, so without this the link fails whenever IONIZATION_PHOTON is on.
+OPT1  += -DCHEM_REPLAY_EXTERNAL_RADIATION
 #OPT1  += -DSHR_ITER
 #OPT1  += -DHIGH_TEMP
 #OPT1  += -DFULLY_MOLECULAR
@@ -39,6 +48,19 @@ CARBON_OXYGEN_CHEMISTRY ?= 1
 CARBON_OXYGEN_CONSERVATION ?= 1
 MOLECULAR_LINE_COOLING ?= 1
 EXTRA_OPT ?=
+# Derive chemistry-relevant compile options directly from a real AREPO
+# Config.sh instead of hand-copying flags into EXTRA_OPT (see
+# tools/arepo_config_to_extra_opt.py for the exact rule: only option names
+# that ONEZONE's own source actually #ifdefs on are passed through, so
+# AREPO-only physics in Config.sh -- gravity, mesh, sinks, MPI, ... -- is
+# never blindly forwarded).
+#   Usage: make AREPO_CONFIG=/path/to/Config.sh
+AREPO_CONFIG ?=
+ifneq ($(AREPO_CONFIG),)
+AREPO_DERIVED_OPT := $(shell python3 $(CURDIR)/tools/arepo_config_to_extra_opt.py $(AREPO_CONFIG))
+$(info Derived from $(AREPO_CONFIG): $(AREPO_DERIVED_OPT))
+OPT1 += $(AREPO_DERIVED_OPT)
+endif
 OPTIMIZATION ?= -O2
 OPT1 += $(EXTRA_OPT)
 ifeq ($(EXPLICIT_CHEMISTRY_UPDATE),SIMULTANEOUS)
