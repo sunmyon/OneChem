@@ -26,6 +26,15 @@ ChemistryStatus evaluate_radiative_cooling(const ChemEnvironment *environment, c
      environment->global == NULL || step == NULL || state == NULL ||
      work == NULL)
     return CHEMISTRY_STATUS_INVALID_ARGUMENT;
+
+  if(work->diagnostics_enabled){
+    for(int species = 0; species < N_SP; species++) {
+      printf("evaluate_radiative_cooling [%3d] = %.17e\n",
+	     species,
+	     state->abund[species]);
+    }
+  }
+
 #ifdef CHEMISTRY_PROFILE
   double profile_timer = profile_start();
 #endif
@@ -311,7 +320,7 @@ ChemistryStatus evaluate_radiative_cooling(const ChemEnvironment *environment, c
     edot_PE = dust_PEheating(G0, nH, y_e, T_gas, metallicity,
                              work->diagnostics_enabled);
     if(work->diagnostics_enabled)
-      printf("edot_dust=%g cont=%g T_dust=%g\n", edot_dust, edot_cont, work->continuum.dust_temperature);
+      printf("edot_dust=%g cont=%g T_dust=%g y_e=%g\n", edot_dust, edot_cont, work->continuum.dust_temperature, y_e);
   }
 #endif
 
@@ -691,9 +700,9 @@ ChemistryStatus chemical_cooling(const ChemEnvironment *environment, const ChemS
 
       edot_H2form_HM = eV_to_erg * ( work->rates.forward[8] * n_HM * n_HI * 3.73/ (1. + n_crit/n_nuclei)
 #ifdef H2_PLUS
-				   + work->rates.forward[10] * n_H2II * n_HI * (1.83 / (1. + n_crit/n_nuclei))
+				     + work->rates.forward[10] * n_H2II * n_HI * (1.83 / (1. + n_crit/n_nuclei))
 #endif
-				   ); //1.38?? modified to 1.83
+				     ); //1.38?? modified to 1.83
       edot_H2form_dust = eV_to_erg * work->rates.forward[51] * n_HI * (0.2 + 4.28/ (1. + n_crit/n_nuclei));
       edot_H2form_3body = 4.48 * eV_to_erg * ( ( work->rates.forward[55]*n_HI + work->rates.forward[57]*n_H2I ) * n_HI * n_HI
 					       - ( work->rates.forward[11]*n_HI + work->rates.forward[58]*n_H2I) * n_H2I );
@@ -722,6 +731,36 @@ ChemistryStatus chemical_cooling(const ChemEnvironment *environment, const ChemS
   }
 
   work->evaluation.rhoU_dot_chem = edot_H2form + edot_ciHI + edot_HMform;
+
+  if(work->diagnostics_enabled) {
+    printf("DEBUG_RHOU_CHEM "
+	   "ID=%d Tgas=%.17e dt=%.17e n_nuclei=%.17e "
+	   "rhoU_dot_chem=%.17e "
+	   "H2form=%.17e ciHI=%.17e HMform=%.17e "
+	   "dy_H2=%.17e dy_HII=%.17e dy_HM=%.17e "
+	   "H2_old=%.17e H2_new=%.17e "
+	   "HII_old=%.17e HII_new=%.17e "
+	   "HM_old=%.17e HM_new=%.17e\n",
+	   environment->ID,
+	   T_gas,
+	   dt,
+	   n_nuclei,
+	   work->evaluation.rhoU_dot_chem,
+	   edot_H2form,
+	   edot_ciHI,
+	   edot_HMform,
+	   d_abundance[sH2I],
+	   d_abundance[sHII],
+	   d_abundance[sHM],
+	   abund_old[sH2I],
+	   state->abund[sH2I],
+	   abund_old[sHII],
+	   state->abund[sHII],
+	   abund_old[sHM],
+	   state->abund[sHM]);
+    fflush(stdout);
+  }
+
   if(!isfinite(work->evaluation.rhoU_dot_chem)) {
     work->status = CHEMISTRY_STATUS_INTERNAL_ERROR;
     return work->status;

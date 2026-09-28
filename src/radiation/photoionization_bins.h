@@ -26,11 +26,30 @@ typedef struct {
   double heating[PHOTOIONIZATION_TEMPERATURE_COUNT]
                 [PHOTOIONIZATION_GROUP_COUNT]
                 [PHOTOIONIZATION_TRANSITION_COUNT];
-  double opacity[PHOTOIONIZATION_TEMPERATURE_COUNT]
+  double opacity_ratio[PHOTOIONIZATION_TEMPERATURE_COUNT]
                 [PHOTOIONIZATION_GROUP_COUNT]
                 [PHOTOIONIZATION_ABSORBER_COUNT];
   int initialized;
 } PhotoionizationBinTables;
+
+/* Temperature-interpolated coefficients, shared by all rays to one source. */
+typedef struct {
+  double rate[PHOTOIONIZATION_GROUP_COUNT][PHOTOIONIZATION_TRANSITION_COUNT];
+  double heating[PHOTOIONIZATION_GROUP_COUNT][PHOTOIONIZATION_TRANSITION_COUNT];
+  double opacity_ratio[PHOTOIONIZATION_GROUP_COUNT][PHOTOIONIZATION_ABSORBER_COUNT];
+  int initialized;
+} PhotoionizationBinCoefficients;
+
+void photoionization_bins_prepare(const PhotoionizationBinTables *tables,
+                                 double effective_temperature,
+                                 PhotoionizationBinCoefficients *coefficients);
+void photoionization_bins_evaluate_prepared(
+    const PhotoionizationBinCoefficients *coefficients,
+    double radius_squared_cm2, int absorber_count,
+    const double tau_near[PHOTOIONIZATION_ABSORBER_COUNT],
+    const double delta_tau[PHOTOIONIZATION_ABSORBER_COUNT],
+    double rate[PHOTOIONIZATION_TRANSITION_COUNT],
+    double heating[PHOTOIONIZATION_TRANSITION_COUNT]);
 
 double photoionization_threshold_energy(enum PhotoionizationTransition transition);
 double photoionization_cross_section(enum PhotoionizationTransition transition,

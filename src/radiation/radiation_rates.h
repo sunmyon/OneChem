@@ -67,3 +67,6 @@ int radiation_background_state_update(
  * chemistry reaction and cooling modules do not call this function. */
 double radiation_hminus_photodetachment_cross_section(
     double photon_energy_ev);
+
+/* Temporary source-compatible entry point for the selected AREPO RayTrace. */
+double Hminus_detachment_John1988(double photon_energy_ev);

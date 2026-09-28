@@ -1,5 +1,57 @@
 # ONEZONE / AREPO chemistry merge (2026-09-18)
 
+## Shared-source integration, 2026-09-28
+
+Compared ONEZONE `b67a6f5` with AREPO `feature/1zone-chemistry`
+at `ce5680c273` (the branch worktree, not the sibling `arepo` checkout,
+which currently runs `sink-wind-feedback`). The AREPO worktree is:
+
+```text
+/Users/j/Documents/Codex/2026-09-11/referenced-chatgpt-conversation-this-is-an/work/arepo-1zone
+```
+
+The Newton and energy-solver numerical changes were already present in both
+trees. Shared-core differences were diagnostic output and API formatting.
+Imported AREPO's diagnostics, cached photoionization coefficients and their
+reference regression data, radiation compatibility function, and host adapter
+blackbody/dust-opacity entry points into ONEZONE. Fixed chemical-heating
+diagnostics in both trees to print the newly computed `rhoU_dot_chem`, rather
+than the previous workspace value; added the missing shielding-log newline.
+
+All 65 shared runtime C/header files now match byte for byte. Check again with:
+
+```sh
+python3 tools/check_chemistry_parity.py /path/to/arepo-1zone
+```
+
+The command is read-only and exits nonzero for differences or missing files.
+It compares the core directories, public API/normalization implementations,
+and radiation module. It deliberately excludes host adapters, `chem_balance.c`,
+snapshot integration, build files, tests, docs, and editor backup files.
+Matching source does not establish matching host inputs or compiler options.
+
+Validation in ONEZONE: `make -C src/chemistry check`, high-ionization option,
+metal-ionization, photoionization (including cached-coefficient references),
+CO-photodissociation, and elemental normalization checks all passed.
+`make check-energy-replay` passed all four cases, including forced chemistry
+trial failures exercising the non-finite bisection guard.
+
+The additional initialization regression reports `short-step solve failed`
+three times, both in the integrated tree and in a clean archive of pre-merge
+`b67a6f5`; this is an existing failure, not a passing validation. The root
+Makefile's initialization target also prefixes its executable with `./`, so
+an absolute `BUILDDIR` cannot be used to run that target directly; the
+integrated test binary was invoked by its absolute path after building.
+
+This is the first integration slice. AREPO-specific snapshot handling,
+`chem_balance.c` (including a hard-coded particle diagnostic trigger), build
+fragments, and host integration tests still differ. AREPO's full executable
+was not rebuilt here. The two repositories still carry separate source
+copies; the parity check detects drift but does not automatically synchronize
+them. Changes remain uncommitted in both working trees.
+
+## Previous integration (2026-09-18)
+
 Source of truth for imported changes: AREPO `feature/1zone-chemistry`, commit
 `121b27cb2e`, under `src/chemistry_ONECHEM`. The comparison base was the older
 local AREPO `src/chemistry_ONECHEM`; the destination was the existing, dirty

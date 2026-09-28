@@ -212,14 +212,14 @@ static void import_cell_environment(const ChemistryContext *context,
 }
 
 ChemistryStatus chemistry_advance(
-    const ChemistryContext *context,
-    const ChemistryStepContext *step,
-    ChemistryWorkspace *workspace,
-    const ChemistryCellEnvironment *cell,
-    double duration_s,
-    const ChemistryAdvanceOptions *options,
-    ChemistryState *state,
-    ChemistryResult *result)
+				  const ChemistryContext *context,
+				  const ChemistryStepContext *step,
+				  ChemistryWorkspace *workspace,
+				  const ChemistryCellEnvironment *cell,
+				  double duration_s,
+				  const ChemistryAdvanceOptions *options,
+				  ChemistryState *state,
+				  ChemistryResult *result)
 {
   if(context == NULL || step == NULL || workspace == NULL || cell == NULL ||
      options == NULL || state == NULL || result == NULL ||
@@ -249,8 +249,8 @@ ChemistryStatus chemistry_advance(
 
   const double initial_thermal_energy = core_state.utherm_cgs;
   ChemistryStatus status = chemistry_core_advance(
-      (int)options->mode, &environment, duration_s, &core_state,
-      &workspace->core);
+						  (int)options->mode, &environment, duration_s, &core_state,
+						  &workspace->core);
 
   if(status == CHEMISTRY_STATUS_OK) {
     memcpy(state->abundances, core_state.abund,
@@ -260,24 +260,24 @@ ChemistryStatus chemistry_advance(
   }
 
   const double cooling_radiative =
-      fabs(workspace->core.evaluation.t_cool_rad);
+    fabs(workspace->core.evaluation.t_cool_rad);
   const double cooling_chemical =
-      fabs(workspace->core.evaluation.t_cool_chem);
+    fabs(workspace->core.evaluation.t_cool_chem);
   result->cooling_time_s = cooling_radiative < cooling_chemical ?
-      cooling_radiative : cooling_chemical;
+    cooling_radiative : cooling_chemical;
   result->chemistry_time_s = fabs(workspace->core.evaluation.t_chem);
   result->thermal_energy_change_cgs = status == CHEMISTRY_STATUS_OK ?
-      core_state.utherm_cgs - initial_thermal_energy : 0.0;
+    core_state.utherm_cgs - initial_thermal_energy : 0.0;
   result->dust_temperature = workspace->core.continuum.dust_temperature;
   result->dust_kappa_planck = workspace->core.continuum.dust_kappa_planck;
   result->continuum_optical_depth = workspace->core.continuum.tau;
   result->continuum_reduction_factor =
-      workspace->core.continuum.reduction_factor;
+    workspace->core.continuum.reduction_factor;
   result->implicit_flag = workspace->core.evaluation.flag_implicit;
   result->convergence_flag = workspace->core.evaluation.flag_convergence;
   result->used_implicit_energy = result->implicit_flag == 1;
   result->used_implicit_chemistry = result->implicit_flag != 0;
   result->converged = status == CHEMISTRY_STATUS_OK &&
-                      result->convergence_flag == 0;
+    result->convergence_flag == 0;
   return status;
 }

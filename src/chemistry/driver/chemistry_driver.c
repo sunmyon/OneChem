@@ -246,6 +246,10 @@ ChemistryStatus chemistry_core_advance(int mode,
   workspace->evaluation.t_chem = MAX_REAL_NUMBER;
 
   chemistry_prepare_step_data(environment, state, T_gas, duration_s, &step);
+  if(workspace->diagnostics_enabled){
+    printf("shield_HI=%g H2=%g H2self=%g column_HI=%g H2=%g T_gas=%g\n"
+	   , step.shield_HI, step.shield_H2, step.shield_H2self, step.column_HI, step.column_H2, T_gas);
+  }
 
   if(T_gas > HIGH_TEMPERATURE_THRESHOLD) {
     if(evolve_high_temperature(environment, &step, state, &dtime, workspace))

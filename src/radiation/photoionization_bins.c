@@ -152,17 +152,24 @@ int photoionization_bins_init(PhotoionizationBinTables *tables)
 {
   const double step = log(PHOTO_TEMPERATURE_MAX / PHOTO_TEMPERATURE_MIN) /
                       (PHOTOIONIZATION_TEMPERATURE_COUNT - 1);
-  int index, group;
+  int index, group, absorber;
+  double reference[PHOTOIONIZATION_ABSORBER_COUNT];
+  for(absorber = 0; absorber < PHOTOIONIZATION_ABSORBER_COUNT; absorber++)
+    reference[absorber] = photoionization_cross_section(
+        absorber, photoionization_threshold_energy(absorber));
   if(tables == NULL)
     return 0;
   memset(tables, 0, sizeof(*tables));
   for(index = 0; index < PHOTOIONIZATION_TEMPERATURE_COUNT; index++) {
     tables->temperature[index] = PHOTO_TEMPERATURE_MIN * exp(index * step);
-    for(group = 0; group < PHOTOIONIZATION_GROUP_COUNT; group++)
+    for(group = 0; group < PHOTOIONIZATION_GROUP_COUNT; group++) {
       integrate_group(tables->temperature[index], group,
                       tables->rate[index][group],
                       tables->heating[index][group],
-                      tables->opacity[index][group]);
+                      tables->opacity_ratio[index][group]);
+      for(absorber = 0; absorber < PHOTOIONIZATION_ABSORBER_COUNT; absorber++)
+        tables->opacity_ratio[index][group][absorber] /= reference[absorber];
+    }
   }
   tables->initialized = 1;
   return 1;
@@ -206,6 +213,92 @@ static double cell_average_attenuation(double tau_near, double delta_tau)
   return exp(-fmax(0.0, tau_near)) * average;
 }
 
+void photoionization_bins_prepare(const PhotoionizationBinTables *tables,
+                                 double temperature,
+                                 PhotoionizationBinCoefficients *coefficients)
+{
+  int index, group, transition, absorber;
+  double fraction;
+  if(coefficients == NULL)
+    return;
+  memset(coefficients, 0, sizeof(*coefficients));
+  if(tables == NULL || !tables->initialized)
+    return;
+  temperature_coordinate(temperature, &index, &fraction);
+  for(group = 0; group < PHOTOIONIZATION_GROUP_COUNT; group++) {
+    for(absorber = 0; absorber < PHOTOIONIZATION_ABSORBER_COUNT; absorber++)
+      coefficients->opacity_ratio[group][absorber] = (1.0 - fraction) *
+          tables->opacity_ratio[index][group][absorber] + fraction *
+          tables->opacity_ratio[index + 1][group][absorber];
+    for(transition = 0; transition < PHOTOIONIZATION_TRANSITION_COUNT; transition++) {
+      coefficients->rate[group][transition] = interpolate(
+          tables->rate[index][group][transition],
+          tables->rate[index + 1][group][transition], fraction);
+      coefficients->heating[group][transition] = interpolate(
+          tables->heating[index][group][transition],
+          tables->heating[index + 1][group][transition], fraction);
+    }
+  }
+  coefficients->initialized = 1;
+}
+
+void photoionization_bins_evaluate_prepared(
+    const PhotoionizationBinCoefficients *coefficients,
+    double radius_squared_cm2, int absorber_count,
+    const double tau_near[PHOTOIONIZATION_ABSORBER_COUNT],
+    const double delta_tau[PHOTOIONIZATION_ABSORBER_COUNT],
+    double rate[PHOTOIONIZATION_TRANSITION_COUNT],
+    double heating[PHOTOIONIZATION_TRANSITION_COUNT])
+{
+  int group, transition, absorber;
+  double weights[PHOTOIONIZATION_GROUP_COUNT];
+  double near_clamped[PHOTOIONIZATION_ABSORBER_COUNT];
+  double delta_clamped[PHOTOIONIZATION_ABSORBER_COUNT];
+  for(transition = 0; transition < PHOTOIONIZATION_TRANSITION_COUNT; transition++) {
+    rate[transition] = 0.0;
+    heating[transition] = 0.0;
+  }
+  if(coefficients == NULL || !coefficients->initialized || radius_squared_cm2 <= 0.0)
+    return;
+  if(absorber_count < 1)
+    absorber_count = 1;
+  if(absorber_count > PHOTOIONIZATION_ABSORBER_COUNT)
+    absorber_count = PHOTOIONIZATION_ABSORBER_COUNT;
+  for(absorber = 0; absorber < absorber_count; absorber++) {
+    near_clamped[absorber] = fmax(0.0, tau_near[absorber]);
+    delta_clamped[absorber] = fmax(0.0, delta_tau[absorber]);
+  }
+  for(group = 0; group < PHOTOIONIZATION_GROUP_COUNT; group++) {
+    double group_tau = 0.0, group_delta_tau = 0.0;
+    for(absorber = 0; absorber < absorber_count; absorber++) {
+      const double ratio = coefficients->opacity_ratio[group][absorber];
+      if(ratio > 0.0) {
+        group_tau += near_clamped[absorber] * ratio;
+        group_delta_tau += delta_clamped[absorber] * ratio;
+      }
+    }
+    const double weight =
+        cell_average_attenuation(group_tau, group_delta_tau) / radius_squared_cm2;
+    weights[group] = weight;
+  }
+  /* Keep transcendental calls out of the accumulation loop. Local sums avoid
+     aliasing with the coefficient/output arrays and repeated output stores.
+     Retain the original group order for each transition. */
+  double rate_sum[PHOTOIONIZATION_TRANSITION_COUNT] = {0.0};
+  double heating_sum[PHOTOIONIZATION_TRANSITION_COUNT] = {0.0};
+  for(group = 0; group < PHOTOIONIZATION_GROUP_COUNT; group++) {
+    for(transition = 0; transition < PHOTOIONIZATION_TRANSITION_COUNT; transition++) {
+      rate_sum[transition] += weights[group] * coefficients->rate[group][transition];
+      heating_sum[transition] += weights[group] * coefficients->heating[group][transition];
+    }
+  }
+  for(transition = 0; transition < PHOTOIONIZATION_TRANSITION_COUNT; transition++) {
+    rate[transition] = rate_sum[transition];
+    heating[transition] = heating_sum[transition];
+  }
+}
+
+/* Compatibility entry point for callers that do not retain source coefficients. */
 void photoionization_bins_evaluate(
     const PhotoionizationBinTables *tables, double temperature,
     double radius_squared_cm2, int absorber_count,
@@ -214,47 +307,9 @@ void photoionization_bins_evaluate(
     double rate[PHOTOIONIZATION_TRANSITION_COUNT],
     double heating[PHOTOIONIZATION_TRANSITION_COUNT])
 {
-  int index, group, transition, opacity_absorber;
-  double fraction;
-  for(transition = 0; transition < PHOTOIONIZATION_TRANSITION_COUNT; transition++) {
-    rate[transition] = 0.0;
-    heating[transition] = 0.0;
-  }
-  if(tables == NULL || !tables->initialized || radius_squared_cm2 <= 0.0)
-    return;
-  if(absorber_count < 1)
-    absorber_count = 1;
-  if(absorber_count > PHOTOIONIZATION_ABSORBER_COUNT)
-    absorber_count = PHOTOIONIZATION_ABSORBER_COUNT;
-  temperature_coordinate(temperature, &index, &fraction);
-
-  for(group = 0; group < PHOTOIONIZATION_GROUP_COUNT; group++) {
-    double group_tau = 0.0, group_delta_tau = 0.0;
-    for(opacity_absorber = 0; opacity_absorber < absorber_count;
-        opacity_absorber++) {
-      const double sigma = (1.0 - fraction) *
-          tables->opacity[index][group][opacity_absorber] + fraction *
-          tables->opacity[index + 1][group][opacity_absorber];
-      const double reference = photoionization_cross_section(
-          opacity_absorber,
-          photoionization_threshold_energy(opacity_absorber));
-      if(reference > 0.0 && sigma > 0.0) {
-        group_tau += fmax(0.0, tau_near[opacity_absorber]) * sigma / reference;
-        group_delta_tau += fmax(0.0, delta_tau[opacity_absorber]) *
-                           sigma / reference;
-      }
-    }
-    const double attenuation =
-        cell_average_attenuation(group_tau, group_delta_tau);
-    for(transition = 0; transition < PHOTOIONIZATION_TRANSITION_COUNT; transition++) {
-      rate[transition] += attenuation * interpolate(
-          tables->rate[index][group][transition],
-          tables->rate[index + 1][group][transition], fraction) /
-          radius_squared_cm2;
-      heating[transition] += attenuation * interpolate(
-          tables->heating[index][group][transition],
-          tables->heating[index + 1][group][transition], fraction) /
-          radius_squared_cm2;
-    }
-  }
+  PhotoionizationBinCoefficients coefficients;
+  photoionization_bins_prepare(tables, temperature, &coefficients);
+  photoionization_bins_evaluate_prepared(&coefficients, radius_squared_cm2,
+                                       absorber_count, tau_near, delta_tau,
+                                       rate, heating);
 }

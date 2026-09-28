@@ -253,8 +253,8 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 
     if(isnan(dT) || isinf(dT)){
       dT = 0.1 * T_new;
-      printf("(LINE=%d) dT=nan -> %g g=%g g0=%g denom=%g\n",
-	     __LINE__, dT, g, g0, denom);
+      printf("(LINE=%d) dT=nan -> %g g=%g g0=%g denom=%g ID=%d\n",
+	     __LINE__, dT, g, g0, denom, environment->ID);
     }
 
     if(T_new + dT > T_max)
@@ -349,8 +349,8 @@ int chemistry_noneq_energy_implicit(const ChemEnvironment *environment, const Ch
 
       if(isnan(dT) || isinf(dT)){
 	dT = 0.1 * T_new;
-	printf("(LINE=%d) dT=nan -> %g g=%g g0=%g denom=%g\n",
-	       __LINE__, dT, g, g0, denom);
+	printf("(LINE=%d) dT=nan -> %g g=%g g0=%g denom=%g ID=%d\n",
+	       __LINE__, dT, g, g0, denom, environment->ID);
       }
 
       T_new_temp = T_new;

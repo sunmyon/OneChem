@@ -39,6 +39,11 @@ double radiation_hminus_photodetachment_cross_section(
          pow(1.0 / lambda - 1.0 / lambda_0, 1.5) * f_lambda;
 }
 
+double Hminus_detachment_John1988(double photon_energy_ev)
+{
+  return radiation_hminus_photodetachment_cross_section(photon_energy_ev);
+}
+
 static double blackbody_intensity(double photon_energy_ev,
                                   double temperature)
 {

@@ -249,7 +249,8 @@ int evaluate_reaction_rates(const ChemEnvironment *environment, const ChemStepDa
 #endif
 
   if(workspace->diagnostics_enabled)
-    printf("k25=%g %g k29=%g %g f=%g\n", workspace->rates.forward[25], environment->global->background_rate_Hminus_pd, workspace->rates.forward[29], k29_ext, f_print_H2self);
+    printf("k25=%g %g k29=%g %g f=%g shield_H2self=%g ID=%d\n"
+	   , workspace->rates.forward[25], environment->global->background_rate_Hminus_pd, workspace->rates.forward[29], k29_ext, f_print_H2self, shield_H2self, environment->ID);
 
 #endif //BACKGROUND_LW_RADIATION
 #endif // LYMANWERNER
