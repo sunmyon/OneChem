@@ -19,9 +19,9 @@ public:
   ReactionRateEvaluator(const ReactionRateEvaluator &) = delete;
   ReactionRateEvaluator &operator=(const ReactionRateEvaluator &) = delete;
 
-  int evaluate(const ChemStepData &step);
+  void evaluate(const ChemStepData &step);
   // Uses the coefficients already present in workspace.rates.
-  int evaluate_timescale();
+  void evaluate_timescale();
 
 private:
   void evaluate_chemical_energy_timescale();

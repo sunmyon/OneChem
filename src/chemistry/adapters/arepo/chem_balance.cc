@@ -18,17 +18,11 @@ extern "C" {
 #define LOCK_NEXPORT
 #define UNLOCK_NEXPORT
 
-#ifndef ID_DEBUG_PRINT
-#define ID_DEBUG_PRINT -1 //1005794452 //1006065322
-#endif
-
-//#define DEBUG_CHEM 1
-
-#ifdef HYBRID_IMPLICIT
+#ifdef CHEMISTRY_HYBRID_IMPLICIT
 int Nimplicit  = 0;
 int Nimplicit0 = 0;
 #endif
-#ifdef ENERGY_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
 int Ndiv  = 0;
 int Ndiv0 = 0;
 #endif
@@ -47,7 +41,7 @@ struct chemcomm_in
   double Trad;
 #endif
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
 #ifdef LW_RADIATION_LOCAL
   double rate_Hminus_pd;
   double rate_H2_diss;
@@ -55,16 +49,16 @@ struct chemcomm_in
   double rate_CO_diss;
 #endif
   double J21;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double G0;
 #endif
 #endif
 #endif
 
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   double k22, piHI;
 #ifdef RYTR_HELIUM_IONIZATION
   double photoionization_rate_HeI, photoheating_rate_HeI;
@@ -81,9 +75,6 @@ struct chemcomm_in
 #endif
   double dtime;
 
-#ifdef DEBUG_CHEM
-  int Task, Index;
-#endif
 }
   *ChemDataIn,
   *ChemDataGet;
@@ -101,7 +92,7 @@ struct chemcomm_out
   double Tdust;
 #endif
 
-#ifdef ENERGY_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
   char flag_imp;
   char flag_conv;
 #endif
@@ -117,6 +108,23 @@ void chem_evaluate(int target,
 static inline void particle2in_chem(struct chemcomm_in *in, int i);
 static inline void out2particle_chem(struct chemcomm_out *out, int i);
 #endif
+
+// Host storage/transport policy ends here. Core always receives solar units.
+static double particle_metallicity_solar(int i)
+{
+#if defined(METALLICITY) && defined(METAL_ADVECTION_SC) && !defined(CONSTANT_METALLICITY)
+  double metallicity = 0.;
+  for(int k = 0; k < N_METAL_SPECIES; ++k)
+    metallicity += SphP[i].Metallicity_spec[k];
+  return metallicity / Z_SUN;
+#elif defined(METALLICITY)
+  (void)i;
+  return All.Metallicity;
+#else
+  (void)i;
+  return 0.;
+#endif
+}
 
 static inline void particle2in_arepo(int i, ChemistryCellEnvironment *cell,
                                     ChemistryState *state);
@@ -157,28 +165,19 @@ static inline void particle2in_arepo(int i, ChemistryCellEnvironment *cell,
   cell->density_cgs = All.UnitDensity_in_cgs * SphP[i].Density *
                   All.HubbleParam * All.HubbleParam * All.cf_a3inv;
 
-#ifdef METALLICITY
-#ifdef CONSTANT_METALLICITY
-  cell->metallicity = All.Metallicity;
-#elif defined(METAL_ADVECTION_SC)
-  double metallicity = 0.;
-  for(int k=0;k<N_METAL_SPECIES;k++)
-    metallicity += SphP[i].Metallicity_spec[k];
-  cell->metallicity = metallicity / Z_SUN;
-#endif
-#endif
+  cell->metallicity = particle_metallicity_solar(i);
 
-#if defined(LYMANWERNER) && defined(LW_RADIATION_LOCAL)
+#if defined(CHEMISTRY_LW_RADIATION) && defined(LW_RADIATION_LOCAL)
   cell->local_rate_Hminus_pd = SphP[i].rate_Hminus_pd;
   cell->local_rate_H2_diss = SphP[i].rate_H2_diss;
 #ifdef RYTR_NCO
   cell->local_rate_CO_diss = SphP[i].rate_CO_diss;
 #endif
   cell->local_J21 = SphP[i].J21;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   cell->local_rate_HD_diss = SphP[i].rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   cell->local_G0 = SphP[i].G0;
 #endif
 #endif
@@ -187,7 +186,7 @@ static inline void particle2in_arepo(int i, ChemistryCellEnvironment *cell,
   cell->stellar_radiation_flux = 4. * STEFAN * pow(SphP[i].Trad, 4.);
 #endif
 
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   cell->photoionization_rate_HI = SphP[i].k22;
   cell->photoheating_rate_HI = SphP[i].piHI;
 #ifdef RYTR_HELIUM_IONIZATION
@@ -221,7 +220,7 @@ static inline void out2particle_arepo(int i, const ChemistryState *state,
 #ifndef CHEMISTRY_IMPLICIT
   SphP[i].t_chem = result->chemistry_time_s;
 #endif
-#ifndef ENERGY_IMPLICIT
+#ifndef CHEMISTRY_ENERGY_IMPLICIT
   SphP[i].t_cool = result->cooling_time_s;
 #endif
 
@@ -252,10 +251,10 @@ extern "C" double compute_xmu(struct sph_particle_data sph_p)
 extern "C" void cooling_only(void){
   CPU_Step[CPU_MISC] += measure_time();
 
-#ifdef HYBRID_IMPLICIT
+#ifdef CHEMISTRY_HYBRID_IMPLICIT
   Nimplicit  = 0;
 #endif
-#ifdef ENERGY_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
   Ndiv  = 0;
 #endif
   int diagnostic_retry_used = 0;
@@ -355,12 +354,12 @@ extern "C" void cooling_only(void){
 
       out2particle_arepo(i, &state, &result);
 
-#ifdef HYBRID_IMPLICIT
+#ifdef CHEMISTRY_HYBRID_IMPLICIT
       if(result.implicit_flag)
         Nimplicit++;
 #endif
 
-#ifdef ENERGY_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
       if(result.implicit_flag && ifunc){
         Ndiv++;
       }
@@ -370,16 +369,16 @@ extern "C" void cooling_only(void){
   chem_balance(chemistry_context, &global_step);
 #endif
 
-#ifdef HYBRID_IMPLICIT
+#ifdef CHEMISTRY_HYBRID_IMPLICIT
   int ierr;
   ierr = MPI_Reduce(&Nimplicit, &Nimplicit0, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
-#ifdef ENERGY_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
   ierr = MPI_Reduce(&Ndiv, &Ndiv0, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 #endif
   if(ThisTask == 0){
     printf("chemistries of %d particles are calculated by implicit method.\n",Nimplicit0);
-#ifdef ENERGY_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
     if(Ndiv0)
       printf("energy-loop of %d particles are not converged\n",Ndiv0);
 #endif
@@ -600,15 +599,16 @@ void chem_evaluate(int target,
   cell.density_cgs = All.UnitDensity_in_cgs * ChemDataGet[target].Density *
                  All.HubbleParam * All.HubbleParam * All.cf_a3inv;
 
-#ifdef METALLICITY
-#ifdef CONSTANT_METALLICITY
-  cell.metallicity = All.Metallicity;
-#elif defined(METAL_ADVECTION_SC)
+#if defined(METALLICITY) && defined(METAL_ADVECTION_SC) && !defined(CONSTANT_METALLICITY)
   cell.metallicity = ChemDataGet[target].Metallicity;
-#endif
+#elif defined(METALLICITY)
+  // Uniform metallicity is reconstructed locally, not sent per particle.
+  cell.metallicity = All.Metallicity;
+#else
+  cell.metallicity = 0.;
 #endif
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
 #ifdef LW_RADIATION_LOCAL
   cell.local_rate_Hminus_pd = ChemDataGet[target].rate_Hminus_pd;
   cell.local_rate_H2_diss = ChemDataGet[target].rate_H2_diss;
@@ -616,10 +616,10 @@ void chem_evaluate(int target,
   cell.local_rate_CO_diss = ChemDataGet[target].rate_CO_diss;
 #endif
   cell.local_J21 = ChemDataGet[target].J21;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   cell.local_rate_HD_diss = ChemDataGet[target].rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   cell.local_G0 = ChemDataGet[target].G0;
 #endif
 #endif
@@ -629,7 +629,7 @@ void chem_evaluate(int target,
   cell.stellar_radiation_flux = 4. * STEFAN * pow(ChemDataGet[target].Trad, 4.);
 #endif
 
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   cell.photoionization_rate_HI = ChemDataGet[target].k22;
   cell.photoheating_rate_HI = ChemDataGet[target].piHI;
 #ifdef RYTR_HELIUM_IONIZATION
@@ -674,8 +674,8 @@ void chem_evaluate(int target,
                               options, state, result);
   }
 
-#ifdef ENERGY_IMPLICIT
-#ifdef HYBRID_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
+#ifdef CHEMISTRY_HYBRID_IMPLICIT
   if(result.implicit_flag){
     Nimplicit++;
   }
@@ -698,7 +698,7 @@ void chem_evaluate(int target,
   ChemDataResult[target].Tdust = result.dust_temperature;
 #endif
 
-#ifdef ENERGY_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
   ChemDataResult[target].flag_imp = result.implicit_flag;
   ChemDataResult[target].flag_conv = result.convergence_flag;
 #endif
@@ -715,14 +715,10 @@ static inline void particle2in_chem(struct chemcomm_in *in, int i)
   particle_chemistry_state_read(i, in->Abund, &in->Gamma);
 
 #if defined(METALLICITY) && defined(METAL_ADVECTION_SC) && !defined(CONSTANT_METALLICITY)
-  double metallicity = 0.;
-  for(int k=0;k<N_METAL_SPECIES;k++)
-    metallicity += SphP[i].Metallicity_spec[k];
-
-  in->Metallicity = metallicity / Z_SUN;
+  in->Metallicity = particle_metallicity_solar(i);
 #endif
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
 #ifdef LW_RADIATION_LOCAL
   in->rate_Hminus_pd = SphP[i].rate_Hminus_pd;
   in->rate_H2_diss = SphP[i].rate_H2_diss;
@@ -730,10 +726,10 @@ static inline void particle2in_chem(struct chemcomm_in *in, int i)
   in->rate_CO_diss = SphP[i].rate_CO_diss;
 #endif
   in->J21 = SphP[i].J21;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   in->rate_HD_diss = SphP[i].rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   in->G0 = SphP[i].G0;
 #endif
 #endif
@@ -743,7 +739,7 @@ static inline void particle2in_chem(struct chemcomm_in *in, int i)
   in->Trad = SphP[i].Trad;
 #endif
 
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   in->k22  = SphP[i].k22;
   in->piHI = SphP[i].piHI;
 #ifdef RYTR_HELIUM_IONIZATION
@@ -769,10 +765,6 @@ static inline void particle2in_chem(struct chemcomm_in *in, int i)
   const double duration_s = dtime * All.UnitTime_in_s / All.HubbleParam;
   in->dtime = duration_s;
 
-#ifdef DEBUG_CHEM
-  in->Task = ThisTask;
-  in->Index = i;
-#endif
 }
 
 
@@ -785,7 +777,7 @@ static inline void out2particle_chem(struct chemcomm_out *out, int i)
 #ifndef CHEMISTRY_IMPLICIT
   SphP[i].t_chem = out->t_chem;
 #endif
-#ifndef ENERGY_IMPLICIT
+#ifndef CHEMISTRY_ENERGY_IMPLICIT
   SphP[i].t_cool = out->t_cool;
 #endif
 
@@ -838,21 +830,11 @@ extern "C" int data_index_compare(const void *a, const void *b)
  */
 static chemistry::Model::Handle arepo_chemistry_context;
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
 static RadiationRateContext arepo_radiation_context;
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
 static RadiationBackgroundState arepo_background_state;
 
-static double background_effective_temperature(void)
-{
-#ifdef TYPE_B
-  return 1.e4;
-#elif defined(TYPE_3E4)
-  return 3.e4;
-#else
-  return 1.e5;
-#endif
-}
 #endif
 #endif
 
@@ -862,20 +844,21 @@ int chemistry_arepo_host_init(void)
   chemistry_config_defaults(&config);
   config.table_root = All.ChemistryTableDir;
   config.timescale_safety_factor = All.Epsilon;
+  config.print_configuration = (ThisTask == 0);
   auto created = chemistry::Model::create(config);
   if(created.status != CHEMISTRY_STATUS_OK) return 0;
   arepo_chemistry_context = std::move(created.model);
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
   if(!radiation_rate_context_init(&arepo_radiation_context)) {
     arepo_chemistry_context.reset();
 
     return 0;
   }
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   RadiationBlackbodyInput background = {
       All.J21,
-      background_effective_temperature()};
+      All.Teff};
   if(!radiation_background_state_update(
          &arepo_radiation_context, &background,
          &arepo_background_state)) {
@@ -892,8 +875,8 @@ int chemistry_arepo_host_init(void)
 
 void chemistry_arepo_host_destroy(void)
 {
-#ifdef LYMANWERNER
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   radiation_background_state_reset(&arepo_background_state);
 #endif
   radiation_rate_context_destroy(&arepo_radiation_context);
@@ -918,10 +901,10 @@ int chemistry_arepo_host_prepare_step(ChemistryStepContext *step)
   global.simulation_time = All.Time;
   global.comoving_integration = All.ComovingIntegrationOn;
 
-#if defined(LYMANWERNER) && defined(BACKGROUND_LW_RADIATION)
+#if defined(CHEMISTRY_LW_RADIATION) && defined(CHEMISTRY_BACKGROUND_LW_RADIATION)
   const RadiationBlackbodyInput background = {
       All.J21,
-      background_effective_temperature()};
+      All.Teff};
   if(!radiation_background_state_update(
          &arepo_radiation_context, &background,
          &arepo_background_state))
@@ -932,7 +915,7 @@ int chemistry_arepo_host_prepare_step(ChemistryStepContext *step)
       arepo_background_state.rates.hminus_photodetachment_rate;
   global.background_rate_H2_diss =
       arepo_background_state.rates.h2_photodissociation_rate;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   global.background_rate_HD_diss =
       arepo_background_state.rates.hd_photodissociation_rate;
 #endif
@@ -951,7 +934,7 @@ int chemistry_arepo_blackbody_rates(double effective_temperature,
   if(photodetachment_rate == NULL || g0 == NULL)
     return 0;
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
   if(effective_temperature < arepo_radiation_context.effective_temperature_min)
     effective_temperature = arepo_radiation_context.effective_temperature_min;
   if(effective_temperature > arepo_radiation_context.effective_temperature_max)
@@ -976,7 +959,7 @@ int chemistry_arepo_dust_opacities(double temperature,
 
   *kappa_rosseland = 0.0;
   *kappa_planck = 0.0;
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   if(!arepo_chemistry_context || !isfinite(temperature) || temperature < 0.) return 0;
   chemistry_dust_opacities_from_tables(arepo_chemistry_context->dust_opacity(),
                                       temperature, kappa_rosseland, kappa_planck);

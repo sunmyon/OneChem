@@ -1,0 +1,27 @@
+{
+  "baseline_commit": "782d710",
+  "cases": [
+    {
+      "case": "call1_default",
+      "identical_except_elapsed_s": true,
+      "normalized_log_sha256": "498c09b3b37825c3c6f9ec6085f248f3c3bc4144f15a0967b047e675defc0c5e"
+    },
+    {
+      "case": "call2_default",
+      "identical_except_elapsed_s": true,
+      "normalized_log_sha256": "eb49b84d088e249c19066d54808482e4dcf3753769196dd776de072320159984"
+    },
+    {
+      "case": "call2_gate1",
+      "identical_except_elapsed_s": true,
+      "normalized_log_sha256": "45475415028e796d4528a5bbb12598edd108bc2beea84bab63b35f08c72fd522"
+    },
+    {
+      "case": "id1339855177",
+      "identical_except_elapsed_s": true,
+      "normalized_log_sha256": "527037047d9b054a772ff87700b80a04f8e6d7a6ec357968a7b830ba1fbaf68e"
+    }
+  ],
+  "ubsan": "passed",
+  "asan": "timed out during runtime initialization; not validated"
+}

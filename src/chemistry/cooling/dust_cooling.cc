@@ -9,8 +9,7 @@
 #include "dust_cooling.h"
 #include "chemistry_core.h"
 
-#ifdef CHEMISTRY_SC
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
 struct DustBalance;
 struct ChemistryDustTables {
 public:
@@ -27,11 +26,11 @@ public:
                         double stellar_flux, struct opacities *opac,
                         double *edot_dust, int diagnostics_enabled) const;
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
   static double dust_PEheating(double G0, double nH, double y_e, double T_gas,
                       double metallicity, int diagnostics_enabled);
 #endif
-#ifdef H2_FORMATION_ON_DUST
+#if CHEMISTRY_H2_FORMATION_ON_DUST
   static double H2form_on_grains(double rho_cgs, double T_gas, double T_dust, double metallicity);
 #endif
 
@@ -57,9 +56,9 @@ private:
     double *kappa_Planck_derivative) const;
 
   int temperature_count{};
-  double *temperature{};
-  double *rosseland{};
-  double *planck{};
+  std::unique_ptr<double[]> temperature;
+  std::unique_ptr<double[]> rosseland;
+  std::unique_ptr<double[]> planck;
   double log_temperature_min{};
   double inverse_log_temperature_step{};
 
@@ -289,7 +288,7 @@ double dust_temperature(const ChemistryDustTables *tables, double rho_cgs,
                         double stellar_flux, struct opacities *opac,
                         double *edot_dust, int diagnostics_enabled) { return tables->dust_temperature(rho_cgs, T_gas, radiation_temperature, metallicity, l_Jeans, stellar_flux, opac, edot_dust, diagnostics_enabled); }
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
 double ChemistryDustTables::dust_PEheating(double G0, double nH, double y_e, double T_gas,
                       double metallicity, int diagnostics_enabled) {
   double edot_PE;
@@ -321,7 +320,7 @@ double dust_PEheating(double G0, double nH, double y_e, double T_gas,
                       double metallicity, int diagnostics_enabled) { return ChemistryDustTables::dust_PEheating(G0, nH, y_e, T_gas, metallicity, diagnostics_enabled); }
 #endif
 
-#ifdef H2_FORMATION_ON_DUST
+#if CHEMISTRY_H2_FORMATION_ON_DUST
 // H2 formation rate on grains (Schneider et al. 2006)
 double ChemistryDustTables::H2form_on_grains(double rho_cgs, double T_gas, double T_dust, double metallicity) {
   double T2       = 0.01*T_gas;
@@ -389,17 +388,17 @@ chemistry::ResourceOwner<ChemistryDustTables> ChemistryDustTables::create(const 
     rewind(fp_r), rewind(fp_p);
     tables->temperature_count = count_r;
 
-    if(!(tables->temperature = static_cast<double *>(malloc(sizeof(double)*tables->temperature_count)))){
+    if(!(tables->temperature = std::unique_ptr<double[]>(new(std::nothrow) double[tables->temperature_count]))){
       printf("Can't allocate memory.\n");
       goto fail;
     }
 
-    if(!(tables->rosseland = static_cast<double *>(malloc(sizeof(double)*tables->temperature_count)))){
+    if(!(tables->rosseland = std::unique_ptr<double[]>(new(std::nothrow) double[tables->temperature_count]))){
       printf("Can't allocate memory.\n");
       goto fail;
     }
 
-    if(!(tables->planck = static_cast<double *>(malloc(sizeof(double)*tables->temperature_count)))){
+    if(!(tables->planck = std::unique_ptr<double[]>(new(std::nothrow) double[tables->temperature_count]))){
       printf("Can't allocate memory.\n");
       goto fail;
     }
@@ -461,11 +460,7 @@ chemistry::ResourceOwner<ChemistryDustTables> chemistry::load_dust_opacity(const
 }
 
 
-ChemistryDustTables::~ChemistryDustTables() {
-  free(temperature);
-  free(rosseland);
-  free(planck);
-}
+ChemistryDustTables::~ChemistryDustTables() = default;
 
 void chemistry::ModelResourceDeleter::operator()(ChemistryDustTables *p) const noexcept { delete p; }
 
@@ -477,9 +472,9 @@ void ChemistryDustTables::get_dust_opacities_with_derivative(double T_dust,
     double *kappa_Planck_derivative) const {
   const ChemistryDustTables *tables = this;
   const int n_Tdust = tables->temperature_count;
-  const double *Kappa_Tdust = tables->temperature;
-  const double *Kappa_Dust_Rossland = tables->rosseland;
-  const double *Kappa_Dust_Planck = tables->planck;
+  const double *Kappa_Tdust = tables->temperature.get();
+  const double *Kappa_Dust_Rossland = tables->rosseland.get();
+  const double *Kappa_Dust_Planck = tables->planck.get();
   const double dust_log_T_min = tables->log_temperature_min;
   const double dust_inv_dlog_T = tables->inverse_log_temperature_step;
   int i_T, i_T_left;
@@ -543,5 +538,4 @@ void chemistry_dust_opacities_from_tables(
     const ChemistryDustTables *tables, double T_dust,
     double *kappa_Rossland, double *kappa_Planck) { tables->chemistry_dust_opacities_from_tables(T_dust, kappa_Rossland, kappa_Planck); }
 
-#endif
 #endif

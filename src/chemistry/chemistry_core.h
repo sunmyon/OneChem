@@ -4,7 +4,6 @@
 #include "chemistry_constants.h"
 #include "species.h"
 
-#ifdef CHEMISTRY_SC
 #include "chemistry_types.h"
 #include "include/chemistry/chemistry.h"
 
@@ -122,5 +121,3 @@ private:
 };
 } // namespace chemistry
 #endif
-
-#endif /* CHEMISTRY_SC */

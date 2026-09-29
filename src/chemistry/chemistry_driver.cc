@@ -12,7 +12,6 @@
 #include "fixed_rate_solver.hpp"
 #include "thermodynamics.h"
 
-#ifdef CHEMISTRY_SC
 
 #define MAX_ITERATION 1000
 #define HIGH_TEMPERATURE_THRESHOLD 1.0e5
@@ -31,16 +30,16 @@ void chemistry::Driver::prepare_cell(const ChemEnvironment &env, const ChemState
   step->jeans_length = get_core_radius(environment->rho_cgs, initial_temperature);
   step->column_HI = step->jeans_length * n_nuclei * initial_state->abund[sHI];
   step->column_H2 = step->jeans_length * n_nuclei * initial_state->abund[sH2I];
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   step->column_HD = step->jeans_length * n_nuclei * initial_state->abund[sHDI];
 #endif
 
-#ifdef SHIELD_LW
+#ifdef CHEMISTRY_LW_SELF_SHIELDING
   step->shield_HI = EachShield(step->column_HI, 1.49e-1, 1.62e+0, 2.85e23);
   step->shield_H2 = EachShield(step->column_H2, 5.20e-3, 2.38e-1, 2.34e19);
   step->shield_H2self = SelfShield(step->column_H2, initial_temperature,
                                    9.12 * sqrt(initial_temperature / 1.e4));
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   step->shield_HDself = SelfShield(step->column_HD, initial_temperature,
                                    7.45 * sqrt(initial_temperature / 1.e4));
 #endif
@@ -49,13 +48,13 @@ void chemistry::Driver::prepare_cell(const ChemEnvironment &env, const ChemState
   step->G0 = environment->G0 + environment->global->background_G0;
   step->k22 = environment->photoionization_rate_HI;
   step->piHI = environment->photoheating_rate_HI;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   step->photoionization_rate_HeI = environment->photoionization_rate_HeI;
   step->photoheating_rate_HeI = environment->photoheating_rate_HeI;
   step->photoionization_rate_HeII = environment->photoionization_rate_HeII;
   step->photoheating_rate_HeII = environment->photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   for(int stage = 0; stage < 3; stage++) {
     step->photoionization_rate_C[stage] =
         environment->photoionization_rate_C[stage];
@@ -66,7 +65,7 @@ void chemistry::Driver::prepare_cell(const ChemEnvironment &env, const ChemState
   }
 #endif
 
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   const double recombination_rate = 2.6e-13;
   const double neutral_fraction_limit = 1.e-3;
   const double neutral_fraction_eq = recombination_rate * XH * n_nuclei /
@@ -103,17 +102,17 @@ void chemistry::Driver::evaluate_high_temperature_cooling(const ChemEnvironment 
   energy_rate -= 1.43e-27 * sqrt(temperature) *
                  (1.0 + 4.0 * XHe / XH) * n_nuclei * n_nuclei;
 
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
   energy_rate -= continuum_cooling_rate_thin(
       temperature, environment->rho_cgs, (double *) state->abund,
       workspace->diagnostics_enabled);
 #endif
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
   energy_rate -= get_cooling_rate_SD93(environment->run->continuum_opacity_tables, temperature) * environment->metallicity *
                  n_nuclei * n_nuclei;
 #endif
   energy_rate += step->piHI * state->abund[sHI] * n_nuclei;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   energy_rate += step->photoheating_rate_HeI * state->abund[sHeI] * n_nuclei;
   energy_rate += step->photoheating_rate_HeII * state->abund[sHeII] * n_nuclei;
 #endif
@@ -169,18 +168,18 @@ ChemSolverPlan chemistry::Driver::select_solvers(double n_nuclei, double time_co
   ChemSolverPlan plan = {CHEMISTRY_SOLVER_EXPLICIT, ENERGY_SOLVER_EXPLICIT,
                          dmin(time_cooling, dmin(time_chemistry, time_remaining))};
 
-#if defined(ENERGY_IMPLICIT) && !defined(HYBRID_IMPLICIT)
+#if defined(CHEMISTRY_ENERGY_IMPLICIT) && !defined(CHEMISTRY_HYBRID_IMPLICIT)
   plan.energy = ENERGY_SOLVER_IMPLICIT;
   plan.chemistry = CHEMISTRY_SOLVER_IMPLICIT;
   plan.timestep = time_remaining;
 #endif
 
-#if defined(CHEMISTRY_IMPLICIT) && !defined(HYBRID_IMPLICIT)
+#if defined(CHEMISTRY_IMPLICIT) && !defined(CHEMISTRY_HYBRID_IMPLICIT)
   plan.chemistry = CHEMISTRY_SOLVER_IMPLICIT;
   plan.timestep = dmin(time_cooling, time_remaining);
 #endif
 
-#ifdef HYBRID_IMPLICIT
+#ifdef CHEMISTRY_HYBRID_IMPLICIT
   plan.timestep = time_remaining;
   if(time_remaining > time_cooling || n_nuclei > N_EQCHEM) {
     plan.energy = ENERGY_SOLVER_IMPLICIT;
@@ -197,7 +196,7 @@ ChemSolverPlan chemistry::Driver::select_solvers(double n_nuclei, double time_co
   }
 #endif
 
-#ifdef SAHA
+#ifdef CHEMISTRY_SAHA
   if(n_nuclei > N_EQCHEM && plan.chemistry == CHEMISTRY_SOLVER_IMPLICIT)
     plan.chemistry = CHEMISTRY_SOLVER_SAHA;
 #endif
@@ -308,7 +307,7 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
 
     double T_gas_in = T_gas;
 
-#if defined(ENERGY_IMPLICIT)
+#if defined(CHEMISTRY_ENERGY_IMPLICIT)
     if(solvers.energy == ENERGY_SOLVER_IMPLICIT){
       workspace->evaluation.flag_convergence = EnergySolver{}.solve(*environment, step, *state, *workspace, solvers.chemistry, dt) != CHEMISTRY_STATUS_OK;
       if(workspace->status != CHEMISTRY_STATUS_OK)
@@ -321,7 +320,7 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
         ChemState state_old = *state;
 	int isnan_flag=0;
 
-#ifdef SAHA
+#ifdef CHEMISTRY_SAHA
 	if(solvers.chemistry == CHEMISTRY_SOLVER_SAHA){
 	  ifunc = SahaSolver{}.solve(*environment, *state, *workspace, dt);
 	  if(ifunc != CHEMISTRY_STATUS_OK)
@@ -361,12 +360,12 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
 	if(workspace->diagnostics_enabled)
 	  printf("(line%d) t_cool=%g t_chem=%g\n", __LINE__, t_cool, workspace->evaluation.t_chem);
 
-#if defined(HYBRID_IMPLICIT) && defined(ENERGY_IMPLICIT)
+#if defined(CHEMISTRY_HYBRID_IMPLICIT) && defined(CHEMISTRY_ENERGY_IMPLICIT)
 	/************* DEBUGGING... [CHON200417] ************/
 	if(0.1 * state_old.utherm_cgs < fabs(del_U_tot) || isnan_flag){
 	  solvers.energy = ENERGY_SOLVER_IMPLICIT;
 	  solvers.chemistry = CHEMISTRY_SOLVER_IMPLICIT;
-#ifdef SAHA
+#ifdef CHEMISTRY_SAHA
 	  if(n_nuclei > N_EQCHEM)
 	    solvers.chemistry = CHEMISTRY_SOLVER_SAHA;
 #endif
@@ -387,12 +386,12 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
     update_thermodynamic_state(state, &workspace->thermodynamics);
     T_gas = workspace->thermodynamics.temperature;
 
-#ifdef SET_TMAX
-    if(T_gas > SET_TMAX)
-      state->utherm_cgs *= SET_TMAX / T_gas;
+#ifdef CHEMISTRY_TEMPERATURE_MAX
+    if(T_gas > CHEMISTRY_TEMPERATURE_MAX)
+      state->utherm_cgs *= CHEMISTRY_TEMPERATURE_MAX / T_gas;
 #endif
 
-#ifdef FIX_TEMPERATURE
+#ifdef CHEMISTRY_FIXED_TEMPERATURE
     state->utherm_cgs *= environment->run->fixed_temperature / T_gas;
     workspace->evaluation.t_cool_rad = MAX_REAL_NUMBER;
     workspace->evaluation.t_cool_chem = MAX_REAL_NUMBER;
@@ -416,7 +415,7 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
   workspace->evaluation.t_chem = fabs(workspace->evaluation.t_chem);
 #endif
 
-#ifdef ENERGY_IMPLICIT
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
   workspace->evaluation.t_cool_rad = MAX_REAL_NUMBER;
   workspace->evaluation.t_cool_chem = MAX_REAL_NUMBER;
 #else
@@ -443,13 +442,11 @@ ChemistryStatus chemistry::Driver::evaluate_timesteps(const ChemEnvironment &env
   workspace->evaluation.t_cool_chem = MAX_REAL_NUMBER;
   workspace->evaluation.t_chem = MAX_REAL_NUMBER;
 
-#if !defined(ENERGY_IMPLICIT) || defined(HYBRID_IMPLICIT)
-  if(chemistry::ReactionRateEvaluator(*environment, *state, *workspace).evaluate(*step))
-    return CHEMISTRY_STATUS_INTERNAL_ERROR;
+#if !defined(CHEMISTRY_ENERGY_IMPLICIT) || defined(CHEMISTRY_HYBRID_IMPLICIT)
+  chemistry::ReactionRateEvaluator(*environment, *state, *workspace).evaluate(*step);
 
-#if !defined(CHEMISTRY_IMPLICIT) || defined(HYBRID_IMPLICIT)
-  if(chemistry::ReactionRateEvaluator(*environment, *state, *workspace).evaluate_timescale())
-    return CHEMISTRY_STATUS_INTERNAL_ERROR;
+#if !defined(CHEMISTRY_IMPLICIT) || defined(CHEMISTRY_HYBRID_IMPLICIT)
+  chemistry::ReactionRateEvaluator(*environment, *state, *workspace).evaluate_timescale();
 #endif
 
   ChemistryStatus cooling_status =
@@ -458,7 +455,7 @@ ChemistryStatus chemistry::Driver::evaluate_timesteps(const ChemEnvironment &env
     return cooling_status;
 #endif
 
-#ifdef FIX_TEMPERATURE
+#ifdef CHEMISTRY_FIXED_TEMPERATURE
   workspace->evaluation.t_cool_rad = MAX_REAL_NUMBER;
   workspace->evaluation.t_cool_chem = MAX_REAL_NUMBER;
 #endif
@@ -499,7 +496,7 @@ void chemistry::Driver::import_global_environment(const ChemistryStepContext &in
       step->global.background_rate_Hminus_pd;
   global->background_rate_H2_diss =
       step->global.background_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   global->background_rate_HD_diss =
       step->global.background_rate_HD_diss;
 #endif
@@ -521,18 +518,18 @@ void chemistry::Driver::import_cell_environment(const Model &model,
   environment->G0 = cell->local_G0;
   environment->rate_Hminus_pd = cell->local_rate_Hminus_pd;
   environment->rate_H2_diss = cell->local_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   environment->rate_HD_diss = cell->local_rate_HD_diss;
 #endif
   environment->photoionization_rate_HI = cell->photoionization_rate_HI;
   environment->photoheating_rate_HI = cell->photoheating_rate_HI;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   environment->photoionization_rate_HeI = cell->photoionization_rate_HeI;
   environment->photoheating_rate_HeI = cell->photoheating_rate_HeI;
   environment->photoionization_rate_HeII = cell->photoionization_rate_HeII;
   environment->photoheating_rate_HeII = cell->photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   for(int stage = 0; stage < 3; stage++) {
     environment->photoionization_rate_C[stage] =
         cell->photoionization_rate_C[stage];
@@ -613,5 +610,3 @@ ChemistryStatus chemistry::Driver::advance(const Model &model, const ChemistrySt
     result->convergence_flag == 0;
   return status;
 }
-
-#endif /* CHEMISTRY_SC */

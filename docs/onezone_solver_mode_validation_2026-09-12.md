@@ -21,11 +21,11 @@ The solver modes are now configured as follows:
 |---|---|---|
 | explicit | neither implicit definition | chemistry and energy explicit |
 | chemistry implicit | `CHEMISTRY_IMPLICIT` | chemistry implicit, energy explicit |
-| energy implicit | `ENERGY_IMPLICIT` | chemistry is implied and both are implicit |
-| hybrid | `ENERGY_IMPLICIT`, `HYBRID_IMPLICIT` | explicit/implicit selection by local timescales; chemistry is implied |
+| energy implicit | `CHEMISTRY_ENERGY_IMPLICIT` | chemistry is implied and both are implicit |
+| hybrid | `CHEMISTRY_ENERGY_IMPLICIT`, `CHEMISTRY_HYBRID_IMPLICIT` | explicit/implicit selection by local timescales; chemistry is implied |
 
 `chemistry_build_config.h` now defines `CHEMISTRY_IMPLICIT` whenever
-`ENERGY_IMPLICIT` is defined.  A binary built with only `ENERGY_IMPLICIT`
+`CHEMISTRY_ENERGY_IMPLICIT` is defined.  A binary built with only `CHEMISTRY_ENERGY_IMPLICIT`
 produced output bitwise identical to one built with both definitions explicitly.
 The same bitwise check passed for two-definition versus three-definition hybrid
 builds.

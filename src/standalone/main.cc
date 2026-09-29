@@ -30,6 +30,7 @@
 #ifdef CHEMISTRY_PORTABLE
 #include "chemistry_core.h"
 #include "chemistry_standalone_adapter.h"
+static ChemistryStandaloneAdapter chemistry_adapter;
 #include "chemistry_model.hpp"
 #include <utility>
 #include "chemistry_standalone_types.h"
@@ -82,26 +83,26 @@ double compute_temp(int ithis)
   abund[sHII] = SphP[ithis].HII;
   abund[sH2I] = SphP[ithis].H2I;
   abund[sHM] = SphP[ithis].HM;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   abund[sHeI] = SphP[ithis].HeI;
   abund[sHeII] = SphP[ithis].HeII;
   abund[sHeIII] = SphP[ithis].HeIII;
 #endif
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   abund[sH2II] = SphP[ithis].H2II;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   abund[sDI] = SphP[ithis].DI;
   abund[sDII] = SphP[ithis].DII;
   abund[sHDI] = SphP[ithis].HDI;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   abund[sHDII] = SphP[ithis].HDII;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   abund[sDM] = SphP[ithis].DM;
 #endif
 #endif
-#if defined(CARBON_OXYGEN_CHEMISTRY)
+#if defined(CHEMISTRY_SPECIES_CARBON_OXYGEN)
   abund[sCI] = SphP[ithis].CI;
   abund[sCII] = SphP[ithis].CII;
   abund[sCO] = SphP[ithis].CO;
@@ -110,7 +111,7 @@ double compute_temp(int ithis)
   abund[sOH] = SphP[ithis].OH;
   abund[sH2O] = SphP[ithis].H2O;
   abund[sO2] = SphP[ithis].O2;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
   abund[sCOII] = SphP[ithis].COII;
   abund[sCH] = SphP[ithis].CH;
   abund[sCH2] = SphP[ithis].CH2;
@@ -154,29 +155,29 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
 #ifdef LW_RADIATION_LOCAL
   double local_J21 = 0.0, local_rate_Hminus_pd = 0.0;
   double local_rate_H2_diss = 0.0, local_G0 = 0.0;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double local_rate_HD_diss = 0.0;
 #endif
 #endif
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   double background_J21 = All.J21;
   double background_rate_Hminus_pd = All.rate_Hminus_pd;
   double background_rate_H2_diss = All.rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double background_rate_HD_diss = All.rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double background_G0 = All.G0;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   double photoionization_rate_HI = 0.0, photoheating_rate_HI = 0.0;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double photoionization_rate_HeI = 0.0, photoheating_rate_HeI = 0.0;
   double photoionization_rate_HeII = 0.0, photoheating_rate_HeII = 0.0;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double photoionization_rate_C[3] = {0}, photoheating_rate_C[3] = {0};
   double photoionization_rate_O[3] = {0}, photoheating_rate_O[3] = {0};
   double rate_CO_diss = 0.0;
@@ -240,37 +241,37 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
     else if(strcmp(key, "local_rate_H2_diss_s-1") == 0) local_rate_H2_diss = value;
     else if(strcmp(key, "local_rate_Hminus_pd") == 0) local_rate_Hminus_pd = value;
     else if(strcmp(key, "local_rate_H2_diss") == 0) local_rate_H2_diss = value;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     else if(strcmp(key, "local_rate_HD_diss") == 0) local_rate_HD_diss = value;
 #endif
     else if(strcmp(key, "local_G0") == 0) local_G0 = value;
 #endif
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
     else if(strcmp(key, "background_J21") == 0) background_J21 = value;
     else if(strcmp(key, "background_rate_Hminus_pd_s-1") == 0) background_rate_Hminus_pd = value;
     else if(strcmp(key, "background_rate_H2_diss_s-1") == 0) background_rate_H2_diss = value;
     else if(strcmp(key, "background_rate_Hminus_pd") == 0) background_rate_Hminus_pd = value;
     else if(strcmp(key, "background_rate_H2_diss") == 0) background_rate_H2_diss = value;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     else if(strcmp(key, "background_rate_HD_diss") == 0) background_rate_HD_diss = value;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
     else if(strcmp(key, "background_G0") == 0) background_G0 = value;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
     else if(strcmp(key, "photoionization_rate_HI_s-1") == 0) photoionization_rate_HI = value;
     else if(strcmp(key, "photoheating_rate_HI_erg_s-1") == 0) photoheating_rate_HI = value;
     else if(strcmp(key, "photoionization_rate_HI") == 0) photoionization_rate_HI = value;
     else if(strcmp(key, "photoheating_rate_HI") == 0) photoheating_rate_HI = value;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     else if(strcmp(key, "photoionization_rate_HeI") == 0) photoionization_rate_HeI = value;
     else if(strcmp(key, "photoheating_rate_HeI") == 0) photoheating_rate_HeI = value;
     else if(strcmp(key, "photoionization_rate_HeII") == 0) photoionization_rate_HeII = value;
     else if(strcmp(key, "photoheating_rate_HeII") == 0) photoheating_rate_HeII = value;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
     else if(strcmp(key, "photoionization_rate_CI") == 0) photoionization_rate_C[0] = value;
     else if(strcmp(key, "photoionization_rate_CII") == 0) photoionization_rate_C[1] = value;
     else if(strcmp(key, "photoionization_rate_CIII") == 0) photoionization_rate_C[2] = value;
@@ -331,7 +332,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
   }
   All.Epsilon = timescale_safety_factor;
 #ifdef CHEMISTRY_PORTABLE
-  if(!chemistry_standalone_set_timescale_safety_factor(timescale_safety_factor)) {
+  if(!chemistry_adapter.set_timescale_safety_factor(timescale_safety_factor)) {
     fprintf(stderr, "%s: standalone chemistry is not initialized\n", path);
     return 2;
   }
@@ -346,14 +347,14 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
     All.cf_a3inv = comoving_integration ?
         1.0 / (scale_factor * scale_factor * scale_factor) : 1.0;
   }
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   All.J21 = background_J21;
   All.rate_Hminus_pd = background_rate_Hminus_pd;
   All.rate_H2_diss = background_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   All.rate_HD_diss = background_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   All.G0 = background_G0;
 #endif
 #endif
@@ -380,24 +381,24 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
   sph_in.J21 = local_J21;
   sph_in.rate_Hminus_pd = local_rate_Hminus_pd;
   sph_in.rate_H2_diss = local_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   sph_in.rate_HD_diss = local_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   sph_in.G0 = local_G0;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   sph_in.k22 = photoionization_rate_HI;
   sph_in.piHI = photoheating_rate_HI;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   sph_in.photoionization_rate_HeI = photoionization_rate_HeI;
   sph_in.photoheating_rate_HeI = photoheating_rate_HeI;
   sph_in.photoionization_rate_HeII = photoionization_rate_HeII;
   sph_in.photoheating_rate_HeII = photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   for(int stage = 0; stage < 3; stage++) {
     sph_in.photoionization_rate_C[stage] = photoionization_rate_C[stage];
     sph_in.photoheating_rate_C[stage] = photoheating_rate_C[stage];
@@ -423,13 +424,13 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
 
   if(diagnostic_mode == 2) {
     double full_abundance[N_SP];
-    if(compute_equilibrium_abundances_d(&sph_in, &sph_out, temperature, dt, full_abundance))
+    if(chemistry_adapter.equilibrium_abundances(&sph_in, &sph_out, temperature, dt, full_abundance))
       for(int species = 0; species < N_SP; species++)
         printf("ENERGY_STEP_INPUT_%s=%.17g\n",
                chemistry_species_definition(static_cast<SPECIES>(species))->name, full_abundance[species]);
   }
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   if(diagnostic_mode == 1) {
     const int grid_side = 21;
     const unsigned long molecular_carbon_count = 3 + (unsigned long)grid_side * grid_side;
@@ -438,7 +439,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
     const unsigned long carbon_oxygen_count = molecular_carbon_count *
         carbon_reservoir_modes * oxygen_reservoir_modes;
     const int hydrogen_modes = 4;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     const int deuterium_modes = 4;
 #else
     const int deuterium_modes = 1;
@@ -464,7 +465,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
       if(hydrogen_mode != 1) {
         guess[sHI] = guess[sHII] = guess[sH2I] = guess[sHM] = 0.0;
       }
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
       if(deuterium_mode != 1) {
         guess[sDI] = guess[sDII] = guess[sHDI] = 0.0;
         if(deuterium_mode == 0)
@@ -525,7 +526,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
       }
 
       int guess_iteration_limit = molecular_carbon_index < 3 ? 1000 : 100;
-      int status = compute_chemistry_implicit_guess_d(
+      int status = chemistry_adapter.solve_fixed_guess(
           &sph_in, &trial, temperature, dt, guess, guess_iteration_limit);
       int nonnegative_root = 1;
       for(int species = 0; species < sSTORED_END; species++)
@@ -564,7 +565,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
   prepare_portable_chemistry_step();
 #endif
   if(diagnostic_mode == 2) {
-    status = compute_abundances_d(1, &sph_in, &sph_out, dt);
+    status = chemistry_adapter.advance(1, &sph_in, &sph_out, dt);
   } else if(diagnostic_mode == 3 || diagnostic_mode == 4 || diagnostic_mode == 5) {
     FILE *guess_input = fopen(guess_path, "r");
     if(!guess_input) {
@@ -611,7 +612,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
         return 2;
       }
     if(diagnostic_mode == 3) {
-      status = compute_chemistry_implicit_guess_d(
+      status = chemistry_adapter.solve_fixed_guess(
           &sph_in, &sph_out, temperature, dt, newton_guess, 1000);
     } else if(diagnostic_mode == 5) {
       const int grid_intervals = 100;
@@ -635,7 +636,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
                 (1.0 - hydrogen_fraction) * sph_out.Abund[species] +
                 hydrogen_fraction * newton_guess[species];
           }
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
           const int deuterium_species[] = {sDI, sDII, sHDI};
           for(size_t member = 0;
               member < sizeof(deuterium_species) / sizeof(deuterium_species[0]);
@@ -646,14 +647,14 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
                 hydrogen_fraction * newton_guess[species];
           }
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
           for(int species = sCI; species < sSTORED_END; species++)
             trial_guess[species] =
                 (1.0 - carbon_oxygen_fraction) * sph_out.Abund[species] +
                 carbon_oxygen_fraction * newton_guess[species];
 #endif
           struct chemdata_out trial = sph_out;
-          int trial_status = compute_chemistry_implicit_guess_d(
+          int trial_status = chemistry_adapter.solve_fixed_guess(
               &sph_in, &trial, temperature, dt, trial_guess, 1000);
           grid_trials++;
           if(trial_status == 1) {
@@ -688,7 +689,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
               (1.0 - fraction) * sph_out.Abund[species] +
               fraction * newton_guess[species];
         struct chemdata_out trial = sph_out;
-        int trial_status = compute_chemistry_implicit_guess_d(
+        int trial_status = chemistry_adapter.solve_fixed_guess(
             &sph_in, &trial, temperature, dt, trial_guess, 1000);
         if(trial_status == 1) {
           if(first_success < 0.0)
@@ -696,12 +697,12 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
           last_success = fraction;
           success_count++;
           double scan_dii = 0.0;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
           scan_dii = trial_guess[sDII] / XH;
 #endif
           printf("CHEM_GUESS_SCAN_SUCCESS fraction=%.3f HII=%.17g DII=%.17g",
                  fraction, trial_guess[sHII] / XH, scan_dii);
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
           printf(" CO=%.17g CO2=%.17g",
                  trial_guess[sCO] / XH, trial_guess[sCO2] / XH);
 #endif
@@ -722,14 +723,14 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
           trial_guess[sH2I] = newton_guess[sH2I];
           trial_guess[sHM] = newton_guess[sHM];
         }
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
         if(group_mask & 2) {
           trial_guess[sDI] = newton_guess[sDI];
           trial_guess[sDII] = newton_guess[sDII];
           trial_guess[sHDI] = newton_guess[sHDI];
         }
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
         if(group_mask & 4)
           for(int species = sCI; species < sCOII; species++)
             trial_guess[species] = newton_guess[species];
@@ -738,7 +739,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
             trial_guess[species] = newton_guess[species];
 #endif
         struct chemdata_out trial = sph_out;
-        int trial_status = compute_chemistry_implicit_guess_d(
+        int trial_status = chemistry_adapter.solve_fixed_guess(
             &sph_in, &trial, temperature, dt, trial_guess, 1000);
         printf("CHEM_GUESS_GROUPS H=%d D=%d CO_stored=%d CO_intermediate=%d converged=%d\n",
                !!(group_mask & 1), !!(group_mask & 2), !!(group_mask & 4),
@@ -751,7 +752,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
         memcpy(trial_guess, newton_guess, sizeof(trial_guess));
         trial_guess[reverted_species] = sph_out.Abund[reverted_species];
         struct chemdata_out trial = sph_out;
-        int trial_status = compute_chemistry_implicit_guess_d(
+        int trial_status = chemistry_adapter.solve_fixed_guess(
             &sph_in, &trial, temperature, dt, trial_guess, 1000);
         printf("CHEM_GUESS_REVERT species=%s converged=%d physical=%.17g successful=%.17g\n",
                chemistry_species_definition(static_cast<SPECIES>(reverted_species))->name,
@@ -764,7 +765,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
         memcpy(trial_guess, sph_out.Abund, sizeof(trial_guess));
         const int selected_species[] = {
           sHII, sH2I, sHM,
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
           sCI, sCII, sCO, sOH, sOII, sOHII,
 #endif
         };
@@ -774,7 +775,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
           trial_guess[species] = newton_guess[species];
         }
         struct chemdata_out trial = sph_out;
-        int trial_status = compute_chemistry_implicit_guess_d(
+        int trial_status = chemistry_adapter.solve_fixed_guess(
             &sph_in, &trial, temperature, dt, trial_guess, 1000);
         printf("CHEM_GUESS_SELECTED converged=%d count=%d\n",
                trial_status == 1, selected_count);
@@ -782,7 +783,7 @@ static int run_single_chemistry_step(const char *path, int diagnostic_mode,
       return success_count > 0 ? 0 : 1;
     }
   } else {
-    status = compute_chemistry_implicit_d(&sph_in, &sph_out, temperature, dt);
+    status = chemistry_adapter.solve_fixed(&sph_in, &sph_out, temperature, dt);
   }
   int converged = diagnostic_mode == 2 ? status == 0 : status == 1;
   double elapsed = gettimeofday_sec() - started;
@@ -810,30 +811,30 @@ typedef struct {
   MyIDType diagnostic_id;
 #ifdef LW_RADIATION_LOCAL
   double local_J21, local_rate_Hminus_pd, local_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double local_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double local_G0;
 #endif
 #endif
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   double background_J21, background_rate_Hminus_pd, background_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double background_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double background_G0;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   double photoionization_rate_HI, photoheating_rate_HI;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double photoionization_rate_HeI, photoheating_rate_HeI;
   double photoionization_rate_HeII, photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double photoionization_rate_C[3], photoheating_rate_C[3];
   double photoionization_rate_O[3], photoheating_rate_O[3];
   double rate_CO_diss;
@@ -909,33 +910,33 @@ static int parse_chem_rerun_assignments(char *text, ChemRerunRecord *record,
     else if(strcmp(key, "local_J21") == 0) record->local_J21 = value;
     else if(strcmp(key, "local_rate_Hminus_pd_s-1") == 0 || strcmp(key, "local_rate_Hminus_pd") == 0) record->local_rate_Hminus_pd = value;
     else if(strcmp(key, "local_rate_H2_diss_s-1") == 0 || strcmp(key, "local_rate_H2_diss") == 0) record->local_rate_H2_diss = value;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     else if(strcmp(key, "local_rate_HD_diss") == 0) record->local_rate_HD_diss = value;
 #endif
     else if(strcmp(key, "local_G0") == 0) record->local_G0 = value;
 #endif
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
     else if(strcmp(key, "background_J21") == 0) record->background_J21 = value;
     else if(strcmp(key, "background_rate_Hminus_pd_s-1") == 0 || strcmp(key, "background_rate_Hminus_pd") == 0) record->background_rate_Hminus_pd = value;
     else if(strcmp(key, "background_rate_H2_diss_s-1") == 0 || strcmp(key, "background_rate_H2_diss") == 0) record->background_rate_H2_diss = value;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     else if(strcmp(key, "background_rate_HD_diss") == 0) record->background_rate_HD_diss = value;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
     else if(strcmp(key, "background_G0") == 0) record->background_G0 = value;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
     else if(strcmp(key, "photoionization_rate_HI_s-1") == 0 || strcmp(key, "photoionization_rate_HI") == 0) record->photoionization_rate_HI = value;
     else if(strcmp(key, "photoheating_rate_HI_erg_s-1") == 0 || strcmp(key, "photoheating_rate_HI") == 0) record->photoheating_rate_HI = value;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     else if(strcmp(key, "photoionization_rate_HeI") == 0) record->photoionization_rate_HeI = value;
     else if(strcmp(key, "photoheating_rate_HeI") == 0) record->photoheating_rate_HeI = value;
     else if(strcmp(key, "photoionization_rate_HeII") == 0) record->photoionization_rate_HeII = value;
     else if(strcmp(key, "photoheating_rate_HeII") == 0) record->photoheating_rate_HeII = value;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
     else if(strcmp(key, "photoionization_rate_CI") == 0) record->photoionization_rate_C[0] = value;
     else if(strcmp(key, "photoionization_rate_CII") == 0) record->photoionization_rate_C[1] = value;
     else if(strcmp(key, "photoionization_rate_CIII") == 0) record->photoionization_rate_C[2] = value;
@@ -1017,7 +1018,7 @@ static void run_chem_rerun_record(const ChemRerunRecord *record,
 
   All.Epsilon = record->timescale_safety_factor;
 #ifdef CHEMISTRY_PORTABLE
-  if(!chemistry_standalone_set_timescale_safety_factor(record->timescale_safety_factor)) {
+  if(!chemistry_adapter.set_timescale_safety_factor(record->timescale_safety_factor)) {
     fprintf(stderr, "%s:%d: CHEM_REPLAY_LOG_SKIP reason=standalone_not_initialized\n",
             path, line_number);
     return;
@@ -1033,14 +1034,14 @@ static void run_chem_rerun_record(const ChemRerunRecord *record,
     All.cf_a3inv = record->comoving_integration ?
         1.0 / (record->scale_factor * record->scale_factor * record->scale_factor) : 1.0;
   }
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   All.J21 = record->background_J21;
   All.rate_Hminus_pd = record->background_rate_Hminus_pd;
   All.rate_H2_diss = record->background_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   All.rate_HD_diss = record->background_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   All.G0 = record->background_G0;
 #endif
 #endif
@@ -1062,24 +1063,24 @@ static void run_chem_rerun_record(const ChemRerunRecord *record,
   sph_in.J21 = record->local_J21;
   sph_in.rate_Hminus_pd = record->local_rate_Hminus_pd;
   sph_in.rate_H2_diss = record->local_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   sph_in.rate_HD_diss = record->local_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   sph_in.G0 = record->local_G0;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   sph_in.k22 = record->photoionization_rate_HI;
   sph_in.piHI = record->photoheating_rate_HI;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   sph_in.photoionization_rate_HeI = record->photoionization_rate_HeI;
   sph_in.photoheating_rate_HeI = record->photoheating_rate_HeI;
   sph_in.photoionization_rate_HeII = record->photoionization_rate_HeII;
   sph_in.photoheating_rate_HeII = record->photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   for(int stage = 0; stage < 3; stage++) {
     sph_in.photoionization_rate_C[stage] = record->photoionization_rate_C[stage];
     sph_in.photoheating_rate_C[stage] = record->photoheating_rate_C[stage];
@@ -1104,7 +1105,7 @@ static void run_chem_rerun_record(const ChemRerunRecord *record,
   sph_out.t_chem = sph_out.t_cool = MAX_REAL_NUMBER;
 
   double started = gettimeofday_sec();
-  int status = compute_chemistry_implicit_d(&sph_in, &sph_out, record->temperature, record->dt);
+  int status = chemistry_adapter.solve_fixed(&sph_in, &sph_out, record->temperature, record->dt);
   double elapsed = gettimeofday_sec() - started;
   double final_temperature = chemistry_temperature(sph_out.Abund, sph_out.Gamma,
       sph_out.Utherm * (All.UnitEnergy_in_cgs / All.UnitMass_in_g));
@@ -1185,18 +1186,14 @@ static void print_single_chemistry_step_input(const struct chemdata_in *input,
 }
 #endif
 
-#if defined(IONIZATION_PHOTON) || defined(X_RAY)
+#if defined(IONIZING_PHOTON)
 int init_ionization_rad(void);
 int ionization_rates(void);
 int make_ionization_rate_table(void);
-int init_ionization_XRay(void);
-void calc_phis_coll(double Ncoll_H, double Ncoll_He, double *phi_H, double *phi_He, double *kion1, double *kion2);
 
-int init_ionization_XRay_2nd(void);
-void calc_phis_coll_2nd(double Ncoll_H, double Ncoll_He, double xion, double *phiH_2nd, double *phiHe_2nd, double *gammaH_2nd, double *gammaHe_2nd);
 #endif
 
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
 int set_J21(const RadiationRateContext *radiation_context);
 #endif
 
@@ -1206,7 +1203,7 @@ int main(int argc, char **argv){
   int  istep_max = 10000000;
   double  theta;
   char   outputdir[255],outname[255],option[255];
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   RadiationRateContext radiation_context;
   int radiation_initialized = 0;
 #endif
@@ -1286,7 +1283,7 @@ int main(int argc, char **argv){
   }
 #endif
 
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   if(!radiation_rate_context_init(&radiation_context)) {
     fprintf(stderr, "Failed to initialize the radiation-rate context.\n");
     exit_status = EXIT_FAILURE;
@@ -1333,30 +1330,30 @@ int main(int argc, char **argv){
   sprintf(outputdir,"%s/metals",output_root);
 #endif
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   sprintf(outputdir,"%s_CO",outputdir);
-#ifdef CHEM_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION
+#ifdef CHEMISTRY_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION
   sprintf(outputdir,"%s_EQ_FULL",outputdir);
-#elif defined(CHEM_INTERMEDIATE_EQUILIBRIUM)
+#elif defined(CHEMISTRY_INTERMEDIATE_EQUILIBRIUM)
   sprintf(outputdir,"%s_EQ_REDUCED",outputdir);
 #else
   sprintf(outputdir,"%s_NEQ",outputdir);
 #endif
 #endif
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   sprintf(outputdir,"%s_He",outputdir);
 #endif
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   sprintf(outputdir,"%s_HD",outputdir);
 #endif
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
   sprintf(outputdir,"%s_LW",outputdir);
 #endif
 
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
 #ifdef SURVEY_CMB_REDSHIFT
   sprintf(outputdir,"%s_CMB",outputdir);
 #else
@@ -1394,7 +1391,7 @@ int main(int argc, char **argv){
 #endif
 #ifdef SURVEY_LYMANWERNER
 	  All.LymanWerner = LW[il];
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
 	  All.J21 = All.LymanWerner;
 #endif
 #endif
@@ -1422,7 +1419,7 @@ int main(int argc, char **argv){
 		      printf("[imet=%d] Metallicity=%g\n", imet, All.Metallicity);
 #endif
 
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
 	      if(!set_J21(&radiation_context)) {
 	        fprintf(stderr, "Failed to prepare the uniform LW background.\n");
 	        exit_status = EXIT_FAILURE;
@@ -1531,18 +1528,18 @@ int main(int argc, char **argv){
 #ifdef METALLICITY
 			sph_in.Metallicity = SphP[ithis].Metallicity;
 #endif
-#if defined(LYMANWERNER) && defined(LW_RADIATION_LOCAL)
+#if defined(CHEMISTRY_LW_RADIATION) && defined(LW_RADIATION_LOCAL)
 			sph_in.rate_Hminus_pd = SphP[ithis].rate_Hminus_pd;
 			sph_in.rate_H2_diss = SphP[ithis].rate_H2_diss;
 			sph_in.J21 = SphP[ithis].J21;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
 			sph_in.rate_HD_diss = SphP[ithis].rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
 			sph_in.G0 = SphP[ithis].G0;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
 			sph_in.k22 = SphP[ithis].k22;
 			sph_in.piHI = SphP[ithis].piHI;
 #endif
@@ -1557,26 +1554,26 @@ int main(int argc, char **argv){
 			sph_out.Abund[sHII] = SphP[ithis].HII;
 			sph_out.Abund[sH2I] = SphP[ithis].H2I;
 			sph_out.Abund[sHM] = SphP[ithis].HM;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
 			sph_out.Abund[sHeI] = SphP[ithis].HeI;
 			sph_out.Abund[sHeII] = SphP[ithis].HeII;
 			sph_out.Abund[sHeIII] = SphP[ithis].HeIII;
 #endif
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 			sph_out.Abund[sH2II] = SphP[ithis].H2II;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
 			sph_out.Abund[sDI] = SphP[ithis].DI;
 			sph_out.Abund[sDII] = SphP[ithis].DII;
 			sph_out.Abund[sHDI] = SphP[ithis].HDI;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
 			sph_out.Abund[sHDII] = SphP[ithis].HDII;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
 			sph_out.Abund[sDM] = SphP[ithis].DM;
 #endif
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
 			sph_out.Abund[sCI] = SphP[ithis].CI;
 			sph_out.Abund[sCII] = SphP[ithis].CII;
 			sph_out.Abund[sCO] = SphP[ithis].CO;
@@ -1585,7 +1582,7 @@ int main(int argc, char **argv){
 			sph_out.Abund[sOH] = SphP[ithis].OH;
 			sph_out.Abund[sH2O] = SphP[ithis].H2O;
 			sph_out.Abund[sO2] = SphP[ithis].O2;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
 			sph_out.Abund[sCOII] = SphP[ithis].COII;
 			sph_out.Abund[sCH] = SphP[ithis].CH;
 			sph_out.Abund[sCH2] = SphP[ithis].CH2;
@@ -1611,7 +1608,12 @@ int main(int argc, char **argv){
 #ifdef CHEMISTRY_PORTABLE
 		prepare_portable_chemistry_step();
 #endif
+
+#ifdef CHEMISTRY_PORTABLE
+		ifunc = chemistry_adapter.advance(1, &sph_in, &sph_out, dt_in_sec);
+#else
 		ifunc = compute_abundances_d(1, &sph_in, &sph_out, dt_in_sec);
+#endif
 		if(ifunc != 0)
 		  {
 		    fprintf(stderr,
@@ -1629,7 +1631,12 @@ int main(int argc, char **argv){
 #endif
 		if(ifunc == 1){
 		  sph_in.flag_print = 1;
+
+#ifdef CHEMISTRY_PORTABLE
+		  ifunc = chemistry_adapter.advance(1, &sph_in, &sph_out, dt_in_sec);
+#else
 		  ifunc = compute_abundances_d(1, &sph_in, &sph_out, dt_in_sec);
+#endif
 		}
 
 			SphP[ithis].ThermalEnergy = sph_out.Utherm;
@@ -1638,26 +1645,26 @@ int main(int argc, char **argv){
 			SphP[ithis].HII = sph_out.Abund[sHII];
 			SphP[ithis].H2I = sph_out.Abund[sH2I];
 			SphP[ithis].HM = sph_out.Abund[sHM];
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
 			SphP[ithis].HeI = sph_out.Abund[sHeI];
 			SphP[ithis].HeII = sph_out.Abund[sHeII];
 			SphP[ithis].HeIII = sph_out.Abund[sHeIII];
 #endif
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 			SphP[ithis].H2II = sph_out.Abund[sH2II];
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
 			SphP[ithis].DI = sph_out.Abund[sDI];
 			SphP[ithis].DII = sph_out.Abund[sDII];
 			SphP[ithis].HDI = sph_out.Abund[sHDI];
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
 			SphP[ithis].HDII = sph_out.Abund[sHDII];
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
 			SphP[ithis].DM = sph_out.Abund[sDM];
 #endif
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
 			SphP[ithis].CI = sph_out.Abund[sCI];
 			SphP[ithis].CII = sph_out.Abund[sCII];
 			SphP[ithis].CO = sph_out.Abund[sCO];
@@ -1666,7 +1673,7 @@ int main(int argc, char **argv){
 			SphP[ithis].OH = sph_out.Abund[sOH];
 			SphP[ithis].H2O = sph_out.Abund[sH2O];
 			SphP[ithis].O2 = sph_out.Abund[sO2];
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
 			SphP[ithis].COII = sph_out.Abund[sCOII];
 			SphP[ithis].CH = sph_out.Abund[sCH];
 			SphP[ithis].CH2 = sph_out.Abund[sCH2];
@@ -1685,7 +1692,7 @@ int main(int argc, char **argv){
 			SphP[ithis].tau_cont = sph_out.tau_cont;
 			SphP[ithis].f_reduce = sph_out.continuum_reduction_factor;
 			SphP[ithis].fesc_H2 = sph_out.diagnostics.H2_escape_fraction;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
 			SphP[ithis].fesc_HD = sph_out.diagnostics.HD_escape_fraction;
 #endif
 			for(int irate = 0; irate < k_MAX; irate++) {
@@ -1706,7 +1713,7 @@ int main(int argc, char **argv){
 			SphP[ithis].edot_H2form_dust = sph_out.diagnostics.edot_H2form_dust;
 			SphP[ithis].edot_H2form_3body = sph_out.diagnostics.edot_H2form_3body;
 			SphP[ithis].n_crit = sph_out.diagnostics.n_crit;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
 			SphP[ithis].edot_ceHeI = sph_out.diagnostics.edot_ceHeI;
 			SphP[ithis].edot_ceHeII = sph_out.diagnostics.edot_ceHeII;
 			SphP[ithis].edot_ciHeI = sph_out.diagnostics.edot_ciHeI;
@@ -1716,7 +1723,7 @@ int main(int argc, char **argv){
 			SphP[ithis].edot_reHeII2 = sph_out.diagnostics.edot_reHeII2;
 			SphP[ithis].edot_reHeIII = sph_out.diagnostics.edot_reHeIII;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
 			SphP[ithis].edot_HD = sph_out.diagnostics.edot_HD;
 #endif
 #ifdef METALLICITY
@@ -1724,18 +1731,18 @@ int main(int argc, char **argv){
 			SphP[ithis].edot_CII = sph_out.diagnostics.edot_CII;
 			SphP[ithis].edot_OI = sph_out.diagnostics.edot_OI;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
 			SphP[ithis].edot_CO = sph_out.diagnostics.edot_CO;
 			SphP[ithis].edot_OH = sph_out.diagnostics.edot_OH;
 			SphP[ithis].edot_H2O = sph_out.diagnostics.edot_H2O;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
 			SphP[ithis].edot_dust = sph_out.diagnostics.edot_dust;
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
 			SphP[ithis].edot_PE = sph_out.diagnostics.edot_PE;
 #endif
 #endif
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
 			SphP[ithis].edot_cont = sph_out.diagnostics.edot_cont;
 #else
 			SphP[ithis].edot_reHII = sph_out.diagnostics.edot_reHI;
@@ -1792,10 +1799,10 @@ int main(int argc, char **argv){
   }
 cleanup:
 #ifdef CHEMISTRY_PORTABLE
-  chemistry_standalone_configure(NULL, NULL);
+  chemistry_adapter.configure(NULL, NULL);
   chemistry_model.reset();
 #endif
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   if(radiation_initialized)
     radiation_rate_context_destroy(&radiation_context);
 #endif
@@ -1803,15 +1810,15 @@ cleanup:
 }
 
 void give_file_name(char *option){
-#ifdef ENZO_CHEM
+#if CHEMISTRY_ENZO
   sprintf(option,"%s_%s",option,"EZ");
-#elif MARTIN97
+#elif CHEMISTRY_MARTIN97
   sprintf(option,"%s_%s",option,"MT");
 #elif GA08
   sprintf(option,"%s_%s",option,"GA");
 #endif
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   sprintf(option,"%s_%s",option,"HD");
 #endif
 
@@ -1819,14 +1826,11 @@ void give_file_name(char *option){
   sprintf(option,"%s_%s",option,"Hline");
 #endif
 
-#ifdef METAL
-  sprintf(option,"%s_%s%g",option,"ME", METAL);
-#endif
 
 #ifdef METALLICITY
   sprintf(option,"%s_%s%g",option,"ME", (double) (log10(All.Metallicity)));
 
-#ifndef DUST_COOLING
+#if !CHEMISTRY_DUST_COOLING
   sprintf(option,"%s_%s",option,"nodust");
 #endif
 
@@ -1835,9 +1839,9 @@ void give_file_name(char *option){
 #endif
 #endif
 
-#ifdef HYBRID_IMPLICIT
+#ifdef CHEMISTRY_HYBRID_IMPLICIT
   sprintf(option,"%s_%s",option,"HYB");
-#elif ENERGY_IMPLICIT
+#elif CHEMISTRY_ENERGY_IMPLICIT
   sprintf(option,"%s_%s",option,"EIMP");
 #elif CHEMISTRY_IMPLICIT
   sprintf(option,"%s_%s",option,"CIMP");
@@ -1845,7 +1849,7 @@ void give_file_name(char *option){
   sprintf(option,"%s_%s",option,"EXP");
 #endif
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
 #ifdef TYPE_A
   sprintf(option,"%s_A_%g",option,All.LymanWerner);
 #elif TYPE_B
@@ -1856,7 +1860,7 @@ void give_file_name(char *option){
   sprintf(option,"%s_P_%g",option,All.LymanWerner);
 #endif
 
-#ifndef SHIELD_LW
+#ifndef CHEMISTRY_LW_SELF_SHIELDING
   sprintf(option,"%s_noshield",option);
 #endif
 
@@ -1865,7 +1869,7 @@ void give_file_name(char *option){
 #endif
 #endif
 
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
   sprintf(option,"%s_CMBz%d",option, (int)(1./All.ExpansionParam - 1));
 #endif
 
@@ -1874,9 +1878,6 @@ void give_file_name(char *option){
   sprintf(option, "%s_BETA_%g", option, (double)SLOW_COLLAPSE);
 #endif
 
-#ifdef X_RAY
-  sprintf(option,"%s_XR_%g",option,X_RAY);
-#endif
 
 #ifdef HIGH_TEMP
   sprintf(option,"%s_highT",option);
@@ -2004,7 +2005,7 @@ void dump_data(int idump, char *outname, int mode){
   ab_elec  = SphP[0].elec /XH;
   ab_HI    = SphP[0].HI   /XH;
   ab_HII   = SphP[0].HII  /XH;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   ab_HeI   = SphP[0].HeI  /XH;
   ab_HeII  = SphP[0].HeII /XH;
   ab_HeIII = SphP[0].HeIII/XH;
@@ -2014,18 +2015,18 @@ void dump_data(int idump, char *outname, int mode){
   ab_HeIII = 0.;
 #endif
   ab_H2I   = SphP[0].H2I  /XH;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   ab_H2II  = SphP[0].H2II /XH;
 #endif
   ab_HM    = SphP[0].HM   /XH;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   ab_DI    = SphP[0].DI   /XH;
   ab_DII   = SphP[0].DII  /XH;
   ab_HDI   = SphP[0].HDI  /XH;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   ab_HDII  = SphP[0].HDII /XH;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   ab_DM    = SphP[0].DM   /XH;
 #endif
 #else
@@ -2043,19 +2044,19 @@ void dump_data(int idump, char *outname, int mode){
 
   sum_fraction  =  SphP[0].elec
     + SphP[0].HI + SphP[0].HII + SphP[0].HM + SphP[0].H2I
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
     + SphP[0].H2II
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     + SphP[0].DI + SphP[0].DII + SphP[0].HDI
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
     + SphP[0].HDII
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
     + SphP[0].DM
 #endif
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     + SphP[0].HeI + SphP[0].HeII + SphP[0].HeIII
 #else
     + 0.0625
@@ -2101,7 +2102,7 @@ void dump_data(int idump, char *outname, int mode){
   cool_CI   = fabs(SphP[0].edot_CI)         / SphP[0].Density * unit;
   cool_CII  = fabs(SphP[0].edot_CII)        / SphP[0].Density * unit;
   cool_OI   = fabs(SphP[0].edot_OI)         / SphP[0].Density * unit;
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   cool_CO   = fabs(SphP[0].edot_CO)         / SphP[0].Density * unit;
   cool_OH   = fabs(SphP[0].edot_OH)         / SphP[0].Density * unit;
   cool_H2O  = fabs(SphP[0].edot_H2O)        / SphP[0].Density * unit;
@@ -2151,7 +2152,7 @@ void dump_data(int idump, char *outname, int mode){
 	  ab_DI                   , ab_DII                  , ab_HDI, // 20 21 22
 	  ab_HDII                 , ab_DM                   , 0. , // 23 24 25
 	  Escape, SHR, t_ff_out   , Tdust); // 26 27 28 29
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   fprintf(fpout, " %20.10e %20.10e %20.10e %20.10e"
                  " %20.10e %20.10e %20.10e %20.10e",
           SphP[0].CI / XH, SphP[0].CII / XH, SphP[0].CO / XH, SphP[0].CO2 / XH,
@@ -2247,20 +2248,20 @@ void dump_data(int idump, char *outname, int mode){
 	  SphP[0].k[2]  * SphP[0].HII  * SphP[0].elec   ,
 	  SphP[0].k[7]  * SphP[0].HI   * SphP[0].elec   ,
 	  SphP[0].k[8]  * SphP[0].HI   * SphP[0].HM     ,
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 	  SphP[0].k[9]  * SphP[0].HI   * SphP[0].HII    ,
 	  SphP[0].k[10] * SphP[0].HI   * SphP[0].H2II   ,
 #else
 	  0., 0.,
 #endif
 	  SphP[0].k[11] * SphP[0].HI   * SphP[0].H2I    ,
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 	  SphP[0].k[12] * SphP[0].HII  * SphP[0].H2I    ,
 #else
 	  0.,
 #endif
 	  SphP[0].k[13] * SphP[0].H2I  * SphP[0].elec   ,
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
 	  SphP[0].k[14] * SphP[0].HI   * SphP[0].HeI    ,
 	  SphP[0].k[15] * SphP[0].HII  * SphP[0].HeI    ,
 #else
@@ -2269,7 +2270,7 @@ void dump_data(int idump, char *outname, int mode){
 	  SphP[0].k[16] * SphP[0].HM   * SphP[0].elec   ,
 	  SphP[0].k[17] * SphP[0].HI   * SphP[0].HM     ,
 	  SphP[0].k[18] * SphP[0].HII  * SphP[0].HM     ,
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 	  SphP[0].k[20] * SphP[0].H2II * SphP[0].elec   ,
 	  SphP[0].k[21] * SphP[0].H2II * SphP[0].HM     ,
 #else
@@ -2277,7 +2278,7 @@ void dump_data(int idump, char *outname, int mode){
 #endif
 	  SphP[0].k[22] * SphP[0].HI   / SphP[0].n_nuclei,
 	  SphP[0].k[29] * SphP[0].H2I  / SphP[0].n_nuclei,
-#ifdef H2_FORMATION_ON_DUST
+#if CHEMISTRY_H2_FORMATION_ON_DUST
 	  SphP[0].k[51] * SphP[0].HI   / SphP[0].n_nuclei,
 #else
 	  0.,
@@ -2303,19 +2304,19 @@ void dump_data(int idump, char *outname, int mode){
 	  "\n",
 	  SphP[0].n_nuclei,
 	  SphP[0].k[8]  * SphP[0].HM   * SphP[0].HI   ,
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 	  SphP[0].k[10] * SphP[0].H2II * SphP[0].HI   ,
 #else
 	  0.,
 #endif
 	  SphP[0].k[11] * SphP[0].H2I  * SphP[0].HI   ,
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 	  SphP[0].k[12] * SphP[0].H2I  * SphP[0].HII  ,
 #else
 	  0.,
 #endif
 	  SphP[0].k[13] * SphP[0].H2I  * SphP[0].elec ,
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 	  SphP[0].k[21] * SphP[0].H2II * SphP[0].HM   ,
 #else
 	  0.,
@@ -2354,7 +2355,7 @@ void dump_data(int idump, char *outname, int mode){
 	  SphP[0].k[16] * SphP[0].HM   * SphP[0].elec,
 	  SphP[0].k[17] * SphP[0].HM   * SphP[0].HI  ,
 	  SphP[0].k[18] * SphP[0].HM   * SphP[0].HII ,
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 	  SphP[0].k[19] * SphP[0].HII  * SphP[0].HM  ,
 	  SphP[0].k[21] * SphP[0].H2II * SphP[0].HM  ,
 #else
@@ -2378,7 +2379,7 @@ void dump_data(int idump, char *outname, int mode){
 	  SphP[0].n_nuclei, Tout,
 	  SphP[0].k[1]  * SphP[0].elec  * SphP[0].HI   ,
 	  SphP[0].k[2]  * SphP[0].elec  * SphP[0].HII  ,
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
 	  SphP[0].k[3]  * SphP[0].HeI   * SphP[0].elec ,
 	  SphP[0].k[4]  * SphP[0].HeII  * SphP[0].elec ,
 	  SphP[0].k[5]  * SphP[0].HeII  * SphP[0].elec ,
@@ -2390,14 +2391,14 @@ void dump_data(int idump, char *outname, int mode){
 	  SphP[0].k[8]  * SphP[0].HM    * SphP[0].HI   ,
 	  SphP[0].k[16] * SphP[0].HM    * SphP[0].elec ,
 	  SphP[0].k[17] * SphP[0].HM    * SphP[0].HI   ,
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 	  SphP[0].k[19] * SphP[0].HM    * SphP[0].H2I  ,
 	  SphP[0].k[20] * SphP[0].H2II  * SphP[0].elec ,
 #else
 	  0., 0.,
 #endif
 	  SphP[0].k[22] * SphP[0].HI    / SphP[0].n_nuclei,
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
 	  SphP[0].k[24] * SphP[0].HeI   / SphP[0].n_nuclei,
 #else
 	  0.,
@@ -2459,7 +2460,7 @@ int InitTable(void){
   ifunc = OH_cooling_table();
 #endif
 
-#if (defined(IONIZATION_PHOTON) || defined(X_RAY)) && !defined(CHEM_REPLAY_EXTERNAL_RADIATION)
+#if defined(IONIZING_PHOTON) && !defined(STANDALONE_EXTERNAL_RADIATION)
   init_ionization_rad();
 #endif
 
@@ -2474,21 +2475,14 @@ int InitTable(void){
   model = std::move(created.model);
   const ChemStandaloneUnits units = {
       All.UnitEnergy_in_cgs / All.UnitMass_in_g};
-  chemistry_standalone_configure(&model->run(), &units);
+  chemistry_adapter.configure(&model->run(), &units);
   prepare_portable_chemistry_step();
 #else
   ifunc = InitChem(); // tabulate reaction rates
 #endif
 
-#if defined(IONIZATION_PHOTON) && !defined(CHEM_REPLAY_EXTERNAL_RADIATION)
+#if defined(IONIZING_PHOTON) && !defined(STANDALONE_EXTERNAL_RADIATION)
   make_ionization_rate_table();
-#else
-#ifdef X_RAY
-  init_ionization_XRay();
-#ifdef X_RAY_2nd
-  init_ionization_XRay_2nd();
-#endif
-#endif
 #endif
 
   return ifunc;
@@ -2502,23 +2496,23 @@ static void prepare_portable_chemistry_step(void)
   step.scale_factor = All.cf_atime;
   step.simulation_time = All.Time;
   step.comoving_integration = All.ComovingIntegrationOn;
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   step.background_J21 = All.J21;
   step.background_rate_Hminus_pd = All.rate_Hminus_pd;
   step.background_rate_H2_diss = All.rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   step.background_rate_HD_diss = All.rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   step.background_G0 = All.G0;
 #endif
 #endif
-  chemistry_standalone_prepare_step(&step);
+  chemistry_adapter.prepare_step(&step);
 }
 #endif
 
 
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
 int set_J21(const RadiationRateContext *radiation_context){
 #ifdef TYPE_B
   const double Teff = 1.e4;
@@ -2533,7 +2527,7 @@ int set_J21(const RadiationRateContext *radiation_context){
     return 0;
 
   All.rate_Hminus_pd = rates.hminus_photodetachment_rate;
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
 #ifdef CHEMISTRY_OLD
   All.G0 = rates.g0 / 1.6e-3;
 #else
@@ -2541,7 +2535,7 @@ int set_J21(const RadiationRateContext *radiation_context){
 #endif
 #endif
   All.rate_H2_diss = rates.h2_photodissociation_rate;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   All.rate_HD_diss = rates.hd_photodissociation_rate;
 #endif
   return 1;
@@ -2554,7 +2548,7 @@ int initialize_cells(double z, double theta){
   int j, ifunc;
   double ab_H, ab_He, ab_elec, ab_HI, ab_HII, ab_HeI, ab_HeII, ab_HeIII, ab_HM, ab_DI, ab_DII, ab_HDI, ab_HDII, ab_DM;
   double ab_H2I, ab_H2II, ab_HD;
-#if defined(METAL) || defined(CARBON_OXYGEN_CHEMISTRY)
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double ab_CII, ab_OI;
 #endif
   double sum_fraction, egyspec_to_temp;
@@ -2636,7 +2630,7 @@ int initialize_cells(double z, double theta){
     ab_HII = 1.e-6 * H_number_fraction;
 #endif
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     ab_DII  = 1.0e-20;
     ab_DM   = 1.0e-20;
     ab_HDI  = 1.0e-9 * H_number_fraction;
@@ -2645,7 +2639,7 @@ int initialize_cells(double z, double theta){
 #endif
     ab_HI   = H_number_fraction - 1.0*ab_HII - 2.0*ab_H2I;
 
-#if defined(METAL) || defined(CARBON_OXYGEN_CHEMISTRY)
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
     ab_CII  = XH * A_C_sun * All.Metallicity;
     ab_OI   = XH * A_O_sun * All.Metallicity;
 #endif
@@ -2661,43 +2655,35 @@ int initialize_cells(double z, double theta){
     SphP[i].HI   = ab_HI;
     SphP[i].HII  = ab_HII;
     SphP[i].H2I  = ab_H2I;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
     SphP[i].H2II = ab_H2II;
 #endif
     SphP[i].HM   = ab_HM;
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     SphP[i].HeI  = ab_HeI;
     SphP[i].HeII = ab_HeII;
     SphP[i].HeIII= ab_HeIII;
 #endif
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     SphP[i].DI   = ab_DI;
     SphP[i].DII  = ab_DII;
     SphP[i].HDI  = ab_HDI;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
     SphP[i].HDII = ab_HDII;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
     SphP[i].DM   = ab_DM;
 #endif
 #endif
 
-#ifdef METAL
-    SphP[i].CII = ab_CII;
-    SphP[i].OI  = ab_OI;
-    SphP[i].CI  = SphP[i].OII = SphP[i].O2 = SphP[i].O2II = 1.e-10 * ab_CII;
-    SphP[i].CO  = SphP[i].COII = SphP[i].CO2 = 1.e-10 * ab_CII;
-    SphP[i].OH  = SphP[i].OHII = SphP[i].H2O = SphP[i].H2OII = 1.e-10 * ab_CII;
-    SphP[i].H3OII = SphP[i].CH = SphP[i].CH2 = 1.e-10 * ab_CII;
-#endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
     SphP[i].CI = SphP[i].CO = SphP[i].CO2 = 0.0;
     SphP[i].CII = ab_CII;
     SphP[i].OI = ab_OI;
     SphP[i].OH = SphP[i].H2O = SphP[i].O2 = 0.0;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     SphP[i].COII = SphP[i].CH = SphP[i].CH2 = 0.0;
     SphP[i].OII = SphP[i].OHII = SphP[i].H2OII = SphP[i].H3OII = SphP[i].O2II = 0.0;
 #endif
@@ -2705,10 +2691,10 @@ int initialize_cells(double z, double theta){
 
     // compute density
     ab_elec = ab_HII + ab_HeII + 2.0 * ab_HeIII + ab_H2II  - ab_HM
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
       + ab_DII + ab_HDII - ab_DM
 #endif
-#if defined(METAL) || defined(CARBON_OXYGEN_CHEMISTRY)
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
       + ab_CII
 #endif
       ;
@@ -2718,22 +2704,22 @@ int initialize_cells(double z, double theta){
 
     sum_fraction    =
       SphP[i].elec + SphP[i].HI  + SphP[i].HII + SphP[i].HM  + SphP[i].H2I
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
       + SphP[i].H2II
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
       + SphP[i].HeI + SphP[i].HeII + SphP[i].HeIII
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
       + SphP[i].DI  + SphP[i].DII  + SphP[i].HDI
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
       + SphP[i].HDII
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
       + SphP[i].DM
 #endif
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
       + SphP[i].CI + SphP[i].CII + SphP[i].CO + SphP[i].CO2
       + SphP[i].OI + SphP[i].OH + SphP[i].H2O + SphP[i].O2
 #endif
@@ -2752,26 +2738,26 @@ int initialize_cells(double z, double theta){
       abund[sHII] = SphP[i].HII;
       abund[sH2I] = SphP[i].H2I;
       abund[sHM] = SphP[i].HM;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
       abund[sHeI] = SphP[i].HeI;
       abund[sHeII] = SphP[i].HeII;
       abund[sHeIII] = SphP[i].HeIII;
 #endif
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
       abund[sH2II] = SphP[i].H2II;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
       abund[sDI] = SphP[i].DI;
       abund[sDII] = SphP[i].DII;
       abund[sHDI] = SphP[i].HDI;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
       abund[sHDII] = SphP[i].HDII;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
       abund[sDM] = SphP[i].DM;
 #endif
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
       abund[sCI] = SphP[i].CI;
       abund[sCII] = SphP[i].CII;
       abund[sCO] = SphP[i].CO;
@@ -2805,55 +2791,20 @@ int initialize_cells(double z, double theta){
     ifunc = compute_Jeans_length(i, T0);
     column_dens_H2 = SphP[i].Jeans_Length * SphP[i].H2I * n_nuclei0;
     column_dens_HI = SphP[i].Jeans_Length * SphP[i].HI  * n_nuclei0;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     column_dens_HD = SphP[i].Jeans_Length * SphP[i].HDI * n_nuclei0;
 #endif
 
-#ifdef SHIELD_6RAY
-    for(j=0;j<6;j++){
-      SphP[i].ColumnDens_H2[j] = column_dens_H2;
-      SphP[i].ColumnDens_HI[j] = column_dens_HI;
-#ifdef HD
-     SphP[i].ColumnDens_HD[j] = column_dens_HD;
-#endif
-    }
-#endif
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
     All.J21 = All.LymanWerner;
     SphP[i].J21 = All.J21;
 
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
     SphP[i].G0 = All.G0;
 #endif
 #endif
 
-#ifdef X_RAY
-    double k22, k24;
-    double phi_H, phi_He;
-    double column_dens_HeI;
-
-    All.X_J21 = X_RAY * 1e-21;
-
-    column_dens_HeI = SphP[i].Jeans_Length * SphP[i].HeI * n_nuclei0;
-
-    calc_phis_coll(column_dens_HI, column_dens_HeI, &phi_H, &phi_He, &k22, &k24);
-    SphP[i].k22 = k22 * All.X_J21;
-    SphP[i].k24 = k24 * All.X_J21;
-
-    SphP[i].piHI = phi_H * All.X_J21;
-    SphP[i].piHeI= phi_He * All.X_J21;
-#ifdef X_RAY_2nd
-    double phiH_2nd, phiHe_2nd, gammaH_2nd, gammaHe_2nd;
-
-    calc_phis_coll_2nd(column_dens_HI, column_dens_HeI, SphP[0].elec, &phiH_2nd, &phiHe_2nd, &gammaH_2nd, &gammaHe_2nd);
-
-    SphP[i].k22_2nd = phiH_2nd;
-    SphP[i].k24_2nd = phiHe_2nd;
-    SphP[i].piHI  = gammaH_2nd * All.X_J21;
-    SphP[i].piHeI = gammaHe_2nd * All.X_J21;
-#endif
-#endif
 
 
   }
@@ -2882,23 +2833,23 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
   double utherm_cgs;
 #ifdef LW_RADIATION_LOCAL
   double local_J21, local_rate_Hminus_pd, local_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double local_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double local_G0;
 #endif
 #endif
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   double background_J21, background_rate_Hminus_pd, background_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double background_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double background_G0;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   double photoionization_rate_HI, photoheating_rate_HI;
 #endif
 #ifdef THERMAL_FEEDBACK
@@ -3019,22 +2970,22 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
   yi[sHII] = 1.0e-4;
   yi[sH2I] = 1.0e-8;
   yi[sHM] = 1.0e-20;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   yi[sHeI] = XHe;
   yi[sHeII] = 0.0;
   yi[sHeIII] = 0.0;
 #endif
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   yi[sH2II] = 0.0;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   yi[sDI] = D_number_fraction;
   yi[sDII] = 0.0;
   yi[sHDI] = 0.0;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   yi[sHDII] = 0.0;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   yi[sDM] = 0.0;
 #endif
 #endif
@@ -3052,25 +3003,25 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
   local_J21 = 0.0;
   local_rate_Hminus_pd = 0.0;
   local_rate_H2_diss = 0.0;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   local_rate_HD_diss = 0.0;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   local_G0 = 0.0;
 #endif
 #endif
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   background_J21 = All.J21;
   background_rate_Hminus_pd = All.rate_Hminus_pd;
   background_rate_H2_diss = All.rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   background_rate_HD_diss = All.rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   background_G0 = All.G0;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   photoionization_rate_HI = SphP[ithis].k22;
   photoheating_rate_HI = SphP[ithis].piHI;
 #endif
@@ -3088,14 +3039,14 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
       1.0 / (scale_factor * scale_factor * scale_factor) : 1.0;
   All.T_CMB = cmb_temperature;
   Metallicity = metallicity;
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   All.J21 = background_J21;
   All.rate_Hminus_pd = background_rate_Hminus_pd;
   All.rate_H2_diss = background_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   All.rate_HD_diss = background_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   All.G0 = background_G0;
 #endif
 #endif
@@ -3103,14 +3054,14 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
   SphP[ithis].J21 = local_J21;
   SphP[ithis].rate_Hminus_pd = local_rate_Hminus_pd;
   SphP[ithis].rate_H2_diss = local_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   SphP[ithis].rate_HD_diss = local_rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   SphP[ithis].G0 = local_G0;
 #endif
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   SphP[ithis].k22 = photoionization_rate_HI;
   SphP[ithis].piHI = photoheating_rate_HI;
 #endif
@@ -3137,28 +3088,28 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
   SphP[ithis].elec = yi[i++];
   SphP[ithis].HI   = yi[i++];
   SphP[ithis].HII  = yi[i++];
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   SphP[ithis].HeI  = yi[i++];
   SphP[ithis].HeII = yi[i++];
   SphP[ithis].HeIII= yi[i++];
 #endif
   SphP[ithis].H2I  = yi[i++];
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   SphP[ithis].H2II = yi[i++];
 #endif
   SphP[ithis].HM   = yi[i++];
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   SphP[ithis].DI   = yi[i++];
   SphP[ithis].DII  = yi[i++];
   SphP[ithis].HDI  = yi[i++];
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   SphP[ithis].HDII = yi[i++];
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   SphP[ithis].DM   = yi[i++];
 #endif
 #endif
-#if defined(CHEMISTRY_PORTABLE) && defined(CARBON_OXYGEN_CHEMISTRY)
+#if defined(CHEMISTRY_PORTABLE) && defined(CHEMISTRY_SPECIES_CARBON_OXYGEN)
   SphP[ithis].CI = yi[sCI];
   SphP[ithis].CII = yi[sCII];
   SphP[ithis].CO = yi[sCO];
@@ -3167,7 +3118,7 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
   SphP[ithis].OH = yi[sOH];
   SphP[ithis].H2O = yi[sH2O];
   SphP[ithis].O2 = yi[sO2];
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
   SphP[ithis].COII = yi[sCOII];
   SphP[ithis].CH = yi[sCH];
   SphP[ithis].CH2 = yi[sCH2];
@@ -3186,19 +3137,19 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
 
   sum_fraction  =  SphP[ithis].elec
     + SphP[ithis].HI + SphP[ithis].HII + SphP[ithis].HM + SphP[ithis].H2I
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
     + SphP[ithis].H2II
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     + SphP[ithis].DI + SphP[ithis].DII + SphP[ithis].HDI
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
     + SphP[ithis].HDII
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
     + SphP[ithis].DM
 #endif
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     + SphP[ithis].HeI + SphP[ithis].HeII + SphP[ithis].HeIII
 #else
     + 0.0625
@@ -3227,22 +3178,6 @@ void Init_test(int ithis,double *a_start,double *dt_sec){
   printf("rho=%g\n",SphP[ithis].Density);
 
 
-#ifdef SHIELD_6RAY
-  double column_dens_H2, column_dens_HI, column_dens_HD;
-  ifunc = compute_Jeans_length(ithis, T_gas);
-
-  if(flag_column == 0){
-    column_dens_H2 = SphP[ithis].Jeans_Length * SphP[ithis].H2I * n_nuclei;
-    column_dens_HI = SphP[ithis].Jeans_Length * SphP[ithis].HI  * n_nuclei;
-    column_dens_HD = SphP[ithis].Jeans_Length * SphP[ithis].HDI * n_nuclei;
-
-    for(i=0;i<6;i++){
-      SphP[ithis].ColumnDens_H2[i] = column_dens_H2;
-      SphP[ithis].ColumnDens_HI[i] = column_dens_HI;
-      SphP[ithis].ColumnDens_HD[i] = column_dens_HD;
-    }
-  }
-#endif
 
   if(All.ComovingIntegrationOn){
     double hubble_a;

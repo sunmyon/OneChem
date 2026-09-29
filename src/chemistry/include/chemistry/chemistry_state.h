@@ -23,7 +23,7 @@ typedef struct ChemistryStepContext {
 
 typedef struct ChemistryCellEnvironment {
   double density_cgs;                  /* g cm^-3 */
-  double metallicity;                  /* solar units */
+  double metallicity;                  /* solar units; host supplies global or cell value */
 
   double local_J21;
   double local_G0;

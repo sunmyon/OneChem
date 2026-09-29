@@ -4,8 +4,8 @@
 # Builds the standalone 1ZONE twice with the chemistry options of the AREPO run
 # that produced the fixtures (tests/replay/arepo_chemistry_flags.txt):
 #
-#   default  - the shipped configuration (CHEM_NEWTON_RESIDUAL_GATE_LIMIT = 1e3)
-#   gate1    - CHEM_NEWTON_RESIDUAL_GATE_LIMIT = 1.0, the pre-relaxation
+#   default  - the shipped configuration (CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT = 1e3)
+#   gate1    - CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT = 1.0, the pre-relaxation
 #              certification.  Chemistry trials of ID 1333015846 call 2 fail
 #              again, which exercises the energy solver's handling of failed
 #              trial temperatures (solve_bisection).
@@ -82,7 +82,7 @@ run_case() {
 }
 
 build build-replay 1ZONE_replay ""
-build build-replay-gate1 1ZONE_replay_gate1 "-DCHEM_NEWTON_RESIDUAL_GATE_LIMIT=1.0"
+build build-replay-gate1 1ZONE_replay_gate1 "-DCHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT=1.0"
 
 echo "== replaying"
 d=./1ZONE_replay

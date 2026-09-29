@@ -46,7 +46,7 @@ int main(void)
   double rhs[N_SP] = {0.0};
   abundance[sCI] = 2.0e-4;
   forward[153] = 3.0;
-  chemistry_network_rhs(network, CHEM_REACTION_EXPLICIT, 1.0, abundance,
+  (network)->rhs( CHEM_REACTION_EXPLICIT, 1.0, abundance,
                         forward, inverse, rhs);
   assert(fabs(rhs[sCI] + 6.0e-4) < 1.0e-16);
   assert(fabs(rhs[sCII] - 6.0e-4) < 1.0e-16);
@@ -57,7 +57,7 @@ int main(void)
   memset(forward, 0, sizeof(forward));
   abundance[sCO] = 3.0e-5;
   forward[171] = 4.0;
-  chemistry_network_rhs(network, CHEM_REACTION_EXPLICIT, 1.0, abundance,
+  (network)->rhs( CHEM_REACTION_EXPLICIT, 1.0, abundance,
                         forward, inverse, rhs);
   assert(fabs(rhs[sCO] + 1.2e-4) < 1.0e-16);
   assert(fabs(rhs[sCI] - 1.2e-4) < 1.0e-16);

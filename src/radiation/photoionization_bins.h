@@ -40,6 +40,10 @@ typedef struct {
   int initialized;
 } PhotoionizationBinCoefficients;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void photoionization_bins_prepare(const PhotoionizationBinTables *tables,
                                  double effective_temperature,
                                  PhotoionizationBinCoefficients *coefficients);
@@ -63,5 +67,9 @@ void photoionization_bins_evaluate(
     const double delta_tau[PHOTOIONIZATION_ABSORBER_COUNT],
     double rate[PHOTOIONIZATION_TRANSITION_COUNT],
     double heating[PHOTOIONIZATION_TRANSITION_COUNT]);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

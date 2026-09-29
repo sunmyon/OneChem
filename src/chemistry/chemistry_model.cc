@@ -18,7 +18,247 @@
 #include <string.h>
 #include <float.h>
 
-#ifdef CHEMISTRY_SC
+namespace {
+void print_configuration(const ChemistryConfig &config) noexcept {
+  const auto entry = [](const char *name, const char *value) {
+    printf("  %-30s: %s\n", name, value);
+  };
+  const auto toggle = [&](const char *name, bool enabled) {
+    entry(name, enabled ? "on" : "off");
+  };
+  const auto number = [](const char *name, double value) {
+    printf("  %-30s: %.8g\n", name, value);
+  };
+  printf("Chemistry configuration\n[model inputs]\n");
+  entry("table directory", config.table_root);
+  number("timestep safety factor", config.timescale_safety_factor);
+#ifdef METALLICITY
+  entry("metallicity", "host input (solar units)");
+#else
+  entry("metal-dependent processes", "off");
+#endif
+  printf("[species]\n");
+  entry("hydrogen", "H, H+, H-, H2, electrons");
+#ifdef CHEMISTRY_SPECIES_HELIUM
+  toggle("helium", true);
+#else
+  toggle("helium", false);
+#endif
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
+  toggle("deuterium", true);
+#else
+  toggle("deuterium", false);
+#endif
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
+  toggle("H2+", true);
+#else
+  toggle("H2+", false);
+#endif
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
+  toggle("HD+", true);
+#else
+  toggle("HD+", false);
+#endif
+#ifdef CHEMISTRY_SPECIES_D_MINUS
+  toggle("D-", true);
+#else
+  toggle("D-", false);
+#endif
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
+  toggle("carbon / oxygen", true);
+#else
+  toggle("carbon / oxygen", false);
+#endif
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION
+  toggle("C/O high ionization", true);
+#else
+  toggle("C/O high ionization", false);
+#endif
+  printf("[reactions]\n");
+  entry("recombination", CHEMISTRY_CASE_B ? "CASE B" : "CASE A");
+  entry("three-body H2 formation", !CHEMISTRY_THREE_BODY ? "off" : CHEMISTRY_THREE_BODY_ABEL02 ? "ABEL02" : CHEMISTRY_THREE_BODY_FLOW07 ? "FLOW07" : "FORR13");
+  entry("H2 + H -> 3H", CHEMISTRY_MARTIN97 ? "MARTIN97" : "legacy density-dependent fit");
+  entry("reaction-rate variant", CHEMISTRY_ENZO ? "ENZO" : CHEMISTRY_HIRANO ? "HIRANO / O05" : CHEMISTRY_O05 ? "O05" : CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA ? "Matsukoba" : "standard");
+  toggle("H2 formation on dust", CHEMISTRY_H2_FORMATION_ON_DUST);
+#ifdef CHEMISTRY_INVERSE_REACTIONS
+  toggle("inverse reactions", true);
+#else
+  toggle("inverse reactions", false);
+#endif
+  printf("[cooling / opacity]\n");
+  toggle("dust cooling", CHEMISTRY_DUST_COOLING);
+  toggle("molecular line cooling", CHEMISTRY_MOLECULAR_LINE_COOLING);
+  toggle("metal line cooling (SD93)", CHEMISTRY_METAL_LINE_COOLING_SD93);
+  toggle("helium continuum cooling", CHEMISTRY_HELIUM_COOLING);
+  toggle("equilibrium helium cooling", CHEMISTRY_HELIUM_EQ_COOLING);
+  toggle("optically thin H lines", CHEMISTRY_HLINE_COOLING_THIN);
+#ifdef CHEMISTRY_CMB_HEATING
+  toggle("CMB heating", true);
+#else
+  toggle("CMB heating", false);
+#endif
+  entry("H2 cooling", CHEMISTRY_H2_COOLING_GP12 ? "GP12" : "G15");
+  entry("continuum cooling", CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA ? "Matsukoba" : "legacy prescription");
+  toggle("continuum opacity", CHEMISTRY_CONT_OPACITY);
+  entry("H2 line opacity", CHEMISTRY_H2_OPACITY ? "escape-fraction fit" : "off");
+  printf("[radiation / shielding]\n");
+#if defined(CHEMISTRY_LW_RADIATION)
+  toggle("LW radiation", true);
+#else
+  toggle("LW radiation", false);
+#endif
+#if defined(CHEMISTRY_LW_RADIATION) && defined(CHEMISTRY_BACKGROUND_LW_RADIATION)
+  toggle("background LW radiation", true);
+#else
+  toggle("background LW radiation", false);
+#endif
+#if defined(CHEMISTRY_LW_RADIATION) && defined(LW_RADIATION_LOCAL)
+  toggle("local LW radiation", true);
+#else
+  toggle("local LW radiation", false);
+#endif
+#if defined(CHEMISTRY_LW_RADIATION) && defined(CHEMISTRY_LW_SELF_SHIELDING)
+  toggle("LW self-shielding", true);
+#else
+  toggle("LW self-shielding", false);
+#endif
+#if defined(IONIZING_PHOTON)
+  toggle("photoionization", true);
+#else
+  toggle("photoionization", false);
+#endif
+#if defined(IONIZING_PHOTON) && defined(RYTR_CARBON_OXYGEN_IONIZATION)
+  toggle("C/O photoionization coupling", true);
+#else
+  toggle("C/O photoionization coupling", false);
+#endif
+#if defined(CHEMISTRY_LW_RADIATION) && defined(RYTR_NCO)
+  toggle("CO photodissociation coupling", true);
+#else
+  toggle("CO photodissociation coupling", false);
+#endif
+#if defined(CHEMISTRY_LW_RADIATION) && defined(RYTR_NHD)
+  toggle("HD photodissociation coupling", true);
+#else
+  toggle("HD photodissociation coupling", false);
+#endif
+#if defined(RYTR_TAU_DUST)
+  toggle("transport dust attenuation", true);
+#else
+  toggle("transport dust attenuation", false);
+#endif
+#if defined(THERMAL_FEEDBACK)
+  toggle("stellar thermal feedback", true);
+#else
+  toggle("stellar thermal feedback", false);
+#endif
+  printf("[thermodynamics]\n");
+  entry("H2 partition function", CHEMISTRY_H2_PARTITION_EBM1989 ? "EBM1989" : CHEMISTRY_H2_PARTITION_I87 ? "I87" : CHEMISTRY_H2_PARTITION_R85 ? "R85" : "EBM1989 (Matsukoba fit)");
+  toggle("H2 rotational heat capacity", CHEMISTRY_H2_ROTATIONAL_GAMMA);
+  printf("[solver policy]\n");
+#ifdef CHEMISTRY_HYBRID_IMPLICIT
+  entry("chemistry solver", "hybrid implicit");
+  entry("energy solver", "hybrid implicit");
+#else
+#if defined(CHEMISTRY_IMPLICIT) || defined(CHEMISTRY_ENERGY_IMPLICIT)
+  entry("chemistry solver", "implicit");
+#else
+  entry("chemistry solver", "explicit");
+#endif
+#ifdef CHEMISTRY_ENERGY_IMPLICIT
+  entry("energy solver", "implicit");
+#else
+  entry("energy solver", "explicit");
+#endif
+#endif
+#ifdef CHEMISTRY_SAHA
+  toggle("high-density Saha switch", true);
+#else
+  toggle("high-density Saha switch", false);
+#endif
+#ifdef CHEMISTRY_EXPLICIT_SEQUENTIAL
+  entry("explicit update", "sequential");
+#else
+  entry("explicit update", "simultaneous");
+#endif
+#if defined(CHEMISTRY_DIFF_ANALYTIC) && !defined(CHEMISTRY_DIFF_NUMERICAL)
+  entry("Newton Jacobian", "analytic (numerical fallback)");
+#else
+  entry("Newton Jacobian", "numerical");
+#endif
+#ifdef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
+  entry("Newton system", "reduced with equilibrium species");
+#elif defined(CHEMISTRY_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION)
+  entry("Newton system", "full with equilibrium initial guess");
+#else
+  entry("Newton system", "full");
+#endif
+#ifdef CHEMISTRY_NEWTON_LU_REUSE
+  toggle("Newton LU reuse", true);
+#else
+  toggle("Newton LU reuse", false);
+#endif
+#ifdef CHEMISTRY_EQUILIBRIUM_SPECIES_CONVERGENCE
+  toggle("equilibrium convergence", true);
+#else
+  toggle("equilibrium convergence", false);
+#endif
+#ifdef CHEMISTRY_ENERGY_BRACKET_FALLBACK
+  toggle("energy bracket fallback", true);
+#else
+  toggle("energy bracket fallback", false);
+#endif
+#ifdef CHEMISTRY_NORMALIZE_ABUNDANCES
+  toggle("input abundance normalization", true);
+#else
+  toggle("input abundance normalization", false);
+#endif
+  toggle("update core length", CHEMISTRY_UPDATE_CORE_LENGTH);
+  number("Newton residual gate", CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT);
+#if defined(CHEMISTRY_SPECIES_CARBON_OXYGEN) && !defined(CHEMISTRY_DISABLE_CARBON_OXYGEN_CONSERVATION)
+  toggle("C/O conservation constraints", true);
+#else
+  toggle("C/O conservation constraints", false);
+#endif
+#ifdef CHEMISTRY_SAHA
+  number("Saha density threshold [cm^-3]", N_EQCHEM);
+#endif
+#ifdef CHEMISTRY_JEANS_TEMPERATURE_MAX
+  number("Jeans temperature limit [K]", CHEMISTRY_JEANS_TEMPERATURE_MAX);
+#else
+  entry("Jeans temperature limit [K]", "none");
+#endif
+#ifdef CHEMISTRY_FIXED_TEMPERATURE
+  toggle("fixed temperature", true);
+#else
+  toggle("fixed temperature", false);
+#endif
+  printf("[diagnostics]\n");
+  toggle("detailed diagnostics", CHEMISTRY_DEBUG);
+#ifdef CHEMISTRY_PROFILE
+  toggle("profiling", true);
+#else
+  toggle("profiling", false);
+#endif
+#ifdef CHEMISTRY_RANDOM_RESTART_DIAGNOSTIC
+  toggle("random-restart diagnostics", true);
+#else
+  toggle("random-restart diagnostics", false);
+#endif
+#ifdef CHEMISTRY_SAHA_DIAGNOSTICS
+  toggle("Saha diagnostics", true);
+#else
+  toggle("Saha diagnostics", false);
+#endif
+#ifdef CHEMISTRY_WRITE_DIAGNOSTIC_TABLES
+  toggle("diagnostic tables", true);
+#else
+  toggle("diagnostic tables", false);
+#endif
+  printf("\n");
+}
+} // namespace
+
 namespace chemistry {
 LogGridView::LogGridView(const double *nodes, int count, double log_min,
                          double log_max, double log_step) noexcept
@@ -42,10 +282,9 @@ RateTableView::RateTableView(const ChemistryRateTables &tables,
 
 RateTables::RateTables() noexcept = default;
 RateTables::~RateTables() noexcept = default;
-void RateTables::Deleter::operator()(ChemistryRateTables *p) const noexcept { free(p); }
 ChemistryStatus RateTables::build() noexcept {
-  std::unique_ptr<ChemistryRateTables, Deleter> candidate(
-      static_cast<ChemistryRateTables *>(calloc(1, sizeof(ChemistryRateTables))));
+  std::unique_ptr<ChemistryRateTables> candidate(
+      new(std::nothrow) ChemistryRateTables{});
   if(!candidate) {
     fprintf(stderr, "Failed to allocate chemistry rate tables.\n");
     return CHEMISTRY_STATUS_OUT_OF_MEMORY;
@@ -58,13 +297,13 @@ ChemistryStatus RateTables::build() noexcept {
   return CHEMISTRY_STATUS_OK;
 }
 
-#ifndef MOLECULAR_LINE_COOLING
+#if !CHEMISTRY_MOLECULAR_LINE_COOLING
 void ModelResourceDeleter::operator()(ChemistryCoolingTables *) const noexcept {}
 #endif
-#ifndef DUST_COOLING
+#if !CHEMISTRY_DUST_COOLING
 void ModelResourceDeleter::operator()(ChemistryDustTables *) const noexcept {}
 #endif
-#if !defined(CONTINUUM_COOLING_MATSUKOBA) && !defined(METAL_LINE_COOLING_SD93)
+#if !CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA && !CHEMISTRY_METAL_LINE_COOLING_SD93
 void ModelResourceDeleter::operator()(ChemistryContinuumOpacityTables *) const noexcept {}
 #endif
 
@@ -72,22 +311,19 @@ ChemistryStatus Model::initialize(const char *table_root) noexcept {
   // Keep the historical construction order; partial failure unwinds via RAII.
   network_ = load_network(table_root);
   if(!network_) return CHEMISTRY_STATUS_IO_ERROR;
-#if defined(MOLECULAR_LINE_COOLING)
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
   molecular_cooling_ = load_molecular_cooling(table_root);
   if(!molecular_cooling_) return CHEMISTRY_STATUS_IO_ERROR;
 #endif
   const auto status = rates_.build();
   if(status != CHEMISTRY_STATUS_OK) return status;
-#if defined(CONTINUUM_COOLING_MATSUKOBA) || defined(METAL_LINE_COOLING_SD93)
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA || CHEMISTRY_METAL_LINE_COOLING_SD93
   continuum_opacity_ = load_continuum_opacity(table_root);
   if(!continuum_opacity_) return CHEMISTRY_STATUS_IO_ERROR;
 #endif
-#if defined(DUST_COOLING)
+#if CHEMISTRY_DUST_COOLING
   dust_opacity_ = load_dust_opacity(table_root);
   if(!dust_opacity_) return CHEMISTRY_STATUS_IO_ERROR;
-#endif
-#if defined(INIT_TEMPERATURE) || defined(FIX_TEMPERATURE)
-  compute_init_gamma();
 #endif
   view_.network = network_.get();
   view_.rate_tables = rates_.data();
@@ -108,6 +344,7 @@ Model::Creation Model::create(const ChemistryConfig &config) noexcept {
   const auto status = model->initialize(config.table_root);
   if(status != CHEMISTRY_STATUS_OK) return {nullptr, status};
   model->view_.timescale_safety_factor = config.timescale_safety_factor;
+  if(config.print_configuration) print_configuration(config);
   return {std::move(model), CHEMISTRY_STATUS_OK};
 }
 
@@ -242,11 +479,11 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
   chem_e[sHI]   = 216.034;
   chem_e[sHII]  = 1528.084;
   chem_e[sH2I]  = 0.;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   chem_e[sH2II] = 1488.365;
 #endif
   chem_e[sHM]   = 143.246;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   chem_e[sDI]   = 219.804;
   chem_e[sDII]  = 1532.211;
   chem_e[sHDI]  = 0.328;
@@ -275,9 +512,9 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
     ciHeIa[i]   = 0.;
     ciHeISa[i]  = 0.;
     ciHeIIa[i]  = 0.;
-#ifndef CONTINUUM_COOLING_MATSUKOBA
+#if !CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
     reHIIa[i]   = 0.;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     reHeII1a[i] = 0.;
     reHeII2a[i] = 0.;
     reHeIIIa[i] = 0.;
@@ -291,7 +528,7 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
   for(int i=0 ; i<N_T ; i++){
     double z_H2I = partition_H2(T_table[i]);
     double z_HI  = partition_H(T_table[i]);
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
     double z_H2II= pf_z_H2p(T_table[i]);
 #endif
     double z_HM  = 1.;
@@ -305,7 +542,7 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
         k_table[j][i] = evaluate(T_table[i]);
     }
 
-#ifdef INVERSE_REACTIONS
+#ifdef CHEMISTRY_INVERSE_REACTIONS
     double K_T;
     double Ene, dE, Z_pf, Mass;
     double m_HI, m_HII, m_HM, m_elec, m_H2I, m_H2II;
@@ -347,7 +584,7 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
     K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);
     k_table_inverse[8][i] = k_table[8][i] * K_T;
 
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
     /**** H2I + Hp -> H2II + HI  ****/
     dE   = (chem_e[sH2I] + chem_e[sHII] - chem_e[sH2II] - chem_e[sHI]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_H2I * z_HII / z_HI / z_H2II;
@@ -388,7 +625,7 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
     K_T  = Z_pf * pow(Mass, 1.5) * exp(-dE/T_table[i]);
     k_table_inverse[18][i] = k_table[18][i] * K_T;
 
-#if defined(CONTINUUM_COOLING_MATSUKOBA) || defined(METAL_LINE_COOLING_SD93)
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA || CHEMISTRY_METAL_LINE_COOLING_SD93
     dE   = (chem_e[sHM] + chem_e[sHII] - 2*chem_e[sHI]) * kJ_per_mol_to_eV *eV_to_erg/BOLTZMANN;
     Z_pf = z_HM * z_HII / z_HI / z_HI;
     Mass = m_HM * m_HII / m_HI / m_HI;
@@ -425,9 +662,9 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
 
   /* coefficients for cooling and heating */
   for(int i=0; i<N_T; i++){
-#ifdef CASE_B
+#if CHEMISTRY_CASE_B
     double lambda_HI   = 2 * 157807.0/T_table[i];
-#if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
+#if defined(CHEMISTRY_SPECIES_HELIUM) || CHEMISTRY_HELIUM_EQ_COOLING
     double lambda_HeI  = 2 * 285335.0/T_table[i];
     double lambda_HeII = 2 * 631515.0/T_table[i];
 #endif
@@ -452,10 +689,10 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
       *exp( -55338./T_table[i] );
 
     /* ------- Recombinations */
-#ifdef CASE_B
+#if CHEMISTRY_CASE_B
     reHIIa[i]   = 3.435e-30 * T_table[i] * pow(lambda_HI, 1.97)/pow(1.0+pow(lambda_HI/2.25, 0.376), 3.72);
 
-#if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
+#if defined(CHEMISTRY_SPECIES_HELIUM) || CHEMISTRY_HELIUM_EQ_COOLING
     reHeII1a[i] = BOLTZMANN * T_table[i] * 1.26e-14 * pow(lambda_HeI, 0.75);
 
     reHeII2a[i] = 1.24e-13*pow(T_table[i],-1.5)*exp( -470000/T_table[i] )
@@ -467,7 +704,7 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
     reHIIa[i]   = 6.50e-27*sqrt(T_table[i])*pow(T_table[i]/1000.0,-0.2)
       / (1.0 + pow(T_table[i]/1.e6,0.7));
 
-#if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
+#if defined(CHEMISTRY_SPECIES_HELIUM) || CHEMISTRY_HELIUM_EQ_COOLING
     reHeII1a[i] = 1.55e-26*pow(T_table[i],0.3647);
 
     reHeII2a[i] = 1.24e-13*pow(T_table[i],-1.5)*exp( -470000/T_table[i] )
@@ -493,7 +730,6 @@ int chemistry::RateTables::tabulate(ChemistryRateTables *tables)
   return N_T;
 }
 
-#endif /* CHEMISTRY_SC */
 
 void chemistry_config_defaults(ChemistryConfig *config)
 {
@@ -503,6 +739,7 @@ void chemistry_config_defaults(ChemistryConfig *config)
   memset(config, 0, sizeof(*config));
   config->abi_version = CHEMISTRY_ABI_VERSION;
   config->timescale_safety_factor = 0.1;
+  config->print_configuration = 1;
 }
 
 const char *chemistry_status_string(ChemistryStatus status)

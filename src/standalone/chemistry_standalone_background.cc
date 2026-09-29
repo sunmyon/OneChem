@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-int chemistry_standalone_prepare_step_with_background(
+bool ChemistryStandaloneAdapter::prepare_step_with_background(
     const ChemGlobalStep *step,
     const RadiationRateContext *radiation_context,
     const RadiationBlackbodyInput *background)
@@ -22,10 +22,10 @@ int chemistry_standalone_prepare_step_with_background(
       rates.hminus_photodetachment_rate;
   prepared_step.background_rate_H2_diss =
       rates.h2_photodissociation_rate;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   prepared_step.background_rate_HD_diss =
       rates.hd_photodissociation_rate;
 #endif
-  chemistry_standalone_prepare_step(&prepared_step);
+  prepare_step(&prepared_step);
   return 1;
 }

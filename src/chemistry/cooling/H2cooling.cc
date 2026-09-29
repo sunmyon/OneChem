@@ -479,7 +479,7 @@ double H2cool_LowD_G15(double xnH,double T_K,double y_H,double y_H2,double y_e,d
 
 
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
 
 
 double HD_cooling_GP12(double nH, double T_gas,
@@ -564,7 +564,7 @@ double HD_cooling_GP12(double nH, double T_gas,
   if (T_gas < 10.0 || T_gas > 3000.0)
     edot_HD = 0.0;
 
-#ifdef ID_CHEM_DEBUG
+#if CHEMISTRY_DEBUG
   if(diagnostics_enabled){
     printf("yHDI=%g nH=%g cool_HD=%g low=%g LTE=%g rate=%g heat=%g\n",
 	   yHDI, nH, cool_rate_HD, cool_rate_LOW_HD, cool_rate_LTE_HD, rate, heat_rate);
@@ -633,7 +633,7 @@ double fesc_HD_fit(double T_K, double xNc_HD){
 double H2_cooling(double nH, double temperature, double yHI, double yH2,
                   double yHeI, double yHII, double yElectron)
 {
-#ifdef H2_COOLING_GP12
+#if CHEMISTRY_H2_COOLING_GP12
   return H2_cooling_GP12(nH, temperature, yHI, yH2, yHeI, yHII, yElectron);
 #else
   return H2_cooling_G15(nH, temperature, yHI, yH2, yHeI, yHII, yElectron);

@@ -50,7 +50,7 @@ Production entry point for one implicit chemistry step.  It calls
 `chemistry_noneq_chem_implicit_impl` with:
 
 - no externally supplied Newton guess;
-- the production iteration limit (`MAX_ITER_CHEM`);
+- the production iteration limit (`CHEMISTRY_MAX_ITERATIONS`);
 - deterministic and random restart recovery enabled;
 - terminal failure reporting enabled.
 
@@ -235,7 +235,7 @@ The certified residual is normalized so that 1 means 1e-10 of the gross
 reaction activity.  It is a sanity veto, not the convergence criterion:
 `finish_newton_step` counts a confirmation only when the step norm is within
 tolerance, no relevant step was clipped, the clipping hold has expired, and the
-certified residual is at most `CHEM_NEWTON_RESIDUAL_GATE_LIMIT` (1e3).  A limit
+certified residual is at most `CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT` (1e3).  A limit
 near 1 cannot be met by a stiff species whose Newton correction has fallen below
 one ulp of its abundance, so it would reject a converged solution and trigger the
 basin-restart cascade.
@@ -306,7 +306,7 @@ equilibrium intermediates follow their configured convergence policy.
 Distinguishes a material boundary clip from clipping of a numerically negligible
 species.  In the full-implicit equilibrium-initialization scheme, initialized
 intermediates can be excluded from this test when
-`EQUILIBRIUM_SPECIES_CONVERGENCE=0`.
+`CHEMISTRY_EQUILIBRIUM_SPECIES_CONVERGENCE=0`.
 
 ### `chemistry_update_newton_convergence_state`
 
@@ -376,7 +376,7 @@ diagnostic build, records the validated basin entry.
 
 Is the single per-iteration diagnostic event.  It owns both the compact
 iteration output and optional Jacobian output.  Additional output is compiled
-only for `ID_CHEM_DEBUG`; the Newton flow does not contain separate print calls.
+only for `CHEMISTRY_DEBUG=1`; the Newton flow does not contain separate print calls.
 
 ### `chemistry_newton_diagnostics_finish`
 
@@ -417,12 +417,12 @@ The Makefile options and their principal effects are:
 | Make option | Values | Effect |
 |---|---|---|
 | `CARBON_OXYGEN_CHEMISTRY` | `0`, `1` | Includes C/O species and reactions. |
-| `CARBON_OXYGEN_CONSERVATION` | `0`, `1` | Includes C and O constraints in the Newton conservation system. |
-| `INTERMEDIATE_EQUILIBRIUM` | `0`, `1` | Enables equilibrium-based treatment or initialization of intermediates. |
-| `EQUILIBRIUM_NEWTON_SYSTEM` | `FULL`, `REDUCED` | Solves initialized intermediates in the full Newton system or eliminates equilibrium intermediates algebraically. |
-| `NEWTON_LU_REUSE` | `0`, `1` | Enables the guarded reuse of a reduced Newton factorization. |
-| `EQUILIBRIUM_SPECIES_CONVERGENCE` | `0`, `1` | Includes or excludes initialized equilibrium species from convergence clipping checks. |
-| `EXPLICIT_CHEMISTRY_UPDATE` | `SEQUENTIAL`, `SIMULTANEOUS` | Selects the explicit predictor update order. |
+| `CHEMISTRY_CARBON_OXYGEN_CONSERVATION` | `0`, `1` | Includes C and O constraints in the Newton conservation system. |
+| `CHEMISTRY_EQUILIBRIUM_INITIALIZATION` | `0`, `1` | Enables equilibrium-based treatment or initialization of intermediates. |
+| `CHEMISTRY_NEWTON_SYSTEM` | `FULL`, `REDUCED` | Solves initialized intermediates in the full Newton system or eliminates equilibrium intermediates algebraically. |
+| `CHEMISTRY_NEWTON_LU_REUSE` | `0`, `1` | Enables the guarded reuse of a reduced Newton factorization. |
+| `CHEMISTRY_EQUILIBRIUM_SPECIES_CONVERGENCE` | `0`, `1` | Includes or excludes initialized equilibrium species from convergence clipping checks. |
+| `CHEMISTRY_EXPLICIT_UPDATE` | `SEQUENTIAL`, `SIMULTANEOUS` | Selects ExplicitSolver update order; default SIMULTANEOUS. Does not select the Newton predictor. |
 
 The Makefile translates these options into internal preprocessor definitions.
 Callers should use the Makefile options, not define the internal macros directly.

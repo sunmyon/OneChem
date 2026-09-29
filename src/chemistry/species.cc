@@ -20,7 +20,7 @@ static const enum SPECIES hydrogen_reservoirs[] = {
 static const enum SPECIES hydrogen_random_partition[] = {
   CHEM_HYDROGEN_RANDOM_PARTITION(CHEM_RESERVOIR_ENUM)
 };
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
 static const enum SPECIES helium_reservoirs[] = {
   CHEM_HELIUM_RESERVOIRS(CHEM_RESERVOIR_ENUM)
 };
@@ -28,7 +28,7 @@ static const enum SPECIES helium_random_partition[] = {
   CHEM_HELIUM_RANDOM_PARTITION(CHEM_RESERVOIR_ENUM)
 };
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
 static const enum SPECIES deuterium_reservoirs[] = {
   CHEM_DEUTERIUM_RESERVOIRS(CHEM_RESERVOIR_ENUM)
 };
@@ -36,7 +36,7 @@ static const enum SPECIES deuterium_random_partition[] = {
   CHEM_DEUTERIUM_RANDOM_PARTITION(CHEM_RESERVOIR_ENUM)
 };
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
 static const enum SPECIES carbon_reservoirs[] = {
   CHEM_CARBON_RESERVOIRS(CHEM_RESERVOIR_ENUM)
 };
@@ -274,6 +274,7 @@ ChemistryStatus chemistry_normalize_abundances(double *abundance, size_t count,
   if(status != CHEMISTRY_STATUS_OK) return status;
   status = normalize_family(corrected, CHEM_ELEMENT_D, 0, D_number_fraction);
   if(status != CHEMISTRY_STATUS_OK) return status;
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   status = normalize_family(corrected, CHEM_ELEMENT_C, 0, XH * A_C_sun * metallicity);
   if(status != CHEMISTRY_STATUS_OK) return status;
 
@@ -294,6 +295,7 @@ ChemistryStatus chemistry_normalize_abundances(double *abundance, size_t count,
   if(oxygen_remaining < 0.0) oxygen_remaining = 0.0;
   status = normalize_family(corrected, CHEM_ELEMENT_O, 1, oxygen_remaining);
   if(status != CHEMISTRY_STATUS_OK) return status;
+#endif
 
   double net_charge = 0.0;
   for(int j = 0; j < TGCHEM_NUM_ABUNDANCES; j++)

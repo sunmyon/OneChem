@@ -57,8 +57,7 @@ public:
 
 private:
   friend class Model;
-  struct Deleter { void operator()(ChemistryRateTables *) const noexcept; };
-  std::unique_ptr<ChemistryRateTables, Deleter> data_;
+  std::unique_ptr<ChemistryRateTables> data_;
   ChemistryStatus build() noexcept;
   static int tabulate(ChemistryRateTables *tables);
 };
@@ -76,13 +75,13 @@ template<class T>
 using ResourceOwner = std::unique_ptr<T, ModelResourceDeleter>;
 
 ResourceOwner<ChemReactionNetwork> load_network(const char *root) noexcept;
-#ifdef MOLECULAR_LINE_COOLING
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
 ResourceOwner<ChemistryCoolingTables> load_molecular_cooling(const char *root) noexcept;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
 ResourceOwner<ChemistryDustTables> load_dust_opacity(const char *root) noexcept;
 #endif
-#if defined(CONTINUUM_COOLING_MATSUKOBA) || defined(METAL_LINE_COOLING_SD93)
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA || CHEMISTRY_METAL_LINE_COOLING_SD93
 ResourceOwner<ChemistryContinuumOpacityTables> load_continuum_opacity(const char *root) noexcept;
 #endif
 

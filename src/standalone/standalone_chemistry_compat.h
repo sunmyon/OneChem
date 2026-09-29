@@ -1,6 +1,10 @@
 #ifndef STANDALONE_CHEMISTRY_COMPAT_H
 #define STANDALONE_CHEMISTRY_COMPAT_H
 
+#if defined(CHEM_REPLAY_EXTERNAL_RADIATION) && !defined(STANDALONE_EXTERNAL_RADIATION)
+#define STANDALONE_EXTERNAL_RADIATION
+#endif
+
 /* Build-time compatibility for the three chemistry implementations. */
 #ifdef CHEMISTRY_OLD
 #include "legacy/chemistry_old/standalone_compat.h"

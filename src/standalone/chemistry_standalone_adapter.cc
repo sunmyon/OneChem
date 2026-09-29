@@ -4,7 +4,7 @@
 #include <string.h>
 
 /* This file is deliberately host-facing.  These headers must not leak back
- * through chemistry_driver.c or any other core module. */
+ * through chemistry_driver.cc or any other core module. */
 #include "allvars.h"
 
 #include "chemistry_constants.h"
@@ -18,29 +18,24 @@
 #include "reaction_rates.h"
 #include "standalone_math.h"
 
-#ifdef CHEMISTRY_SC
 
-static ChemRunView standalone_run;
-static ChemGlobalStep standalone_step;
-static ChemStandaloneUnits standalone_units;
-static int standalone_run_is_configured;
-static int standalone_step_is_prepared;
 
-void chemistry_standalone_configure(const ChemRunView *run,
+void ChemistryStandaloneAdapter::configure(const ChemRunView *run,
                                     const ChemStandaloneUnits *units)
 {
+  standalone_step_is_prepared = false;
   if(run == NULL || units == NULL || !(units->specific_energy_cgs > 0.0)) {
-    memset(&standalone_run, 0, sizeof(standalone_run));
-    standalone_run_is_configured = 0;
+    standalone_run = {};
+    standalone_run_is_configured = false;
     return;
   }
 
   standalone_run = *run;
   standalone_units = *units;
-  standalone_run_is_configured = 1;
+  standalone_run_is_configured = true;
 }
 
-int chemistry_standalone_set_timescale_safety_factor(double value)
+bool ChemistryStandaloneAdapter::set_timescale_safety_factor(double value)
 {
   if(!standalone_run_is_configured || !isfinite(value) || value <= 0.0)
     return 0;
@@ -48,23 +43,23 @@ int chemistry_standalone_set_timescale_safety_factor(double value)
   return 1;
 }
 
-void chemistry_standalone_prepare_step(const ChemGlobalStep *step)
+void ChemistryStandaloneAdapter::prepare_step(const ChemGlobalStep *step)
 {
   if(step == NULL) {
-    standalone_step_is_prepared = 0;
+    standalone_step_is_prepared = false;
     return;
   }
 
   standalone_step = *step;
-  standalone_step_is_prepared = 1;
+  standalone_step_is_prepared = true;
 }
 
-static int adapter_is_ready(void)
+bool ChemistryStandaloneAdapter::adapter_is_ready() const
 {
   return standalone_run_is_configured && standalone_step_is_prepared;
 }
 
-static void import_environment(const chemdata_in *input,
+void ChemistryStandaloneAdapter::import_environment(const chemdata_in *input,
                                ChemEnvironment *environment)
 {
   memset(environment, 0, sizeof(*environment));
@@ -78,27 +73,27 @@ static void import_environment(const chemdata_in *input,
   environment->J21 = input->J21;
   environment->rate_Hminus_pd = input->rate_Hminus_pd;
   environment->rate_H2_diss = input->rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   environment->rate_HD_diss = input->rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   environment->G0 = input->G0;
 #endif
 #endif
 #ifdef THERMAL_FEEDBACK
   environment->stellar_radiation_flux = input->stellar_rad_flux;
 #endif
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   environment->photoionization_rate_HI = input->k22;
   environment->photoheating_rate_HI = input->piHI;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   environment->photoionization_rate_HeI = input->photoionization_rate_HeI;
   environment->photoheating_rate_HeI = input->photoheating_rate_HeI;
   environment->photoionization_rate_HeII = input->photoionization_rate_HeII;
   environment->photoheating_rate_HeII = input->photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   for(int stage = 0; stage < 3; stage++) {
     environment->photoionization_rate_C[stage] = input->photoionization_rate_C[stage];
     environment->photoheating_rate_C[stage] = input->photoheating_rate_C[stage];
@@ -110,7 +105,7 @@ static void import_environment(const chemdata_in *input,
   environment->ID = input->ID;
 }
 
-static void import_state(const chemdata_out *output, ChemState *state)
+void ChemistryStandaloneAdapter::import_state(const chemdata_out *output, ChemState *state)
 {
   memset(state->abund, 0, sizeof(state->abund));
   memcpy(state->abund, output->Abund, sizeof(output->Abund));
@@ -119,7 +114,7 @@ static void import_state(const chemdata_out *output, ChemState *state)
   state->gamma = output->Gamma;
 }
 
-static void export_state(const ChemState *state, chemdata_out *output)
+void ChemistryStandaloneAdapter::export_state(const ChemState *state, chemdata_out *output)
 {
   memcpy(output->Abund, state->abund, sizeof(output->Abund));
   output->Utherm =
@@ -127,7 +122,7 @@ static void export_state(const ChemState *state, chemdata_out *output)
   output->Gamma = state->gamma;
 }
 
-static void export_workspace(const ChemWorkspace *workspace,
+void ChemistryStandaloneAdapter::export_workspace(const ChemWorkspace *workspace,
                              chemdata_out *output)
 {
   output->t_cool = standalone_min(fabs(workspace->evaluation.t_cool_rad),
@@ -144,7 +139,7 @@ static void export_workspace(const ChemWorkspace *workspace,
   output->diagnostics = workspace->diagnostics;
 }
 
-int compute_abundances_d(int mode, const chemdata_in *input,
+int ChemistryStandaloneAdapter::advance(int mode, const chemdata_in *input,
                          chemdata_out *output, double dtime)
 {
   if(!adapter_is_ready())
@@ -171,12 +166,12 @@ int compute_abundances_d(int mode, const chemdata_in *input,
   return status == CHEMISTRY_STATUS_OK ? 0 : 1;
 }
 
-int compute_chemistry_implicit_d(const chemdata_in *input,
+int ChemistryStandaloneAdapter::solve_fixed(const chemdata_in *input,
                                  chemdata_out *output,
                                  double temperature, double dtime)
 {
   if(!adapter_is_ready())
-    return 1;
+    return 0;
   ChemEnvironment environment = {0};
   ChemState state;
   ChemWorkspace workspace{};
@@ -200,13 +195,13 @@ int compute_chemistry_implicit_d(const chemdata_in *input,
   return status;
 }
 
-int compute_equilibrium_abundances_d(const chemdata_in *input,
+int ChemistryStandaloneAdapter::equilibrium_abundances(const chemdata_in *input,
                                      const chemdata_out *output,
                                      double temperature, double dtime,
                                      double *full_abundance)
 {
   if(!adapter_is_ready())
-    return 1;
+    return 0;
   ChemEnvironment environment = {0};
   ChemState state;
   ChemWorkspace workspace{};
@@ -227,14 +222,14 @@ int compute_equilibrium_abundances_d(const chemdata_in *input,
       full_abundance, &workspace.rates);
 }
 
-int compute_chemistry_implicit_guess_d(const chemdata_in *input,
+int ChemistryStandaloneAdapter::solve_fixed_guess(const chemdata_in *input,
                                        chemdata_out *output,
                                        double temperature, double dtime,
                                        const double *newton_guess,
                                        int max_iterations)
 {
   if(!adapter_is_ready())
-    return 1;
+    return 0;
   ChemEnvironment environment = {0};
   ChemState state;
   ChemWorkspace workspace{};
@@ -259,5 +254,3 @@ int compute_chemistry_implicit_guess_d(const chemdata_in *input,
   export_workspace(&workspace, output);
   return status;
 }
-
-#endif

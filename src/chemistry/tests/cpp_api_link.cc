@@ -12,6 +12,14 @@
 #include <cstring>
 #include <memory>
 #include <type_traits>
+#ifdef CHEMISTRY_STANDALONE_HOST
+#include "chemistry_standalone_adapter.h"
+#include "standalone_chemistry_compat.h"
+#include "chemistry_standalone_types.h"
+#endif
+#ifdef CHEMISTRY_PROFILE
+#include <thread>
+#endif
 
 extern "C" int chemistry_test_c_boundary(
     const ChemistryConfig *, const ChemistryGlobalEnvironment *);
@@ -30,6 +38,19 @@ static_assert(std::is_trivially_copyable<ChemistryState>::value, "C ABI");
 
 int main(int argc, char **argv)
 {
+#ifdef CHEMISTRY_PROFILE
+  chemistry_profile_set_failure(17);
+  int worker_initial = -1, worker_final = -1;
+  std::thread worker([&] {
+    worker_initial = chemistry_profile_last_failure();
+    chemistry_profile_set_failure(29);
+    worker_final = chemistry_profile_last_failure();
+  });
+  worker.join();
+  CHECK(worker_initial == 0 && worker_final == 29);
+  CHECK(chemistry_profile_last_failure() == 17);
+  chemistry_profile_set_failure(0);
+#endif
   ChemistryConfig config{};
   chemistry_config_defaults(&config);
   config.table_root = argc > 1 ? argv[1] : "src/chemistry";
@@ -42,6 +63,39 @@ int main(int argc, char **argv)
 
   auto model = chemistry::Model::create(config);
   CHECK(model.status == CHEMISTRY_STATUS_OK && model.model);
+#ifdef CHEMISTRY_STANDALONE_HOST
+  ChemistryStandaloneAdapter first_adapter, second_adapter;
+  ChemStandaloneUnits units{1.0};
+  chemdata_in host_input{};
+  chemdata_out host_output{};
+  host_output.Utherm = 123.0;
+  double full_guess[N_SP]{};
+  double equilibrium[N_SP];
+  for(double &value : equilibrium) value = -7.0;
+  auto rejects_unprepared = [&](ChemistryStandaloneAdapter &adapter) {
+    return adapter.advance(1, &host_input, &host_output, 1.0) == 1 &&
+        adapter.solve_fixed(&host_input, &host_output, 100.0, 1.0) == 0 &&
+        adapter.solve_fixed_guess(&host_input, &host_output, 100.0, 1.0,
+                                  full_guess, 10) == 0 &&
+        adapter.equilibrium_abundances(&host_input, &host_output, 100.0, 1.0,
+                                      equilibrium) == 0 &&
+        host_output.Utherm == 123.0 && equilibrium[0] == -7.0;
+  };
+  CHECK(rejects_unprepared(first_adapter));
+  first_adapter.configure(&model.model->run(), &units);
+  CHECK(first_adapter.set_timescale_safety_factor(0.25));
+  CHECK(rejects_unprepared(first_adapter));
+  ChemGlobalStep host_step{};
+  first_adapter.prepare_step(&host_step);
+  first_adapter.configure(&model.model->run(), &units);
+  CHECK(rejects_unprepared(first_adapter));
+  CHECK(!second_adapter.set_timescale_safety_factor(0.5));
+  second_adapter.configure(&model.model->run(), &units);
+  first_adapter.configure(nullptr, nullptr);
+  CHECK(!first_adapter.set_timescale_safety_factor(0.25));
+  CHECK(rejects_unprepared(first_adapter));
+  CHECK(second_adapter.set_timescale_safety_factor(0.5));
+#endif
   ChemWorkspace workspace{};
   ChemistryStepContext step{};
   CHECK(chemistry::Driver::prepare(global, step) == CHEMISTRY_STATUS_OK);

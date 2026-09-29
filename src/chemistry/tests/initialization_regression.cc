@@ -31,18 +31,18 @@ static int check_short_step(const ChemRunView *run, double ion_floor)
   state.abund[sHI] = XH - state.abund[sHII] -
       2. * state.abund[sH2I] - state.abund[sHM];
   state.abund[sELEC] = state.abund[sHII] - state.abund[sHM];
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   state.abund[sHeII] = ion_floor * XH;
   state.abund[sHeIII] = ion_floor * XH;
   state.abund[sHeI] = XHe - state.abund[sHeII] - state.abund[sHeIII];
   state.abund[sELEC] += state.abund[sHeII] + 2. * state.abund[sHeIII];
 #endif
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   state.abund[sH2II] = ion_floor * XH;
   state.abund[sHI] -= 2. * state.abund[sH2II];
   state.abund[sELEC] += state.abund[sH2II];
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   state.abund[sDI] = D_number_fraction;
 #endif
   const double temperature = 300.;
@@ -93,7 +93,7 @@ int main(int argc, char **argv)
   if(created.status != CHEMISTRY_STATUS_OK) return 1;
   const auto &run = created.model->run();
   int valid = 1;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   for(int i = 0; i < N_T; i++){
     const double rate = run.rate_tables->forward[10][i];
     if(!isfinite(rate) || rate < 0.){

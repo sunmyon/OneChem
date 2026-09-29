@@ -1,45 +1,473 @@
 #pragma once
 
-
-/* Preserve the host's historical option spelling. */
-#if defined(IONIZING_PHOTON) && !defined(IONIZATION_PHOTON)
-#define IONIZATION_PHOTON
+// Radiation input compatibility; local LW and RYTR_* remain host options.
+#if defined(LYMANWERNER) && !defined(CHEMISTRY_LW_RADIATION)
+#define CHEMISTRY_LW_RADIATION LYMANWERNER
+#endif
+#if defined(BACKGROUND_LW_RADIATION) && !defined(CHEMISTRY_BACKGROUND_LW_RADIATION)
+#define CHEMISTRY_BACKGROUND_LW_RADIATION BACKGROUND_LW_RADIATION
+#endif
+#if defined(SHIELD_LW) && !defined(CHEMISTRY_LW_SELF_SHIELDING)
+#define CHEMISTRY_LW_SELF_SHIELDING SHIELD_LW
+#endif
+#if defined(IONIZATION_PHOTON) && !defined(IONIZING_PHOTON)
+#define IONIZING_PHOTON IONIZATION_PHOTON
 #endif
 
-#if defined(CARBON_OXYGEN_CHEMISTRY) && !defined(METALLICITY)
-#error "CARBON_OXYGEN_CHEMISTRY requires METALLICITY"
+// Historical chemistry settings are translated only at this input boundary.
+#if defined(CHEM_DIFF_ANALYTIC) && !defined(CHEMISTRY_DIFF_ANALYTIC)
+#define CHEMISTRY_DIFF_ANALYTIC CHEM_DIFF_ANALYTIC
+#endif
+#if defined(CHEM_DIFF_NUMERICAL) && !defined(CHEMISTRY_DIFF_NUMERICAL)
+#define CHEMISTRY_DIFF_NUMERICAL CHEM_DIFF_NUMERICAL
+#endif
+#if defined(CHEM_DISABLE_CARBON_OXYGEN_CONSERVATION) && !defined(CHEMISTRY_DISABLE_CARBON_OXYGEN_CONSERVATION)
+#define CHEMISTRY_DISABLE_CARBON_OXYGEN_CONSERVATION CHEM_DISABLE_CARBON_OXYGEN_CONSERVATION
+#endif
+#if defined(CHEM_ENERGY_BRACKET_FALLBACK) && !defined(CHEMISTRY_ENERGY_BRACKET_FALLBACK)
+#define CHEMISTRY_ENERGY_BRACKET_FALLBACK CHEM_ENERGY_BRACKET_FALLBACK
+#endif
+#if defined(CHEM_EQUILIBRIUM_SPECIES_CONVERGENCE) && !defined(CHEMISTRY_EQUILIBRIUM_SPECIES_CONVERGENCE)
+#define CHEMISTRY_EQUILIBRIUM_SPECIES_CONVERGENCE CHEM_EQUILIBRIUM_SPECIES_CONVERGENCE
+#endif
+#if defined(CHEM_EXPLICIT_SEQUENTIAL) && !defined(CHEMISTRY_EXPLICIT_SEQUENTIAL)
+#define CHEMISTRY_EXPLICIT_SEQUENTIAL CHEM_EXPLICIT_SEQUENTIAL
+#endif
+#if defined(CHEM_EXPLICIT_SIMULTANEOUS) && !defined(CHEMISTRY_EXPLICIT_SIMULTANEOUS)
+#define CHEMISTRY_EXPLICIT_SIMULTANEOUS CHEM_EXPLICIT_SIMULTANEOUS
+#endif
+#if defined(CHEM_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION) && !defined(CHEMISTRY_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION)
+#define CHEMISTRY_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION CHEM_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION
+#endif
+#if defined(CHEM_INTERMEDIATE_EQUILIBRIUM) && !defined(CHEMISTRY_INTERMEDIATE_EQUILIBRIUM)
+#define CHEMISTRY_INTERMEDIATE_EQUILIBRIUM CHEM_INTERMEDIATE_EQUILIBRIUM
+#endif
+#if defined(CHEM_NEWTON_LU_REUSE) && !defined(CHEMISTRY_NEWTON_LU_REUSE)
+#define CHEMISTRY_NEWTON_LU_REUSE CHEM_NEWTON_LU_REUSE
+#endif
+#if defined(CHEM_NEWTON_RESIDUAL_GATE_LIMIT) && !defined(CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT)
+#define CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT CHEM_NEWTON_RESIDUAL_GATE_LIMIT
+#endif
+#if defined(CHEM_SAHA_DIAGNOSTICS) && !defined(CHEMISTRY_SAHA_DIAGNOSTICS)
+#define CHEMISTRY_SAHA_DIAGNOSTICS CHEM_SAHA_DIAGNOSTICS
+#endif
+#if defined(CHEM_CO_O2_DEPENDENT_DENSITY) && !defined(CHEMISTRY_CO_O2_DEPENDENT_DENSITY)
+#define CHEMISTRY_CO_O2_DEPENDENT_DENSITY CHEM_CO_O2_DEPENDENT_DENSITY
+#endif
+#if defined(ENERGY_IMPLICIT) && !defined(CHEMISTRY_ENERGY_IMPLICIT)
+#define CHEMISTRY_ENERGY_IMPLICIT ENERGY_IMPLICIT
+#endif
+#if defined(HYBRID_IMPLICIT) && !defined(CHEMISTRY_HYBRID_IMPLICIT)
+#define CHEMISTRY_HYBRID_IMPLICIT HYBRID_IMPLICIT
+#endif
+#if defined(SAHA) && !defined(CHEMISTRY_SAHA)
+#define CHEMISTRY_SAHA SAHA
+#endif
+#if defined(INVERSE_REACTIONS) && !defined(CHEMISTRY_INVERSE_REACTIONS)
+#define CHEMISTRY_INVERSE_REACTIONS INVERSE_REACTIONS
+#endif
+#if defined(CMB_HEATING) && !defined(CHEMISTRY_CMB_HEATING)
+#define CHEMISTRY_CMB_HEATING CMB_HEATING
+#endif
+#if defined(UPDATE_L_CORE_IN_SOLVER) && !defined(CHEMISTRY_UPDATE_CORE_LENGTH)
+#define CHEMISTRY_UPDATE_CORE_LENGTH UPDATE_L_CORE_IN_SOLVER
+#endif
+#if defined(JEANS_LENGTH_TMAX) && !defined(CHEMISTRY_JEANS_TEMPERATURE_MAX)
+#define CHEMISTRY_JEANS_TEMPERATURE_MAX JEANS_LENGTH_TMAX
+#endif
+#if defined(MAX_ITER_CHEM) && !defined(CHEMISTRY_MAX_ITERATIONS)
+#define CHEMISTRY_MAX_ITERATIONS MAX_ITER_CHEM
+#endif
+#if defined(FIX_TEMPERATURE) && !defined(CHEMISTRY_FIXED_TEMPERATURE)
+#define CHEMISTRY_FIXED_TEMPERATURE FIX_TEMPERATURE
+#endif
+#if defined(SET_TMAX) && !defined(CHEMISTRY_TEMPERATURE_MAX)
+#define CHEMISTRY_TEMPERATURE_MAX SET_TMAX
+#endif
+
+// Compile detailed diagnostics; output also requires diagnostics_enabled at runtime.
+#ifndef CHEMISTRY_DEBUG
+#define CHEMISTRY_DEBUG 0
+#endif
+#if CHEMISTRY_DEBUG != 0 && CHEMISTRY_DEBUG != 1
+#error "CHEMISTRY_DEBUG must be 0 or 1"
+#endif
+
+// Species-option compatibility for existing host configurations.
+#if defined(HELIUM) && !defined(CHEMISTRY_SPECIES_HELIUM)
+#define CHEMISTRY_SPECIES_HELIUM
+#endif
+#if defined(HD) && !defined(CHEMISTRY_SPECIES_DEUTERIUM)
+#define CHEMISTRY_SPECIES_DEUTERIUM
+#endif
+#if defined(H2_PLUS) && !defined(CHEMISTRY_SPECIES_H2_PLUS)
+#define CHEMISTRY_SPECIES_H2_PLUS
+#endif
+#if defined(HD_PLUS) && !defined(CHEMISTRY_SPECIES_HD_PLUS)
+#define CHEMISTRY_SPECIES_HD_PLUS
+#endif
+#if defined(DMINUS) && !defined(CHEMISTRY_SPECIES_D_MINUS)
+#define CHEMISTRY_SPECIES_D_MINUS
+#endif
+#if defined(HD_MINUS) && !defined(CHEMISTRY_SPECIES_D_MINUS)
+#define CHEMISTRY_SPECIES_D_MINUS
+#endif
+#if defined(CARBON_OXYGEN_CHEMISTRY) && !defined(CHEMISTRY_SPECIES_CARBON_OXYGEN)
+#define CHEMISTRY_SPECIES_CARBON_OXYGEN
+#endif
+#if defined(CARBON_OXYGEN_HIGH_IONIZATION) && !defined(CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION)
+#define CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION
+#endif
+
+#if (defined(CHEMISTRY_SPECIES_HD_PLUS) || defined(CHEMISTRY_SPECIES_D_MINUS)) && !defined(CHEMISTRY_SPECIES_DEUTERIUM)
+#error "Deuterium ions require CHEMISTRY_SPECIES_DEUTERIUM"
+#endif
+
+
+
+// Older host configurations remain accepted at this single compatibility boundary.
+#if defined(FLAG_BRENT) && !defined(CHEMISTRY_ENERGY_BRACKET_FALLBACK)
+#define CHEMISTRY_ENERGY_BRACKET_FALLBACK
+#endif
+#if defined(DEBUG_CHEMISTRY_SC) && !defined(CHEMISTRY_SAHA_DIAGNOSTICS)
+#define CHEMISTRY_SAHA_DIAGNOSTICS
+#endif
+#if defined(CHEMISTRY_EXPLICIT_SEQUENTIAL) && defined(CHEMISTRY_EXPLICIT_SIMULTANEOUS)
+#error "Choose only one explicit chemistry update method"
+#endif
+
+
+#if defined(CHEMISTRY_SPECIES_CARBON_OXYGEN) && !defined(METALLICITY)
+#error "CHEMISTRY_SPECIES_CARBON_OXYGEN requires METALLICITY"
 #endif
 
 /* The implicit energy residual evaluates chemistry implicitly at every trial
  * temperature.  Keep the outer timestep policy consistent even when a host
- * specifies only ENERGY_IMPLICIT. */
-#if defined(ENERGY_IMPLICIT) && !defined(CHEMISTRY_IMPLICIT)
+ * specifies only CHEMISTRY_ENERGY_IMPLICIT. */
+#if defined(CHEMISTRY_ENERGY_IMPLICIT) && !defined(CHEMISTRY_IMPLICIT)
 #define CHEMISTRY_IMPLICIT
 #endif
 
-#if defined(CARBON_OXYGEN_HIGH_IONIZATION) && !defined(CARBON_OXYGEN_CHEMISTRY)
-#error "CARBON_OXYGEN_HIGH_IONIZATION requires CARBON_OXYGEN_CHEMISTRY"
+#if defined(CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION) && !defined(CHEMISTRY_SPECIES_CARBON_OXYGEN)
+#error "CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION requires CHEMISTRY_SPECIES_CARBON_OXYGEN"
 #endif
 
-#ifndef CHEM_CO_O2_DEPENDENT_DENSITY
-#define CHEM_CO_O2_DEPENDENT_DENSITY 1.e9
+#ifndef CHEMISTRY_CO_O2_DEPENDENT_DENSITY
+#define CHEMISTRY_CO_O2_DEPENDENT_DENSITY 1.e9
 #endif
 
-#if defined(METAL) || defined(CARBON_OXYGEN_CHEMISTRY)
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
 #define CHEM_RATE_COUNT 200
 #else
 #define CHEM_RATE_COUNT 60
 #endif
 
-#if defined(H2_COOLING_G15) + defined(H2_COOLING_GP12) + defined(H2_COOLING_Y06) + defined(H2_COOLING_O00) > 1
-#error "Select only one H2 cooling model"
+// Public physics options are numeric: -DNAME (or =1) enables, =0 disables.
+// Historical presence-only spellings remain accepted at this input boundary.
+// If both spellings are supplied, the canonical spelling takes precedence.
+#if defined(THREEBODY) && !defined(CHEMISTRY_THREE_BODY)
+#define CHEMISTRY_THREE_BODY 1
 #endif
-#if defined(PARTITION_H2_EBM1989) + defined(PARTITION_H2_I87) + defined(PARTITION_H2_R85) > 1
+#if defined(H2_FORMATION_ON_DUST) && !defined(CHEMISTRY_H2_FORMATION_ON_DUST)
+#define CHEMISTRY_H2_FORMATION_ON_DUST 1
+#endif
+#if defined(CASE_B) && !defined(CHEMISTRY_CASE_B)
+#define CHEMISTRY_CASE_B 1
+#endif
+#if defined(MARTIN97) && !defined(CHEMISTRY_MARTIN97)
+#define CHEMISTRY_MARTIN97 1
+#endif
+#if defined(TBR_ABEL02) && !defined(CHEMISTRY_THREE_BODY_ABEL02)
+#define CHEMISTRY_THREE_BODY_ABEL02 1
+#endif
+#if defined(TBR_FLOW07) && !defined(CHEMISTRY_THREE_BODY_FLOW07)
+#define CHEMISTRY_THREE_BODY_FLOW07 1
+#endif
+#if defined(TBR_FORR13) && !defined(CHEMISTRY_THREE_BODY_FORR13)
+#define CHEMISTRY_THREE_BODY_FORR13 1
+#endif
+#if defined(ENZO_CHEM) && !defined(CHEMISTRY_ENZO)
+#define CHEMISTRY_ENZO 1
+#endif
+#if defined(O05_CHEM) && !defined(CHEMISTRY_O05)
+#define CHEMISTRY_O05 1
+#endif
+#if defined(CHEM_HIRANO) && !defined(CHEMISTRY_HIRANO)
+#define CHEMISTRY_HIRANO 1
+#endif
+#if defined(DUST_COOLING) && !defined(CHEMISTRY_DUST_COOLING)
+#define CHEMISTRY_DUST_COOLING 1
+#endif
+#if defined(MOLECULAR_LINE_COOLING) && !defined(CHEMISTRY_MOLECULAR_LINE_COOLING)
+#define CHEMISTRY_MOLECULAR_LINE_COOLING 1
+#endif
+#if defined(METAL_LINE_COOLING_SD93) && !defined(CHEMISTRY_METAL_LINE_COOLING_SD93)
+#define CHEMISTRY_METAL_LINE_COOLING_SD93 1
+#endif
+#if defined(HELIUM_EQ_COOLING) && !defined(CHEMISTRY_HELIUM_EQ_COOLING)
+#define CHEMISTRY_HELIUM_EQ_COOLING 1
+#endif
+#if defined(HELIUM_COOLING) && !defined(CHEMISTRY_HELIUM_COOLING)
+#define CHEMISTRY_HELIUM_COOLING 1
+#endif
+#if defined(HLINE_COOLING_THIN) && !defined(CHEMISTRY_HLINE_COOLING_THIN)
+#define CHEMISTRY_HLINE_COOLING_THIN 1
+#endif
+#if defined(CONTINUUM_COOLING_MATSUKOBA) && !defined(CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA)
+#define CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA 1
+#endif
+#if defined(CONT_OPACITY) && !defined(CHEMISTRY_CONT_OPACITY)
+#define CHEMISTRY_CONT_OPACITY 1
+#endif
+#if defined(H2_OPACITY) && !defined(CHEMISTRY_H2_OPACITY)
+#define CHEMISTRY_H2_OPACITY 1
+#endif
+#if defined(H2_OPACITY_FIT) && !defined(CHEMISTRY_H2_OPACITY_FIT)
+#define CHEMISTRY_H2_OPACITY_FIT 1
+#endif
+#if defined(H2_COOLING_G15) && !defined(CHEMISTRY_H2_COOLING_G15)
+#define CHEMISTRY_H2_COOLING_G15 1
+#endif
+#if defined(H2_COOLING_GP12) && !defined(CHEMISTRY_H2_COOLING_GP12)
+#define CHEMISTRY_H2_COOLING_GP12 1
+#endif
+#if defined(PARTITION_H2_EBM1989) && !defined(CHEMISTRY_H2_PARTITION_EBM1989)
+#define CHEMISTRY_H2_PARTITION_EBM1989 1
+#endif
+#if defined(PARTITION_H2_I87) && !defined(CHEMISTRY_H2_PARTITION_I87)
+#define CHEMISTRY_H2_PARTITION_I87 1
+#endif
+#if defined(PARTITION_H2_R85) && !defined(CHEMISTRY_H2_PARTITION_R85)
+#define CHEMISTRY_H2_PARTITION_R85 1
+#endif
+
+// Coupled defaults; explicit settings always take precedence.
+#ifndef CHEMISTRY_THREE_BODY
+#define CHEMISTRY_THREE_BODY 1
+#endif
+#ifndef CHEMISTRY_CASE_B
+#define CHEMISTRY_CASE_B 1
+#endif
+#ifndef CHEMISTRY_MARTIN97
+#define CHEMISTRY_MARTIN97 1
+#endif
+#ifndef CHEMISTRY_DUST_COOLING
+#ifdef METALLICITY
+#define CHEMISTRY_DUST_COOLING 1
+#else
+#define CHEMISTRY_DUST_COOLING 0
+#endif
+#endif
+#ifndef CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
+#define CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA 1
+#endif
+#ifndef CHEMISTRY_CONT_OPACITY
+#define CHEMISTRY_CONT_OPACITY 1
+#endif
+#ifndef CHEMISTRY_H2_OPACITY
+#define CHEMISTRY_H2_OPACITY 1
+#endif
+#ifndef CHEMISTRY_ENZO
+#define CHEMISTRY_ENZO 0
+#endif
+#ifndef CHEMISTRY_HIRANO
+#define CHEMISTRY_HIRANO 0
+#endif
+#ifndef CHEMISTRY_METAL_LINE_COOLING_SD93
+#define CHEMISTRY_METAL_LINE_COOLING_SD93 0
+#endif
+#ifndef CHEMISTRY_HELIUM_EQ_COOLING
+#define CHEMISTRY_HELIUM_EQ_COOLING 0
+#endif
+#ifndef CHEMISTRY_HLINE_COOLING_THIN
+#define CHEMISTRY_HLINE_COOLING_THIN 0
+#endif
+#ifndef CHEMISTRY_O05
+#define CHEMISTRY_O05 CHEMISTRY_HIRANO
+#endif
+#ifndef CHEMISTRY_H2_FORMATION_ON_DUST
+#define CHEMISTRY_H2_FORMATION_ON_DUST CHEMISTRY_DUST_COOLING
+#endif
+#ifndef CHEMISTRY_H2_OPACITY_FIT
+#define CHEMISTRY_H2_OPACITY_FIT CHEMISTRY_H2_OPACITY
+#endif
+#ifdef CHEMISTRY_SPECIES_HELIUM
+#ifndef CHEMISTRY_HELIUM_COOLING
+#define CHEMISTRY_HELIUM_COOLING 1
+#endif
+#else
+#ifndef CHEMISTRY_HELIUM_COOLING
+#define CHEMISTRY_HELIUM_COOLING 0
+#endif
+#endif
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
+#ifndef CHEMISTRY_MOLECULAR_LINE_COOLING
+#define CHEMISTRY_MOLECULAR_LINE_COOLING 1
+#endif
+#else
+#ifndef CHEMISTRY_MOLECULAR_LINE_COOLING
+#define CHEMISTRY_MOLECULAR_LINE_COOLING 0
+#endif
+#endif
+#ifndef CHEMISTRY_THREE_BODY_ABEL02
+#define CHEMISTRY_THREE_BODY_ABEL02 0
+#endif
+#ifndef CHEMISTRY_THREE_BODY_FLOW07
+#define CHEMISTRY_THREE_BODY_FLOW07 0
+#endif
+#ifndef CHEMISTRY_THREE_BODY_FORR13
+#define CHEMISTRY_THREE_BODY_FORR13 (!(CHEMISTRY_THREE_BODY_ABEL02 || CHEMISTRY_THREE_BODY_FLOW07))
+#endif
+#if (CHEMISTRY_THREE_BODY_ABEL02 + CHEMISTRY_THREE_BODY_FLOW07 + CHEMISTRY_THREE_BODY_FORR13) != 1
+#error "Select exactly one three-body rate prescription"
+#endif
+#ifndef CHEMISTRY_H2_COOLING_GP12
+#define CHEMISTRY_H2_COOLING_GP12 0
+#endif
+#ifndef CHEMISTRY_H2_COOLING_G15
+#define CHEMISTRY_H2_COOLING_G15 (!CHEMISTRY_H2_COOLING_GP12)
+#endif
+#if (CHEMISTRY_H2_COOLING_GP12 + CHEMISTRY_H2_COOLING_G15) != 1
+#error "Select exactly one H2 cooling prescription"
+#endif
+#ifndef CHEMISTRY_H2_PARTITION_EBM1989
+#define CHEMISTRY_H2_PARTITION_EBM1989 0
+#endif
+#ifndef CHEMISTRY_H2_PARTITION_I87
+#define CHEMISTRY_H2_PARTITION_I87 0
+#endif
+#ifndef CHEMISTRY_H2_PARTITION_R85
+#define CHEMISTRY_H2_PARTITION_R85 0
+#endif
+// With no partition flag, retain the EBM1989 fit by Matsukoba.
+#if CHEMISTRY_H2_PARTITION_EBM1989 + CHEMISTRY_H2_PARTITION_I87 + CHEMISTRY_H2_PARTITION_R85 > 1
 #error "Select only one H2 partition-function model"
 #endif
-#if defined(H2_COOLING_Y06) || defined(H2_COOLING_O00)
-#error "The selected H2 cooling model has no implementation in the portable chemistry core"
+#if CHEMISTRY_H2_OPACITY && !CHEMISTRY_H2_OPACITY_FIT
+#error "CHEMISTRY_H2_OPACITY requires CHEMISTRY_H2_OPACITY_FIT"
 #endif
-#if defined(H2_OPACITY) && !defined(H2_OPACITY_FIT)
-#error "H2_OPACITY requires an implemented H2 line-escape model"
+#if CHEMISTRY_H2_FORMATION_ON_DUST && !CHEMISTRY_DUST_COOLING
+#error "CHEMISTRY_H2_FORMATION_ON_DUST requires CHEMISTRY_DUST_COOLING"
+#endif
+#if CHEMISTRY_HIRANO && !CHEMISTRY_O05
+#error "CHEMISTRY_HIRANO requires CHEMISTRY_O05"
+#endif
+#if CHEMISTRY_ENZO && (CHEMISTRY_O05 || CHEMISTRY_HIRANO)
+#error "Choose ENZO or O05/HIRANO reaction rates"
+#endif
+#if CHEMISTRY_MOLECULAR_LINE_COOLING && !defined(CHEMISTRY_SPECIES_CARBON_OXYGEN)
+#error "CHEMISTRY_MOLECULAR_LINE_COOLING requires carbon/oxygen species"
+#endif
+#if (CHEMISTRY_THREE_BODY != 0) && (CHEMISTRY_THREE_BODY != 1)
+#error "CHEMISTRY_THREE_BODY must be 0 or 1"
+#endif
+#if (CHEMISTRY_H2_FORMATION_ON_DUST != 0) && (CHEMISTRY_H2_FORMATION_ON_DUST != 1)
+#error "CHEMISTRY_H2_FORMATION_ON_DUST must be 0 or 1"
+#endif
+#if (CHEMISTRY_CASE_B != 0) && (CHEMISTRY_CASE_B != 1)
+#error "CHEMISTRY_CASE_B must be 0 or 1"
+#endif
+#if (CHEMISTRY_MARTIN97 != 0) && (CHEMISTRY_MARTIN97 != 1)
+#error "CHEMISTRY_MARTIN97 must be 0 or 1"
+#endif
+#if (CHEMISTRY_THREE_BODY_ABEL02 != 0) && (CHEMISTRY_THREE_BODY_ABEL02 != 1)
+#error "CHEMISTRY_THREE_BODY_ABEL02 must be 0 or 1"
+#endif
+#if (CHEMISTRY_THREE_BODY_FLOW07 != 0) && (CHEMISTRY_THREE_BODY_FLOW07 != 1)
+#error "CHEMISTRY_THREE_BODY_FLOW07 must be 0 or 1"
+#endif
+#if (CHEMISTRY_THREE_BODY_FORR13 != 0) && (CHEMISTRY_THREE_BODY_FORR13 != 1)
+#error "CHEMISTRY_THREE_BODY_FORR13 must be 0 or 1"
+#endif
+#if (CHEMISTRY_ENZO != 0) && (CHEMISTRY_ENZO != 1)
+#error "CHEMISTRY_ENZO must be 0 or 1"
+#endif
+#if (CHEMISTRY_O05 != 0) && (CHEMISTRY_O05 != 1)
+#error "CHEMISTRY_O05 must be 0 or 1"
+#endif
+#if (CHEMISTRY_HIRANO != 0) && (CHEMISTRY_HIRANO != 1)
+#error "CHEMISTRY_HIRANO must be 0 or 1"
+#endif
+#if (CHEMISTRY_DUST_COOLING != 0) && (CHEMISTRY_DUST_COOLING != 1)
+#error "CHEMISTRY_DUST_COOLING must be 0 or 1"
+#endif
+#if (CHEMISTRY_MOLECULAR_LINE_COOLING != 0) && (CHEMISTRY_MOLECULAR_LINE_COOLING != 1)
+#error "CHEMISTRY_MOLECULAR_LINE_COOLING must be 0 or 1"
+#endif
+#if (CHEMISTRY_METAL_LINE_COOLING_SD93 != 0) && (CHEMISTRY_METAL_LINE_COOLING_SD93 != 1)
+#error "CHEMISTRY_METAL_LINE_COOLING_SD93 must be 0 or 1"
+#endif
+#if (CHEMISTRY_HELIUM_EQ_COOLING != 0) && (CHEMISTRY_HELIUM_EQ_COOLING != 1)
+#error "CHEMISTRY_HELIUM_EQ_COOLING must be 0 or 1"
+#endif
+#if (CHEMISTRY_HELIUM_COOLING != 0) && (CHEMISTRY_HELIUM_COOLING != 1)
+#error "CHEMISTRY_HELIUM_COOLING must be 0 or 1"
+#endif
+#if (CHEMISTRY_HLINE_COOLING_THIN != 0) && (CHEMISTRY_HLINE_COOLING_THIN != 1)
+#error "CHEMISTRY_HLINE_COOLING_THIN must be 0 or 1"
+#endif
+#if (CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA != 0) && (CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA != 1)
+#error "CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA must be 0 or 1"
+#endif
+#if (CHEMISTRY_CONT_OPACITY != 0) && (CHEMISTRY_CONT_OPACITY != 1)
+#error "CHEMISTRY_CONT_OPACITY must be 0 or 1"
+#endif
+#if (CHEMISTRY_H2_OPACITY != 0) && (CHEMISTRY_H2_OPACITY != 1)
+#error "CHEMISTRY_H2_OPACITY must be 0 or 1"
+#endif
+#if (CHEMISTRY_H2_OPACITY_FIT != 0) && (CHEMISTRY_H2_OPACITY_FIT != 1)
+#error "CHEMISTRY_H2_OPACITY_FIT must be 0 or 1"
+#endif
+#if (CHEMISTRY_H2_COOLING_G15 != 0) && (CHEMISTRY_H2_COOLING_G15 != 1)
+#error "CHEMISTRY_H2_COOLING_G15 must be 0 or 1"
+#endif
+#if (CHEMISTRY_H2_COOLING_GP12 != 0) && (CHEMISTRY_H2_COOLING_GP12 != 1)
+#error "CHEMISTRY_H2_COOLING_GP12 must be 0 or 1"
+#endif
+#if (CHEMISTRY_H2_PARTITION_EBM1989 != 0) && (CHEMISTRY_H2_PARTITION_EBM1989 != 1)
+#error "CHEMISTRY_H2_PARTITION_EBM1989 must be 0 or 1"
+#endif
+#if (CHEMISTRY_H2_PARTITION_I87 != 0) && (CHEMISTRY_H2_PARTITION_I87 != 1)
+#error "CHEMISTRY_H2_PARTITION_I87 must be 0 or 1"
+#endif
+#if (CHEMISTRY_H2_PARTITION_R85 != 0) && (CHEMISTRY_H2_PARTITION_R85 != 1)
+#error "CHEMISTRY_H2_PARTITION_R85 must be 0 or 1"
+#endif
+
+#if CHEMISTRY_HELIUM_COOLING && !defined(CHEMISTRY_SPECIES_HELIUM)
+#error "CHEMISTRY_HELIUM_COOLING requires CHEMISTRY_SPECIES_HELIUM"
+#endif
+
+// Solver policy: recompute the core length at the current trial temperature.
+#ifndef CHEMISTRY_UPDATE_CORE_LENGTH
+#define CHEMISTRY_UPDATE_CORE_LENGTH 1
+#endif
+#if CHEMISTRY_UPDATE_CORE_LENGTH != 0 && CHEMISTRY_UPDATE_CORE_LENGTH != 1
+#error "CHEMISTRY_UPDATE_CORE_LENGTH must be 0 or 1"
+#endif
+
+// Include the low-temperature H2 rotational transition in the heat capacity.
+#if defined(GAMMA_NEW) && !defined(CHEMISTRY_H2_ROTATIONAL_GAMMA)
+#define CHEMISTRY_H2_ROTATIONAL_GAMMA 1
+#endif
+#ifndef CHEMISTRY_H2_ROTATIONAL_GAMMA
+#define CHEMISTRY_H2_ROTATIONAL_GAMMA 1
+#endif
+#if CHEMISTRY_H2_ROTATIONAL_GAMMA != 0 && CHEMISTRY_H2_ROTATIONAL_GAMMA != 1
+#error "CHEMISTRY_H2_ROTATIONAL_GAMMA must be 0 or 1"
+#endif
+
+/* Limit on the certified Newton residual (chemistry_newton_evaluate_residual,
+ * where 1 corresponds to 1e-10 of the gross reaction activity) above which an
+ * iterate is rejected as grossly inconsistent.  Convergence is decided by the
+ * Newton step criterion together with the clipping hold and
+ * NEWTON_REQUIRED_CONFIRMATIONS; the residual is only a sanity veto.  A tight
+ * (~1) limit can never be met by a stiff, ill-conditioned species once the
+ * Newton correction is smaller than the representable change of that species
+ * (one ulp of the abundance moves the residual by more than the tolerance), so
+ * an already-converged solution would be rejected and restarted.  Overridable
+ * at compile time for testing. */
+// Shared by Newton validation and the initialization report.
+#ifndef CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT
+#define CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT 1.0e3
 #endif

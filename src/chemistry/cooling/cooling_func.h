@@ -1,6 +1,8 @@
 #ifndef COOLING_FUNC_H
 #define COOLING_FUNC_H
 
+#include "chemistry_build_config.h"
+
 typedef struct ChemistryContinuumOpacityTables ChemistryContinuumOpacityTables;
 
 struct opacities {
@@ -9,7 +11,7 @@ struct opacities {
   double tau_Planck;
   double kappa_Rossland;
   double kappa_Planck;
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double kappa_dust_Rossland;
   double kappa_dust_Planck;
 #endif
@@ -32,12 +34,12 @@ double fesc_Lya(double nH, double temperature, double y_H, double y_e,
 
 double H_criticaldensity(double nH, double temperature, double column_H, double y_H, double y_e);
 
-#if defined(CONTINUUM_COOLING_MATSUKOBA) || defined(METAL_LINE_COOLING_SD93)
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA || CHEMISTRY_METAL_LINE_COOLING_SD93
 
 
 #endif
 
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
 double get_cooling_rate_SD93(const ChemistryContinuumOpacityTables *tables, double temperature);
 #endif
 

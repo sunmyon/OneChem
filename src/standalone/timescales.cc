@@ -11,8 +11,6 @@
 double compute_freefall_time(double rho_gas);
 int compute_molecular_weight(int ithis);
 int compute_Jeans_length(int ithis, double T_gas);
-void calc_phis_coll(double Ncoll_H, double Ncoll_He, double *phi_H, double *phi_He, double *kion1, double *kion2);
-void calc_phis_coll_2nd(double Ncoll_H, double Ncoll_He, double xion, double *phiH_2nd, double *phiHe_2nd, double *gammaH_2nd, double *gammaHe_2nd);
 double compute_effective_gamma(double rho, double e, double Gamma, double L_rad, double dt, double *gamma_eff0);
 
 double timestep_flag(double dt_phys_pre, int flag_chem){
@@ -45,7 +43,7 @@ double timestep(double dt_phys_pre){
   double dt_cool = fabs(SphP[0].t_cool);
   double dt_chem = fabs(SphP[0].t_chem);
 
-#if defined(ENERGY_IMPLICIT) && !defined(LIMIT_DT_IMPLICIT)
+#if defined(CHEMISTRY_ENERGY_IMPLICIT) && !defined(LIMIT_DT_IMPLICIT)
   dt_cool = MAX_REAL_NUMBER;
 #endif
 #ifdef CHEMISTRY_IMPLICIT
@@ -261,48 +259,12 @@ double update_phys(int ithis,double dt,double SHR0){
   ifunc = compute_Jeans_length(ithis, T);
 
   double column_dens_HI  = SphP[ithis].Jeans_Length * SphP[ithis].HI  * SphP[ithis].n_nuclei ;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double column_dens_HeI = SphP[ithis].Jeans_Length * SphP[ithis].HeI * SphP[ithis].n_nuclei ;
 #endif
 
-#if defined(SHIELD_6RAY) && defined(SHIELD_LW)
-  double column_dens_H2  = SphP[ithis].Jeans_Length * SphP[ithis].H2I * SphP[ithis].n_nuclei ;
-#ifdef HD
-  double column_dens_HD  = SphP[ithis].Jeans_Length * SphP[ithis].HDI * SphP[ithis].n_nuclei ;
-#endif
-
-  for(int i=0;i<6;i++){
-    SphP[ithis].ColumnDens_H2[i] = column_dens_H2;
-    SphP[ithis].ColumnDens_HI[i] = column_dens_HI;
-#ifdef HD
-    SphP[ithis].ColumnDens_HD[i] = column_dens_HD;
-#endif
-  }
-#endif
 
 
-#ifdef X_RAY
-  double k22, k24;
-  double phi_H, phi_He;
-
-  calc_phis_coll(column_dens_HI, column_dens_HeI, &phi_H, &phi_He, &k22, &k24);
-  SphP[ithis].k22 = k22 * All.X_J21;
-  SphP[ithis].k24 = k24 * All.X_J21;
-
-  SphP[ithis].piHI = phi_H * All.X_J21;
-  SphP[ithis].piHeI= phi_He * All.X_J21;
-#ifdef X_RAY_2nd
-  double phiH_2nd, phiHe_2nd, gammaH_2nd, gammaHe_2nd;
-
-  calc_phis_coll_2nd(column_dens_HI, column_dens_HeI, SphP[0].elec, &phiH_2nd, &phiHe_2nd, &gammaH_2nd, &gammaHe_2nd);
-
-  SphP[ithis].k22_2nd = phiH_2nd;
-  SphP[ithis].k24_2nd = phiHe_2nd;
-  SphP[ithis].piHI  = gammaH_2nd  * All.X_J21;
-  SphP[ithis].piHeI = gammaHe_2nd * All.X_J21;
-  SphP[ithis].piHI_2nd = 0.;
-#endif
-#endif
 
   return SHR;
 }
@@ -311,19 +273,19 @@ int compute_molecular_weight(int ithis){
 #ifdef CHEMISTRY_OLD
   double sum_fraction = SphP[ithis].elec + SphP[ithis].HI +
     SphP[ithis].HII + SphP[ithis].HM + SphP[ithis].H2I
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
     + SphP[ithis].H2II
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     + SphP[ithis].DI + SphP[ithis].DII + SphP[ithis].HDI
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
     + SphP[ithis].HDII
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
     + SphP[ithis].DM
 #endif
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     + SphP[ithis].HeI + SphP[ithis].HeII + SphP[ithis].HeIII
 #else
     + XHe
@@ -337,26 +299,26 @@ int compute_molecular_weight(int ithis){
   abund[sHII] = SphP[ithis].HII;
   abund[sHM] = SphP[ithis].HM;
   abund[sH2I] = SphP[ithis].H2I;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   abund[sH2II] = SphP[ithis].H2II;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   abund[sDI] = SphP[ithis].DI;
   abund[sDII] = SphP[ithis].DII;
   abund[sHDI] = SphP[ithis].HDI;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   abund[sHDII] = SphP[ithis].HDII;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   abund[sDM] = SphP[ithis].DM;
 #endif
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   abund[sHeI] = SphP[ithis].HeI;
   abund[sHeII] = SphP[ithis].HeII;
   abund[sHeIII] = SphP[ithis].HeIII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   abund[sCI] = SphP[ithis].CI;
   abund[sCII] = SphP[ithis].CII;
   abund[sCO] = SphP[ithis].CO;
@@ -374,9 +336,9 @@ int compute_molecular_weight(int ithis){
 }
 
 int compute_Jeans_length(int ithis, double T_gas){
-#ifdef JEANS_LENGTH_TMAX
-  if(T_gas > JEANS_LENGTH_TMAX)
-    T_gas = JEANS_LENGTH_TMAX;
+#ifdef CHEMISTRY_JEANS_TEMPERATURE_MAX
+  if(T_gas > CHEMISTRY_JEANS_TEMPERATURE_MAX)
+    T_gas = CHEMISTRY_JEANS_TEMPERATURE_MAX;
 #endif
 #ifdef CHEMISTRY_OLD
   SphP[ithis].Jeans_Length =

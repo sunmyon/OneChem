@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
 static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     ChemNewtonResetIndex reset, double metallicity, double *abundance);
 #endif
@@ -115,7 +115,7 @@ static int chemistry_randomize_newton_guess(
       abundance[element->random_partition_species[index]] = values[index];
   }
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double carbon_left = A_C_sun * metallicity;
   double oxygen_left = A_O_sun * metallicity;
 
@@ -140,7 +140,7 @@ static int chemistry_randomize_newton_guess(
   abundance[sOH] = values[1];
   abundance[sH2O] = values[2];
   abundance[sO2] = values[3];
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
   abundance[sCOII] = abundance[sCH] = abundance[sCH2] = 0.0;
   abundance[sOII] = abundance[sOHII] = abundance[sH2OII] = 0.0;
   abundance[sH3OII] = abundance[sO2II] = 0.0;
@@ -193,16 +193,16 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
   if(reset <= CHEM_NEWTON_RESET_NONE || reset > CHEM_NEWTON_RESET_LAST)
     return;
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   memcpy(abundance, initial_abundance, N_SP * sizeof(*abundance));
 #endif
 
   switch(reset){
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   case CHEM_NEWTON_RESET_INITIAL_H2: {
     abundance[sHII] = 0.0;
     abundance[sH2I] = 0.5 * (1.0 - abundance[sHI]);
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDII] = 0.0;
     abundance[sHDI] = D_number_fraction / XH - abundance[sDI];
 #endif
@@ -216,7 +216,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.25179091941005283;
     abundance[sH2I] = 0.268540173142787;
     abundance[sHM] = 2.8871723966669333e-7;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 1.6078502270673519e-5;
     abundance[sDII] = 7.9679348332395664e-6;
     abundance[sHDI] = 5.5588260539816532e-6;
@@ -229,7 +229,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 1.6190277220737118e-6 * metallicity;
     abundance[sH2O] = 1.6557922775014028e-6 * metallicity;
     abundance[sO2] = 1.3659802238392435e-6 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = abundance[sCH] = abundance[sCH2] = 0.0;
     abundance[sOII] = abundance[sOHII] = abundance[sH2OII] = 0.0;
     abundance[sH3OII] = abundance[sO2II] = 0.0;
@@ -244,7 +244,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.99987311647556509;
     abundance[sH2I] = 1.75285745333539e-15;
     abundance[sHM] = 2.0672061115436203e-12;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 3.7373480562468117e-9;
     abundance[sDII] = 2.9601525809838385e-5;
     abundance[sHDI] = 1.10545931196041e-19;
@@ -257,7 +257,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 5.0314506352684828e-18 * metallicity;
     abundance[sH2O] = 6.3241931343626324e-19 * metallicity;
     abundance[sO2] = 6.1939284267970712e-18 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 1.255623341210446e-29 * metallicity;
     abundance[sCH] = 1.9883148389096883e-11 * metallicity;
     abundance[sCH2] = 3.7372262679145738e-19 * metallicity;
@@ -277,7 +277,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.99998204201121632;
     abundance[sH2I] = 1.2172160777026613e-17;
     abundance[sHM] = 1.1701898781268036e-14;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 3.0535703651096367e-10;
     abundance[sDII] = 2.9604957800857676e-5;
     abundance[sHDI] = 5.5231265654500275e-19;
@@ -290,7 +290,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 2.1353875395991124e-13 * metallicity;
     abundance[sH2O] = 6.3809201639573046e-18 * metallicity;
     abundance[sO2] = 1.0436809651017052e-17 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 1.6945907606749465e-14 * metallicity;
     abundance[sCH] = 8.0572677676953679e-11 * metallicity;
     abundance[sCH2] = 7.5419748150528964e-12 * metallicity;
@@ -309,7 +309,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.99997788016567746;
     abundance[sH2I] = 1.1813936041141837e-14;
     abundance[sHM] = 2.9075900000133324e-14;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 4.1470368754092607e-10;
     abundance[sDII] = 2.9604848454206449e-5;
     abundance[sHDI] = 7.4587283296514796e-19;
@@ -322,7 +322,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 1.3117562321818905e-17 * metallicity;
     abundance[sH2O] = 2.5589089726834677e-18 * metallicity;
     abundance[sO2] = 1.0430683407407197e-17 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 5.0009305674336627e-19 * metallicity;
     abundance[sCH] = 2.7067407023932438e-11 * metallicity;
     abundance[sCH2] = 1.37168559988535e-16 * metallicity;
@@ -341,7 +341,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.46296887826087041;
     abundance[sH2I] = 0.15163314890128671;
     abundance[sHM] = 5.9271967626337258e-7;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 1.683184927734549e-5;
     abundance[sDII] = 1.2773409639027497e-5;
     abundance[sHDI] = 4.2415217524219631e-12;
@@ -354,7 +354,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 4.5881503536558188e-5 * metallicity;
     abundance[sH2O] = 3.1222407874484122e-5 * metallicity;
     abundance[sO2] = 6.1983349342868853e-5 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 0.0;
     abundance[sCH] = 6.6189123140422269e-10 * metallicity;
     abundance[sCH2] = 9.7751495971518061e-11 * metallicity;
@@ -373,7 +373,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.99991421835454997;
     abundance[sH2I] = 4.4505255218988363e-16;
     abundance[sHM] = 3.4963947708440967e-17;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 5.7952040282222372e-11;
     abundance[sDII] = 2.960520520585443e-5;
     abundance[sHDI] = 2.7857180798267994e-20;
@@ -386,7 +386,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 2.4340338772299575e-17 * metallicity;
     abundance[sH2O] = 1.0298898956331353e-18 * metallicity;
     abundance[sO2] = 8.6677703979452596e-18 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 1.7290999112878472e-24 * metallicity;
     abundance[sCH] = 1.1329856501115037e-11 * metallicity;
     abundance[sCH2] = 1.2358743697202434e-19 * metallicity;
@@ -405,7 +405,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 6.8250328029227238e-10;
     abundance[sH2I] = 0.4942257502637345;
     abundance[sHM] = 5.2955689998561437e-15;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 2.8704494388345964e-7;
     abundance[sDII] = 1.4227412396213185e-14;
     abundance[sHDI] = 2.9318218199783867e-5;
@@ -418,7 +418,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 3.2276692703190392e-9 * metallicity;
     abundance[sH2O] = 6.7532087215730819e-6 * metallicity;
     abundance[sO2] = 1.9285299022076825e-13 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 3.964022484995573e-16 * metallicity;
     abundance[sCH] = 9.134910977838556e-9 * metallicity;
     abundance[sCH2] = 1.0705443282522379e-7 * metallicity;
@@ -437,7 +437,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.30233947754074625;
     abundance[sH2I] = 0.059027888873290288;
     abundance[sHM] = 9.7375063629401053e-8;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 1.9322771279217555e-5;
     abundance[sDII] = 1.0282489050219449e-5;
     abundance[sHDI] = 2.8284577354283037e-12;
@@ -450,7 +450,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 2.2991851135850131e-6 * metallicity;
     abundance[sH2O] = 1.3739858274135889e-6 * metallicity;
     abundance[sO2] = 1.6165345089195457e-6 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 0.0;
     abundance[sCH] = 1.2334072756372903e-9 * metallicity;
     abundance[sCH2] = 4.2719466865926816e-11 * metallicity;
@@ -469,7 +469,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 5.0973636985557156e-9;
     abundance[sH2I] = 0.45495950168833826;
     abundance[sHM] = 1.5124297197929668e-14;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 2.3271032762120112e-6;
     abundance[sDII] = 1.0732861297366062e-13;
     abundance[sHDI] = 2.7278159774354116e-5;
@@ -482,7 +482,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 2.251429314960598e-8 * metallicity;
     abundance[sH2O] = 1.2186987979377911e-5 * metallicity;
     abundance[sO2] = 3.2604709313020105e-13 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 5.7265524463316557e-16 * metallicity;
     abundance[sCH] = 2.9756172098530313e-10 * metallicity;
     abundance[sCH2] = 3.4509289303746159e-10 * metallicity;
@@ -502,7 +502,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 4.5367772036671654e-6;
     abundance[sH2I] = 0.43392009380269708;
     abundance[sHM] = 6.6903775210040103e-11;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 3.2407443278998604e-6;
     abundance[sDII] = 9.6176186589400081e-16;
     abundance[sHDI] = 2.6364518829033115e-5;
@@ -515,7 +515,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 6.3461958554081927e-8 * metallicity;
     abundance[sH2O] = 9.0685148668328659e-6 * metallicity;
     abundance[sO2] = 3.393002943944483e-6 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 3.0580833826225916e-16 * metallicity;
     abundance[sCH] = 6.8974084235700438e-9 * metallicity;
     abundance[sCH2] = 8.0746427048903346e-8 * metallicity;
@@ -535,7 +535,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.94192033322456736;
     abundance[sH2I] = 4.3520211046943833e-10;
     abundance[sHM] = 1.3618147972046997e-8;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 1.7239264614029546e-6;
     abundance[sDII] = 2.7881336626535426e-5;
     abundance[sHDI] = 6.9956361354992132e-14;
@@ -548,7 +548,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 2.2327059181335104e-14 * metallicity;
     abundance[sH2O] = 2.5110321146178189e-16 * metallicity;
     abundance[sO2] = 4.5117405652592979e-21 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 3.5097788223583212e-19 * metallicity;
     abundance[sCH] = 3.1373455903840561e-11 * metallicity;
     abundance[sCH2] = 1.8991432439961332e-15 * metallicity;
@@ -568,7 +568,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.12300585195318735;
     abundance[sH2I] = 0.0098465571490409364;
     abundance[sHM] = 3.0749809613547881e-8;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 2.5412102424257962e-5;
     abundance[sDII] = 3.5886705848171222e-6;
     abundance[sHDI] = 6.0449014881965254e-7;
@@ -581,7 +581,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 7.7137316555990897e-8 * metallicity;
     abundance[sH2O] = 1.0546855146720842e-7 * metallicity;
     abundance[sO2] = 5.4284453534823787e-9 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 2.4922831628171824e-15 * metallicity;
     abundance[sCH] = 0.0;
     abundance[sCH2] = 0.0;
@@ -601,7 +601,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 0.24364822196622987;
     abundance[sH2I] = 0.0044765617199466444;
     abundance[sHM] = 2.3168149884005082e-8;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 1.4037980521944389e-5;
     abundance[sDII] = 5.8307747828085568e-6;
     abundance[sHDI] = 9.7365078531417911e-6;
@@ -614,7 +614,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 4.7800103509553789e-5 * metallicity;
     abundance[sH2O] = 1.6282207832983737e-10 * metallicity;
     abundance[sO2] = 1.680877943286188e-5 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 0.0;
     abundance[sCH] = 2.2457184144262032e-8 * metallicity;
     abundance[sCH2] = 7.5100344065396327e-11 * metallicity;
@@ -634,7 +634,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sHII] = 1.7291719422397354e-4;
     abundance[sH2I] = 0.42359976420960388;
     abundance[sHM] = 7.1611168879531515e-10;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 3.7373343442930741e-6;
     abundance[sDII] = 4.0629493336566334e-9;
     abundance[sHDI] = 2.5863865864268007e-5;
@@ -647,7 +647,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
     abundance[sOH] = 9.3338730701021626e-8 * metallicity;
     abundance[sH2O] = 4.806464506895454e-7 * metallicity;
     abundance[sO2] = 4.9502143698811777e-19 * metallicity;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = 2.9752211192564415e-18 * metallicity;
     abundance[sCH] = 2.0528614763825189e-9 * metallicity;
     abundance[sCH2] = 2.1312587313702209e-9 * metallicity;
@@ -688,7 +688,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
   }
 #endif
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   case CHEM_NEWTON_RESET_CO_RICH:
   case CHEM_NEWTON_RESET_CO2_RICH:
   {
@@ -709,7 +709,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
   }
 #endif
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   default:
     chemistry_newton_apply_carbon_oxygen_corner_reset(reset, metallicity,
                                                       abundance);
@@ -721,7 +721,7 @@ void chemistry_newton_apply_deterministic_reset(ChemNewtonResetIndex reset,
   }
 }
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
 static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     ChemNewtonResetIndex reset, double metallicity, double *abundance) {
   if(reset < CHEM_NEWTON_RESET_MOLECULAR_RESERVOIR_CORNER ||
@@ -738,7 +738,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 1.e-13;
     abundance[sH2I] = 0.0;
     abundance[sHM] = 1.e-30;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     double reset_deuterium_total = D_number_fraction / XH;
     abundance[sDI] = 7.2e-5 * reset_deuterium_total;
     abundance[sDII] = 1.e-12 * reset_deuterium_total;
@@ -763,11 +763,11 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     double reset_fixed_hydrogen = abundance[sHI] + abundance[sHII] +
                                   abundance[sHM] + abundance[sOH] +
                                   2.0 * abundance[sH2O];
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     reset_fixed_hydrogen += abundance[sHDI];
 #endif
     abundance[sH2I] = 0.5 * (1.0 - reset_fixed_hydrogen);
-#ifdef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifdef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = abundance[sCH] = abundance[sCH2] = 0.0;
     abundance[sOII] = abundance[sOHII] = abundance[sH2OII] = 0.0;
     abundance[sH3OII] = abundance[sO2II] = 0.0;
@@ -804,7 +804,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     else
       abundance[sOI] = reset_oxygen_scale;
     abundance[sHM] = 1.e-30;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     double reset_deuterium_total = D_number_fraction / XH;
     double reset_deuterium_scale =
         reset_deuterium_total / (1.0 + 2.0 * reset_epsilon_d);
@@ -813,7 +813,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
 #endif
     double reset_fixed_hydrogen =
         abundance[sHM] + abundance[sOH] + 2.0 * abundance[sH2O];
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     reset_fixed_hydrogen += abundance[sHDI];
 #endif
     double reset_hydrogen_scale =
@@ -821,12 +821,12 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHI] = abundance[sHII] = reset_epsilon_h * reset_hydrogen_scale;
     abundance[sH2I] = reset_hydrogen_scale;
     abundance[sELEC] = dmax(abundance[sHII] + abundance[sCII]
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
                                 + abundance[sDII]
 #endif
                                 - abundance[sHM],
                             1.e-80);
-#ifdef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifdef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
     abundance[sCOII] = abundance[sCH] = abundance[sCH2] = 0.0;
     abundance[sOII] = abundance[sOHII] = abundance[sH2OII] = 0.0;
     abundance[sH3OII] = abundance[sO2II] = 0.0;
@@ -843,7 +843,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 1.097372861653367e-16;
     abundance[sH2I] = 0.49993281348707092;
     abundance[sHM] = 1.3578795895763941e-18;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 2.4678081475222134e-9;
     abundance[sDII] = 3.8769071436259128e-21;
     abundance[sHDI] = 2.9602795349747216e-5;
@@ -873,7 +873,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
         dmax(abundance[sHII] + abundance[sCII] + abundance[sCOII] +
                  abundance[sOII] + abundance[sOHII] + abundance[sH2OII] +
                  abundance[sH3OII] + abundance[sO2II]
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
                  + abundance[sDII]
 #endif
                  - abundance[sHM],
@@ -891,7 +891,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 5.5963065945879032e-15;
     abundance[sH2I] = 0.49996462101189643;
     abundance[sHM] = 2.9032775962086918e-18;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 8.2229956853841889e-10;
     abundance[sDII] = 6.9111703489780351e-20;
     abundance[sHDI] = 2.9604440858326133e-5;
@@ -923,7 +923,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 2.8307320932470535e-14;
     abundance[sH2I] = 0.49699165106017362;
     abundance[sHM] = 1.9316995099120814e-17;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 2.9602232224597413e-5;
     abundance[sDII] = 2.0920073158092711e-21;
     abundance[sHDI] = 3.0309332973224368e-9;
@@ -955,7 +955,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 2.1112122281401323e-10;
     abundance[sH2I] = 0.49089189183000276;
     abundance[sHM] = 4.7800845857078197e-19;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 2.6789152029287045e-5;
     abundance[sDII] = 2.76662035790657e-6;
     abundance[sHDI] = 4.9490770701122862e-8;
@@ -982,7 +982,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 4.9999999999949997e-13;
     abundance[sH2I] = 0.49999999999949996;
     abundance[sHM] = 1.e-30;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     double reset_deuterium_total = D_number_fraction / XH;
     abundance[sDI] = reset_deuterium_total / (1.0 + 2.0 * reset_trace_fraction);
     abundance[sDII] = abundance[sHDI] = reset_trace_fraction * abundance[sDI];
@@ -1011,7 +1011,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 4.9999999500000009e-9;
     abundance[sH2I] = 0.49999999500000009;
     abundance[sHM] = 1.e-30;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     double reset_deuterium_total = D_number_fraction / XH;
     abundance[sDI] = reset_deuterium_total / (1.0 + 2.0 * reset_trace_fraction);
     abundance[sDII] = abundance[sHDI] = reset_trace_fraction * abundance[sDI];
@@ -1041,7 +1041,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 4.9999999999949997e-13;
     abundance[sH2I] = 0.49999999999949996;
     abundance[sHM] = 1.e-30;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     double reset_deuterium_total = D_number_fraction / XH;
     abundance[sDI] =
         reset_deuterium_total / (1.0 + 2.0 * reset_d_trace_fraction);
@@ -1072,7 +1072,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 4.0474475656545944e-16;
     abundance[sH2I] = 0.49997548763421412;
     abundance[sHM] = 5.8817281868462176e-17;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 9.1429852689894538e-11;
     abundance[sDII] = 1.7837452166529701e-20;
     abundance[sHDI] = 2.9605171728042033e-5;
@@ -1102,7 +1102,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
         dmax(abundance[sHII] + abundance[sCII] + abundance[sCOII] +
                  abundance[sOII] + abundance[sOHII] + abundance[sH2OII] +
                  abundance[sH3OII] + abundance[sO2II]
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
                  + abundance[sDII]
 #endif
                  - abundance[sHM],
@@ -1119,7 +1119,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sHII] = 4.0342846736614977e-12;
     abundance[sH2I] = 0.49946226387603804;
     abundance[sHM] = 9.6731775568793928e-19;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     abundance[sDI] = 6.173468146750116e-6;
     abundance[sDII] = 1.0135491570650765e-17;
     abundance[sHDI] = 2.343179501113449e-5;
@@ -1149,7 +1149,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
         dmax(abundance[sHII] + abundance[sCII] + abundance[sCOII] +
                  abundance[sOII] + abundance[sOHII] + abundance[sH2OII] +
                  abundance[sH3OII] + abundance[sO2II]
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
                  + abundance[sDII]
 #endif
                  - abundance[sHM],
@@ -1164,7 +1164,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     const double reset_h_trace = 1.e-16;
     const double reset_co_trace = 1.e-16;
     abundance[sHM] = 1.e-8;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     double reset_deuterium_total = D_number_fraction / XH;
     abundance[sDII] = reset_deuterium_total / (1.0 + 2.0 * reset_d_trace);
     abundance[sDI] = abundance[sHDI] = reset_d_trace * abundance[sDII];
@@ -1183,14 +1183,14 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sOII] = abundance[sOHII] = abundance[sH2OII] = 0.0;
     abundance[sH3OII] = abundance[sO2II] = 0.0;
     double reset_available_hydrogen = 1.0 - abundance[sHM]
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
                                       - abundance[sHDI]
 #endif
                                       - abundance[sOH] - 2.0 * abundance[sH2O];
     abundance[sHI] = reset_available_hydrogen / (1.0 + 3.0 * reset_h_trace);
     abundance[sHII] = abundance[sH2I] = reset_h_trace * abundance[sHI];
     abundance[sELEC] = dmax(abundance[sHII] + abundance[sCII]
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
                                 + abundance[sDII]
 #endif
                                 - abundance[sHM],
@@ -1203,7 +1203,7 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     const double reset_trace_fraction = 1.e-8;
     const double reset_h_trace = 1.e-8;
     abundance[sHM] = 1.e-30;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     double reset_deuterium_total = D_number_fraction / XH;
     abundance[sDI] = reset_deuterium_total / (1.0 + 2.0e-16);
     abundance[sDII] = abundance[sHDI] = 1.e-16 * abundance[sDI];
@@ -1222,14 +1222,14 @@ static void chemistry_newton_apply_carbon_oxygen_corner_reset(
     abundance[sOII] = abundance[sOHII] = abundance[sH2OII] = 0.0;
     abundance[sH3OII] = abundance[sO2II] = 0.0;
     double reset_available_hydrogen = 1.0 - abundance[sHM]
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
                                       - abundance[sHDI]
 #endif
                                       - abundance[sOH] - 2.0 * abundance[sH2O];
     abundance[sH2I] = reset_available_hydrogen / (2.0 + 2.0 * reset_h_trace);
     abundance[sHI] = abundance[sHII] = reset_h_trace * abundance[sH2I];
     abundance[sELEC] = dmax(abundance[sHII] + abundance[sCII]
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
                                 + abundance[sDII]
 #endif
                                 - abundance[sHM],

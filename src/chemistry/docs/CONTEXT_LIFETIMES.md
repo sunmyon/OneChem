@@ -24,7 +24,7 @@ its resource objects; evaluations borrow const pointers through `ChemRunView`.
 All borrowed views must expire before Model destruction. Resource factories return
 owning handles, so failed construction automatically releases partial resources.
 
-The standalone compatibility adapter uses this lifecycle (error handling omitted):
+The standalone adapter uses this lifecycle (error handling omitted):
 
 ```cpp
 ChemistryConfig config;
@@ -32,11 +32,12 @@ chemistry_config_defaults(&config);
 config.table_root = All.ChemistryTableDir;
 config.timescale_safety_factor = All.Epsilon;
 auto created = chemistry::Model::create(config); // check status before using model
+ChemistryStandaloneAdapter adapter;
 ChemStandaloneUnits units = {0};
 RadiationRateContext radiation_context;
 
 units.specific_energy_cgs = All.UnitEnergy_in_cgs / All.UnitMass_in_g;
-chemistry_standalone_configure(&created.model->run(), &units);
+adapter.configure(&created.model->run(), &units);
 radiation_rate_context_init(&radiation_context); /* once per run/task */
 
 ChemGlobalStep step = {0};
@@ -45,13 +46,13 @@ step.scale_factor = All.cf_atime;
 step.simulation_time = All.Time;
 step.comoving_integration = All.ComovingIntegrationOn;
 RadiationBlackbodyInput background = {All.J21, Teff};
-chemistry_standalone_prepare_step_with_background(
+adapter.prepare_step_with_background(
     &step, &radiation_context, &background);  /* once per shared step */
 
 for(each_active_cell)
-  compute_abundances_d(mode, &input[cell], &output[cell], dt[cell]);
+  adapter.advance(mode, &input[cell], &output[cell], dt[cell]);
 
-chemistry_standalone_configure(NULL, NULL); /* drop borrowed pointers */
+adapter.configure(NULL, NULL); /* drop borrowed pointers */
 created.model.reset(); // normal scope exit also destroys it
 radiation_rate_context_destroy(&radiation_context); /* once at shutdown */
 ```
@@ -66,9 +67,12 @@ member of `ChemRunView` or the public chemistry state API.
 
 Compile-time selection remains compile-time selection.  `ChemRunView` does
 not contain booleans that revive excluded physics.  For example,
-`fixed_temperature` exists only when `FIX_TEMPERATURE` is compiled, and HD-only
+`fixed_temperature` exists only when `CHEMISTRY_FIXED_TEMPERATURE` is compiled, and HD-only
 step fields exist only when `HD` is compiled.
 
-The standalone adapter keeps a private singleton only to preserve the legacy
-argument list of `compute_abundances_d`. AREPO owns an explicit
-`Model::Handle` per MPI process and does not use that singleton.
+Each standalone adapter owns its run view, units and prepared step. Separate
+instances can configure independently; the Model must outlive every borrowed
+view. Configuration and step updates must not race evaluation on the same
+adapter. AREPO owns a Model::Handle per MPI process and prepares cell workspaces
+independently. Profiling state is thread-local, and reports cover the calling
+thread rather than aggregating the process.

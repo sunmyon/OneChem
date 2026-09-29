@@ -14,7 +14,7 @@ double H2form_on_grains(double rho_cgs, double temperature, double dust_temperat
 double dust_PEheating(double G0, double nH, double electron_abundance,
                       double temperature, double metallicity,
                       int diagnostics_enabled);
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
 
 
 void chemistry_dust_opacities_from_tables(

@@ -5,7 +5,7 @@
 int chemistry_update_intermediate_equilibrium_species(unsigned char mode, double nH,
                                                        double *abundance, const ChemRates *rates);
 
-#if defined(__cplusplus) && defined(ENERGY_IMPLICIT)
+#if defined(__cplusplus) && defined(CHEMISTRY_ENERGY_IMPLICIT)
 namespace chemistry {
 class EnergySolver final {
 public:
@@ -54,7 +54,7 @@ private:
 #endif
 
 #ifdef __cplusplus
-struct ChemConservationSystem;
+class ChemConservationSystem;
 namespace chemistry {
 class ExplicitSolver final {
 public:
@@ -69,7 +69,7 @@ private:
     double nH, double metallicity, double dt, double *abundance,
     const ChemRates *rates);
 };
-#ifdef SAHA
+#ifdef CHEMISTRY_SAHA
 class SahaSolver final {
 public:
   ChemistryStatus solve(const ChemEnvironment &environment, ChemState &state,

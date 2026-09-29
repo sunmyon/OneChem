@@ -6,6 +6,7 @@ extern "C" {
 }
 #include "chemistry_arepo.h"
 #include "chemistry_model.hpp"
+#include "chemistry_constants.h"
 #include <assert.h>
 #include <stdlib.h>
 
@@ -41,15 +42,19 @@ void chemistry_config_defaults(ChemistryConfig *config) {
   memset(config, 0, sizeof(*config));
   config->abi_version = CHEMISTRY_ABI_VERSION;
 }
+// Background bridge tests do not evaluate dust, but the default adapter exports
+// this hook. Catch any accidental invocation rather than returning fake opacity.
+void chemistry_dust_opacities_from_tables(const ChemistryDustTables *, double,
+                                         double *, double *) { assert(false); }
 namespace chemistry {
 Model::Creation Model::create(const ChemistryConfig &config) noexcept {
   assert(config.timescale_safety_factor == All.Epsilon);
+  assert(config.print_configuration == (ThisTask == 0));
   return {Model::Handle(new Model), CHEMISTRY_STATUS_OK};
 }
 Model::~Model() noexcept = default;
 RateTables::RateTables() noexcept = default;
 RateTables::~RateTables() noexcept = default;
-void RateTables::Deleter::operator()(ChemistryRateTables *) const noexcept {}
 void ModelResourceDeleter::operator()(ChemReactionNetwork *) const noexcept {}
 void ModelResourceDeleter::operator()(ChemistryCoolingTables *) const noexcept {}
 void ModelResourceDeleter::operator()(ChemistryDustTables *) const noexcept {}
@@ -68,6 +73,11 @@ ChemistryStatus chemistry::Driver::advance(const Model &model, const ChemistrySt
 
   assert(step && options);
   assert(cell->density_cgs == 160. && dt == 3.);
+#if defined(METAL_ADVECTION_SC) && !defined(CONSTANT_METALLICITY)
+  assert(fabs(cell->metallicity - 0.25) < 1.e-13);
+#else
+  assert(cell->metallicity == 0.125);
+#endif
   assert(state->specific_thermal_energy_cgs == 15.);
   assert(state->abundances[sHI] == 0.76);
   assert(state->abundance_count == TGCHEM_NUM_ABUNDANCES);
@@ -101,8 +111,12 @@ int main(void)
 {
   ChemistryStepContext step;
 
+  All.Metallicity = 0.125;
+  particle_state.Metallicity_spec[0] = 0.1 * Z_SUN;
+  particle_state.Metallicity_spec[1] = 0.15 * Z_SUN;
   All.Epsilon = 0.01;
   All.J21 = 1.0;
+  All.Teff = 1.e4;
   All.T_CMB = 30.0;
   All.cf_atime = 0.1;
   All.Time = 42.0;
@@ -122,6 +136,16 @@ int main(void)
      !nearly_equal(step.global.background_rate_H2_diss, 2.78e-12) ||
      !nearly_equal(step.global.background_rate_HD_diss, 3.10e-12))
     return 1;
+
+  // Temperature is a runtime input and must invalidate the cached spectrum.
+  const double soft_rate = step.global.background_rate_Hminus_pd;
+  All.Teff = 3.e4;
+  assert(chemistry_arepo_host_prepare_step(&step));
+  assert(isfinite(step.global.background_rate_Hminus_pd));
+  assert(fabs(step.global.background_rate_Hminus_pd - soft_rate) > fabs(soft_rate) * 1.e-3);
+  All.Teff = 1.e4;
+  assert(chemistry_arepo_host_prepare_step(&step));
+  assert(nearly_equal(step.global.background_rate_Hminus_pd, soft_rate));
 
   All.UnitDensity_in_cgs = 2.; All.HubbleParam = 2.; All.cf_a3inv = 4.;
   All.UnitEnergy_in_cgs = 6.; All.UnitMass_in_g = 2.;

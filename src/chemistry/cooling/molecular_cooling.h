@@ -1,9 +1,11 @@
 #pragma once
 
+#include "chemistry_build_config.h"
+
 
 typedef struct ChemistryCoolingTables ChemistryCoolingTables;
 
-#ifdef MOLECULAR_LINE_COOLING
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
 
 
 void evaluate_molecular_line_cooling(const ChemistryCoolingTables *tables,

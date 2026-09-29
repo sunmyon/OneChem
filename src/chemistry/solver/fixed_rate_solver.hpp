@@ -57,16 +57,16 @@ private:
 
 namespace chemistry {
 
-#ifdef MAX_ITER_CHEM
-inline constexpr int default_chemistry_iterations = MAX_ITER_CHEM;
+#ifdef CHEMISTRY_MAX_ITERATIONS
+inline constexpr int default_chemistry_iterations = CHEMISTRY_MAX_ITERATIONS;
 #else
 inline constexpr int default_chemistry_iterations = 3000;
 #endif
 struct FixedRateOptions {
   const double *initial_guess = nullptr; // optional stored units, per baryon
   int max_iterations = default_chemistry_iterations;
-  int allow_restarts = 1;
-  int report_failure = 1;
+  bool allow_restarts = true;
+  bool report_failure = true;
 };
 
 // Scratch belongs to one simultaneous solve. It contains no model ownership

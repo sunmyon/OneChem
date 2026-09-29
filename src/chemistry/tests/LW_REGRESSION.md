@@ -1,6 +1,6 @@
 # LW integration regression
 
-The default full-survey gate does not compile `LYMANWERNER`.  After migrating
+The default full-survey gate does not compile `CHEMISTRY_LW_RADIATION`.  After migrating
 the FUV/LW blackbody lookup table, both the `5d30197` implementation and the
 portable implementation were therefore built with `ENABLE_LW=1` and run at
 one metallicity and one CMB redshift across all five survey LW strengths.

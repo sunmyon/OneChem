@@ -173,7 +173,7 @@ set_J21();
 
 主因は LW shielding column に使う `Jeans_Length` の扱いだった。
 
-old 側では `SHIELD_LW` 有効時、`compute_abundances_d()` の入口で
+old 側では `CHEMISTRY_LW_SELF_SHIELDING` 有効時、`compute_abundances_d()` の入口で
 `set_core_radius(ithis, T_gas)` を呼び、その時点の `T_gas` から
 `SphP[ithis].Jeans_Length` を更新する。その後、同じ値が H2/HI/HD の
 column density と `set_reaction_rate_coeff()` 内の continuum opacity に使われる。
@@ -185,13 +185,13 @@ column が old とずれる。`J21=1000` では H2 が非常に小さい期間�
 self-shielding が効き始めるため、この lag が H2/HD の履歴に積み上がり、
 最終的に温度で約 2%、H2/HD で約 25% の差になっていた。
 
-対応として、`chemistry/` は触らず、adapter 側で `SHIELD_LW` のときだけ
+対応として、`chemistry/` は触らず、adapter 側で `CHEMISTRY_LW_SELF_SHIELDING` のときだけ
 old と同じ挙動にした。具体的には `chemdata_in.Jeans_Length = 0` を渡し、
 new chemistry 内部の `get_core_radius(rho_cgs, T_gas)` で current `T_gas`
 から再計算させる。さらに出力用の `tau_cont` 再計算でも同じ current-T
 Jeans length を使い、`SphP[i].Jeans_Length` へ反映する。
 
-`SHIELD_LW` なしでは old はこの入口再計算をしないので、no-LW では従来通り
+`CHEMISTRY_LW_SELF_SHIELDING` なしでは old はこの入口再計算をしないので、no-LW では従来通り
 外側由来の `SphP[i].Jeans_Length` を渡す。これにより no-LW の一致は保たれる。
 
 修正後の `J21=0.1, 1, 10, 100, 1000` 比較:
@@ -328,8 +328,8 @@ J21 ごとの最悪ケース:
 - `switch_func[]` の analytic Jacobian dispatch table は implicit solve ごとではなく static one-time init にした。
 - `solve_brent()` は実際には無条件 bisection だったため、死んだ secant / inverse quadratic branch を消して `solve_bisection()` に改名した。アルゴリズム自体は変えていない。
 - `give_g()` は trial evaluation ごとに外側 state を破壊しないよう、local copy 上で chemistry/cooling を評価し、収束後の最後だけ `commit_g()` で反映する形にした。
-- `CHEMISTRY_IMPLICIT` で `CHEM_DIFF_ANALYTIC` が無効な build は、明示的に `ALLOW_CHEM_DIFF_NUMERIC` を付けない限り compile error にした。accidental slow build を防ぐため。
-- `ENERGY_IMPLICIT` の inner loop で、計算済みの `dT` を使わず `T_new *= 1.001` していた分岐を `T_new_temp + dT` に修正した。
+- `CHEMISTRY_IMPLICIT` で `CHEMISTRY_DIFF_ANALYTIC` が無効な build は、明示的に `ALLOW_CHEM_DIFF_NUMERIC` を付けない限り compile error にした。accidental slow build を防ぐため。
+- `CHEMISTRY_ENERGY_IMPLICIT` の inner loop で、計算済みの `dT` を使わず `T_new *= 1.001` していた分岐を `T_new_temp + dT` に修正した。
 
 検証:
 

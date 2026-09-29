@@ -1,0 +1,30 @@
+{
+  "baseline_commit": "782d710",
+  "cases": [
+    {
+      "case": "call1_default",
+      "identical_except_elapsed_s": true,
+      "normalized_log_sha256": "7f45071074c42e3e54745bc8ac01567aa1d104086962298c97279a3bcfb31ba5"
+    },
+    {
+      "case": "call2_default",
+      "identical_except_elapsed_s": true,
+      "normalized_log_sha256": "65e1899844f2175a20c08df7cf40920ed4c868f44ff57b0c9d28168ccfcd56db"
+    },
+    {
+      "case": "call2_gate1",
+      "identical_except_elapsed_s": true,
+      "normalized_log_sha256": "70ce74bfc8b032bb022c2aa2af2aa0dc4714beec9c6084301a7a7cb7aba04519"
+    },
+    {
+      "case": "id1339855177",
+      "identical_except_elapsed_s": true,
+      "normalized_log_sha256": "796591c2513292688b71ed8629a2537b3d338e6c078dee3986afa43cecdbc86f"
+    }
+  ],
+  "numerics": "passed",
+  "lu_reuse_on_and_off": "passed",
+  "ubsan": "passed",
+  "arepo_module_regressions": "passed",
+  "shared_files": 76
+}

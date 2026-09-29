@@ -13,7 +13,6 @@
 #include "reaction_network.h"
 #include "thermodynamics.h"
 
-#ifdef CHEMISTRY_SC
 
 double chemistry_temperature(const double *abund, double gamma, double utherm_cgs)
 {
@@ -35,7 +34,7 @@ double chemistry_gamma_from_abundances(const double *abund, double T_gas)
   double y_H2   = abund[sH2I]  /n_H;
   double y_elec = abund[sELEC] /n_H;
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double y_metal = (abund[sCI] + abund[sCII] + abund[sCO] + abund[sCO2] +
                     abund[sOI] + abund[sOH] + abund[sH2O] + abund[sO2]) / n_H;
 #else
@@ -45,7 +44,7 @@ double chemistry_gamma_from_abundances(const double *abund, double T_gas)
   double x = 6100.0/T_gas;
 
   double gamma_H2_minus1_inv;
-#ifdef GAMMA_NEW
+#if CHEMISTRY_H2_ROTATIONAL_GAMMA
   if(T_gas < 550.){
     gamma_H2_minus1_inv
       = 1./(0.133333333333 * tanh((2.08661-log10(T_gas))*4.165) + 0.533333333333);
@@ -84,7 +83,7 @@ double chemistry_molecular_weight(const double *abund){
 
   /* Without an evolved He network, helium remains a fixed neutral particle
    * reservoir and therefore is not represented in abund[]. */
-#ifndef HELIUM
+#ifndef CHEMISTRY_SPECIES_HELIUM
   sum_fraction += XHe;
 #endif
 
@@ -98,9 +97,9 @@ double compute_freefall_time(double rho_gas){
 double chemistry_jeans_radius(double rho_cgs, double T_gas,
                               double thermal_mass_in_proton_masses)
 {
-#ifdef JEANS_LENGTH_TMAX
-  if(T_gas > JEANS_LENGTH_TMAX)
-    T_gas = JEANS_LENGTH_TMAX;
+#ifdef CHEMISTRY_JEANS_TEMPERATURE_MAX
+  if(T_gas > CHEMISTRY_JEANS_TEMPERATURE_MAX)
+    T_gas = CHEMISTRY_JEANS_TEMPERATURE_MAX;
 #endif
 
   return 0.5 * M_PI *
@@ -119,6 +118,3 @@ void update_thermodynamic_state(const ChemState *state, ChemThermodynamicState *
   thermodynamics->temperature = state->utherm_cgs * (state->gamma - 1.0) *
       PROTONMASS * thermodynamics->molecular_weight / BOLTZMANN;
 }
-
-
-#endif /* CHEMISTRY_SC */

@@ -15,10 +15,10 @@
 #include "partition.h"
 #include "reaction_network.h"
 #include "reaction_rates.h"
+#include "shielding.h"
 #include "chemistry_tables.h"
 #include "thermodynamics.h"
 
-#ifdef CHEMISTRY_SC
 
 void chemistry::ReactionRateEvaluator::evaluate_chemical_energy_timescale()
 {
@@ -33,10 +33,10 @@ void chemistry::ReactionRateEvaluator::evaluate_chemical_energy_timescale()
   const double n_HI = nH * a[sHI] / XH;
   const double n_HM = nH * a[sHM] / XH;
   const double n_H2I = nH * a[sH2I] / XH;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   const double n_H2II = nH * a[sH2II] / XH;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   const double n_HeI = nH * a[sHeI] / XH;
   const double n_HeII = nH * a[sHeII] / XH;
 #endif
@@ -47,15 +47,15 @@ void chemistry::ReactionRateEvaluator::evaluate_chemical_energy_timescale()
 
   double edot_H2form = eV_to_erg * work->rates.forward[8] * n_HM * n_HI *
                        3.73 / (1.0 + n_crit / n_HI);
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   edot_H2form += eV_to_erg * work->rates.forward[10] * n_H2II * n_HI *
                  1.83 / (1.0 + n_crit / n_HI);
 #endif
-#ifdef H2_FORMATION_ON_DUST
+#if CHEMISTRY_H2_FORMATION_ON_DUST
   edot_H2form += eV_to_erg * work->rates.forward[51] * n_HI *
                  (0.2 + 4.28 / (1.0 + n_crit / n_HI));
 #endif
-#ifdef THREEBODY
+#if CHEMISTRY_THREE_BODY
   edot_H2form += 4.48 * eV_to_erg *
       (((work->rates.forward[55] * n_HI + work->rates.forward[57] * n_H2I) * n_HI * n_HI) -
        ((work->rates.forward[11] * n_HI + work->rates.forward[58] * n_H2I) * n_H2I));
@@ -63,7 +63,7 @@ void chemistry::ReactionRateEvaluator::evaluate_chemical_energy_timescale()
 
   double energy_rate = edot_H2form -
                        13.598 * eV_to_erg * work->rates.forward[1] * n_HI * n_elec;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   energy_rate -= 24.587 * eV_to_erg * work->rates.forward[3] * n_HeI * n_elec;
   energy_rate -= 54.416 * eV_to_erg * work->rates.forward[5] * n_HeII * n_elec;
 #endif
@@ -84,7 +84,7 @@ double chemistry::ReactionRateEvaluator::species_timescale(double abundance, dou
   return fabs(abundance / derivative);
 }
 
-int chemistry::ReactionRateEvaluator::evaluate_timescale()
+void chemistry::ReactionRateEvaluator::evaluate_timescale()
 {
   const auto *environment = &environment_;
   const auto *state = &state_;
@@ -98,7 +98,7 @@ int chemistry::ReactionRateEvaluator::evaluate_timescale()
   for(int species = 0; species < N_SP; species++)
     abundance[species] = state->abund[species] / XH;
 
-  chemistry_network_production_destruction(environment->run->network, nH,
+  (environment->run->network)->production_destruction( nH,
       abundance, workspace->rates.forward, workspace->rates.inverse,
       production, destruction);
 
@@ -109,10 +109,10 @@ int chemistry::ReactionRateEvaluator::evaluate_timescale()
 
   workspace->evaluation.t_chem = timescale;
   evaluate_chemical_energy_timescale();
-  return 0;
+  return;
 }
 
-int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
+void chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
   const auto *environment = &environment_;
   const auto *state = &state_;
   const auto *step = &step_data;
@@ -127,7 +127,7 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
   const double nH = XH * n_nuclei;
 
   const double T_gas = workspace->thermodynamics.temperature;
-#ifdef UPDATE_L_CORE_IN_SOLVER
+#if CHEMISTRY_UPDATE_CORE_LENGTH
   const double l_core = get_core_radius(rho_cgs, T_gas);
 #else
   const double l_core = step->jeans_length;
@@ -161,9 +161,9 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
 
   workspace->rates.forward[22] = workspace->rates.forward[23] = workspace->rates.forward[24] = 0.;
 
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   workspace->rates.forward[22] = step->k22;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   workspace->rates.forward[23] = step->photoionization_rate_HeI;
   workspace->rates.forward[24] = step->photoionization_rate_HeII;
 #endif
@@ -182,7 +182,7 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
   workspace->rates.forward[171] = environment->rate_CO_diss;
 #endif
 
-#ifdef LYMANWERNER    /* with Photo-Dissociation */
+#ifdef CHEMISTRY_LW_RADIATION    /* with Photo-Dissociation */
   workspace->rates.forward[25] = 0.;
   workspace->rates.forward[29] = 0.;
   workspace->rates.forward[53] = 0.;
@@ -198,17 +198,17 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
 #endif
 #endif // LW_RADIATION_LOCAL
 
-#ifdef BACKGROUND_LW_RADIATION
+#ifdef CHEMISTRY_BACKGROUND_LW_RADIATION
   workspace->rates.forward[25] += environment->global->background_rate_Hminus_pd;
 
   double k29_ext = environment->global->background_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double k53_ext = environment->global->background_rate_HD_diss;
 #endif
-#ifdef SHIELD_LW
-#ifdef UPDATE_L_CORE_IN_SOLVER
+#ifdef CHEMISTRY_LW_SELF_SHIELDING
+#if CHEMISTRY_UPDATE_CORE_LENGTH
   const double column_H2 = l_core * n_nuclei * state->abund[sH2I];
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   const double column_HI = l_core * n_nuclei * state->abund[sHI];
   const double column_HD = l_core * n_nuclei * state->abund[sHDI];
   const double shield_HI = EachShield(column_HI, 1.49e-1, 1.62e+0, 2.85e23);
@@ -216,13 +216,13 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
 #endif
   const double shield_H2self = SelfShield(column_H2, T_gas,
                                           9.12 * sqrt(T_gas / 1.e4));
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   const double shield_HDself = SelfShield(column_HD, T_gas,
                                           7.45 * sqrt(T_gas / 1.e4));
 #endif
 #else
   const double shield_H2self = step->shield_H2self;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   const double shield_HI = step->shield_HI;
   const double shield_H2 = step->shield_H2;
   const double shield_HDself = step->shield_HDself;
@@ -232,15 +232,15 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
 #else
   const double f_print_H2self = 1.0;
 #endif
-#ifdef SHIELD_LW
+#ifdef CHEMISTRY_LW_SELF_SHIELDING
   k29_ext *= shield_H2self /* SphP[ithis].f_byHI*/;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   k53_ext *= shield_HDself * shield_HI * shield_H2;
 #endif
-#endif //SHIELD_LW
+#endif //CHEMISTRY_LW_SELF_SHIELDING
 
   workspace->rates.forward[29] += k29_ext;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   workspace->rates.forward[53] += k53_ext;
 #endif
 
@@ -248,21 +248,21 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
     printf("k25=%g %g k29=%g %g f=%g shield_H2self=%g ID=%d\n"
 	   , workspace->rates.forward[25], environment->global->background_rate_Hminus_pd, workspace->rates.forward[29], k29_ext, f_print_H2self, shield_H2self, environment->ID);
 
-#endif //BACKGROUND_LW_RADIATION
-#endif // LYMANWERNER
+#endif //CHEMISTRY_BACKGROUND_LW_RADIATION
+#endif // CHEMISTRY_LW_RADIATION
 
   /****************************************************************************************************************/
   /******************************** We evaluate continuum opacities here ******************************************/
   /****************************************************************************************************************/
 
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double edot_dust = 0.;
 #endif
 
   double tau_cont=0.;
   workspace->continuum.tau = 0.;
   workspace->continuum.reduction_factor = 1.;
-#ifdef CONT_OPACITY
+#if CHEMISTRY_CONT_OPACITY
   struct opacities opac;
 
   double dummy = calc_continuum_opacities(
@@ -270,7 +270,7 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
       &opac);
   tau_cont = opac.tau;
 
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double stellar_flux = 0.;
 #ifdef THERMAL_FEEDBACK
   stellar_flux = environment->stellar_radiation_flux;
@@ -297,7 +297,7 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
   /****************************************************************************************************************/
   /****************************************************************************************************************/
 
-#ifdef INVERSE_REACTIONS
+#ifdef CHEMISTRY_INVERSE_REACTIONS
   double n_crit = H_criticaldensity(nH, T_gas, nH*state->abund[sHI]*l_core, state->abund[sHI], state->abund[sELEC]);
 
   workspace->rates.inverse[1] = rate_table.inverse(1);
@@ -332,7 +332,7 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
   }
 
 
-#ifdef ID_CHEM_DEBUG
+#if CHEMISTRY_DEBUG
   if(workspace->diagnostics_enabled){
     printf("k_inv=%g %g tau_cont=%g n=%g n_c=%g l_core=%g i_T=%d c_T=%g\n"
 	   , workspace->rates.inverse[2], workspace->rates.inverse[7], tau_cont, n_nuclei, n_crit, l_core, i_T, c_T);
@@ -340,12 +340,12 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
 #endif
 #endif
 
-#ifdef H2_FORMATION_ON_DUST
+#if CHEMISTRY_H2_FORMATION_ON_DUST
   workspace->rates.forward[51] = H2form_on_grains(rho_cgs, T_gas, workspace->continuum.dust_temperature, metallicity);
 #endif
 
   if(T_gas > 10.){
-#ifdef MARTIN97
+#if CHEMISTRY_MARTIN97
     double a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21;
     double p, n_c1, n_c2, log_g_h1, log_g_l1, log_g_h2, log_g_l2, log_n_c1, log_n_c2;
     double log_gamma_cd, log_gamma_dt;
@@ -434,7 +434,7 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
       printf("k11=%g gamma=%g %g\n", workspace->rates.forward[11], log_gamma_cd, log_gamma_dt);
 
 
-#ifdef INVERSE_REACTIONS
+#ifdef CHEMISTRY_INVERSE_REACTIONS
     double xk_L = workspace->rates.forward[11];
     double xk_H  = workspace->rates.inverse[55];
 
@@ -463,22 +463,8 @@ int chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
     workspace->rates.forward[11] = 0.;
 
 
-#if defined(STROMGREN_TEST)
-  for(int j=1; j<=21; j++){
-#ifdef IONIZATION_PHOTON
-    if(j == 2)  continue;
-#endif
-    workspace->rates.forward[j] = 0.;
-  }
-
-  workspace->rates.forward[30] = 0.;
-#endif
 #ifdef CHEMISTRY_PROFILE
   profile_end(CHEM_PROFILE_REACTION_RATES, profile_timer);
 #endif
-  return 0;
+  return;
 }
-
-
-
-#endif /* CHEMISTRY_SC */

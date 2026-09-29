@@ -13,97 +13,6 @@
 #include "reaction_network.h"
 #include "species.h"
 
-typedef struct {
-  size_t num_reactant_reactions;
-  size_t *reactant_reactions;
-  size_t num_affected_reactions;
-  size_t *affected_reactions;
-} ChemSpeciesReactionIndex;
-
-struct ChemReactionNetwork {
-public:
-  ChemReactionNetwork() = default;
-  ChemReactionNetwork(const ChemReactionNetwork &) = delete;
-  ChemReactionNetwork &operator=(const ChemReactionNetwork &) = delete;
-  ~ChemReactionNetwork();
-
-  static chemistry::ResourceOwner<ChemReactionNetwork> create(const char *table_root) noexcept;
-
-
-  size_t size() const;
-
-  size_t species_reaction_count(enum SPECIES species,
-    unsigned char mode) const;
-
-  int intermediate_equilibrium_abundance(enum SPECIES species, unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *equilibrium_abundance, double *relaxation_time) const;
-
-  void rhs(unsigned char mode, double nH, const double *abund,
-    const double *forward_rates, const double *inverse_rates, double *rhs) const;
-
-  void rhs_gross(unsigned char mode, double nH, const double *abund,
-    const double *forward_rates, const double *inverse_rates, double *rhs,
-    double *production, double *loss) const;
-
-  void jacobian_column(unsigned char mode, int differentiated_species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *column) const;
-
-  void jacobian(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double jacobian[N_SP][N_SP]) const;
-
-  void intermediate_system(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, const enum SPECIES *intermediate_species, int n_intermediate, double *rhs, double *matrix) const;
-
-  void production_destruction(double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction) const;
-
-  void species_production_destruction(enum SPECIES species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction) const;
-
-  void species_gross_rhs(enum SPECIES species, unsigned char mode, double nH, const double *abund,
-    const double *forward_rates, const double *inverse_rates,
-    double *production, double *loss) const;
-
-private:
-  static ChemReactionTerm *find_or_add_term(ChemReaction *reaction, enum SPECIES species);
-
-  void free_species_reaction_index();
-
-  int build_species_reaction_index();
-
-  static char * trim(char *text);
-
-  static int compiled_option_enabled(const char *name);
-
-  static int requirements_enabled(char *requirements);
-
-  static int parse_reaction_side(char *side, int reactant_side, ChemReaction *reaction);
-
-  static int parse_rate_source(const char *text, ChemRateSource *source);
-
-  static int parse_modes(char *text, unsigned char *modes);
-
-  int append_reaction(const ChemReaction *reaction);
-
-  static int reaction_conserves_species_properties(const ChemReaction *reaction);
-
-  static double integer_power(double value, unsigned char exponent);
-
-  static double reaction_coefficient(const ChemReaction *reaction, const double *forward_rates, const double *inverse_rates);
-
-  void rhs_accumulate(unsigned char mode, double nH, const double *abund,
-    const double *forward_rates, const double *inverse_rates, double *rhs,
-    double *production, double *loss) const;
-
-  ChemReaction *reactions{};
-  size_t reaction_count{};
-  ChemSpeciesReactionIndex species_reaction_index[sEND]{};
-
-};
-
-void ChemReactionNetwork::free_species_reaction_index() {
-  ChemReactionNetwork *network = this;
-  for(int species = 0; species < sEND; species++) {
-    free(network->species_reaction_index[species].reactant_reactions);
-    free(network->species_reaction_index[species].affected_reactions);
-    network->species_reaction_index[species] = ChemSpeciesReactionIndex{};
-  }
-}
-
 int ChemReactionNetwork::build_species_reaction_index() {
   ChemReactionNetwork *network = this;
   size_t reactant_counts[sEND];
@@ -111,7 +20,7 @@ int ChemReactionNetwork::build_species_reaction_index() {
   memset(reactant_counts, 0, sizeof(reactant_counts));
   memset(affected_counts, 0, sizeof(affected_counts));
 
-  for(size_t reaction_index = 0; reaction_index < network->reaction_count; reaction_index++) {
+  for(size_t reaction_index = 0; reaction_index < network->reactions.size(); reaction_index++) {
     const ChemReaction *reaction = &network->reactions[reaction_index];
     for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
       const ChemReactionTerm *term = &reaction->terms[term_index];
@@ -125,18 +34,18 @@ int ChemReactionNetwork::build_species_reaction_index() {
   for(int species = 0; species < sEND; species++) {
     ChemSpeciesReactionIndex *index = &network->species_reaction_index[species];
     if(reactant_counts[species] > 0) {
-      index->reactant_reactions = static_cast<size_t *>(malloc(reactant_counts[species] * sizeof(*index->reactant_reactions)));
+      index->reactant_reactions.reset(new(std::nothrow) size_t[reactant_counts[species]]);
       if(index->reactant_reactions == NULL)
         goto failure;
     }
     if(affected_counts[species] > 0) {
-      index->affected_reactions = static_cast<size_t *>(malloc(affected_counts[species] * sizeof(*index->affected_reactions)));
+      index->affected_reactions.reset(new(std::nothrow) size_t[affected_counts[species]]);
       if(index->affected_reactions == NULL)
         goto failure;
     }
   }
 
-  for(size_t reaction_index = 0; reaction_index < network->reaction_count; reaction_index++) {
+  for(size_t reaction_index = 0; reaction_index < network->reactions.size(); reaction_index++) {
     const ChemReaction *reaction = &network->reactions[reaction_index];
     for(int term_index = 0; term_index < reaction->num_terms; term_index++) {
       const ChemReactionTerm *term = &reaction->terms[term_index];
@@ -150,7 +59,6 @@ int ChemReactionNetwork::build_species_reaction_index() {
   return 1;
 
 failure:
-  network->free_species_reaction_index();
   return 0;
 }
 
@@ -166,55 +74,70 @@ char * ChemReactionNetwork::trim(char *text) {
 }
 
 int ChemReactionNetwork::compiled_option_enabled(const char *name) {
+  // Accept older table requirement names at the loader boundary.
+  if(strcmp(name, "LYMANWERNER") == 0) name = "CHEMISTRY_LW_RADIATION";
+  if(strcmp(name, "IONIZATION_PHOTON") == 0) name = "IONIZING_PHOTON";
+  if(strcmp(name, "INVERSE_REACTIONS") == 0) name = "CHEMISTRY_INVERSE_REACTIONS";
+  if(strcmp(name, "THREEBODY") == 0) name = "CHEMISTRY_THREE_BODY";
+  if(strcmp(name, "H2_FORMATION_ON_DUST") == 0) name = "CHEMISTRY_H2_FORMATION_ON_DUST";
+  if(strcmp(name, "HELIUM") == 0) name = "CHEMISTRY_SPECIES_HELIUM";
+  if(strcmp(name, "HD") == 0) name = "CHEMISTRY_SPECIES_DEUTERIUM";
+  if(strcmp(name, "H2_PLUS") == 0) name = "CHEMISTRY_SPECIES_H2_PLUS";
+  if(strcmp(name, "HD_PLUS") == 0) name = "CHEMISTRY_SPECIES_HD_PLUS";
+  if(strcmp(name, "DMINUS") == 0) name = "CHEMISTRY_SPECIES_D_MINUS";
+  if(strcmp(name, "HD_MINUS") == 0) name = "CHEMISTRY_SPECIES_D_MINUS";
+  if(strcmp(name, "CARBON_OXYGEN_CHEMISTRY") == 0) name = "CHEMISTRY_SPECIES_CARBON_OXYGEN";
+  if(strcmp(name, "CARBON_OXYGEN_HIGH_IONIZATION") == 0) name = "CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION";
+
   if(strcmp(name, "always") == 0)
     return 1;
-#ifdef HELIUM
-  if(strcmp(name, "HELIUM") == 0) return 1;
+#ifdef CHEMISTRY_SPECIES_HELIUM
+  if(strcmp(name, "CHEMISTRY_SPECIES_HELIUM") == 0) return 1;
 #endif
-#ifdef H2_PLUS
-  if(strcmp(name, "H2_PLUS") == 0) return 1;
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
+  if(strcmp(name, "CHEMISTRY_SPECIES_H2_PLUS") == 0) return 1;
 #endif
-#ifdef HD
-  if(strcmp(name, "HD") == 0) return 1;
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
+  if(strcmp(name, "CHEMISTRY_SPECIES_DEUTERIUM") == 0) return 1;
 #endif
-#if defined(HD) && defined(HD_PLUS)
-  if(strcmp(name, "HD_PLUS") == 0) return 1;
+#if defined(CHEMISTRY_SPECIES_DEUTERIUM) && defined(CHEMISTRY_SPECIES_HD_PLUS)
+  if(strcmp(name, "CHEMISTRY_SPECIES_HD_PLUS") == 0) return 1;
 #endif
-#if defined(HD) && defined(DMINUS)
-  if(strcmp(name, "DMINUS") == 0) return 1;
+#if defined(CHEMISTRY_SPECIES_DEUTERIUM) && defined(CHEMISTRY_SPECIES_D_MINUS)
+  if(strcmp(name, "CHEMISTRY_SPECIES_D_MINUS") == 0) return 1;
 #endif
-#ifdef IONIZATION_PHOTON
-  if(strcmp(name, "IONIZATION_PHOTON") == 0) return 1;
+#ifdef IONIZING_PHOTON
+  if(strcmp(name, "IONIZING_PHOTON") == 0) return 1;
 #endif
-#ifdef LYMANWERNER
-  if(strcmp(name, "LYMANWERNER") == 0) return 1;
+#ifdef CHEMISTRY_LW_RADIATION
+  if(strcmp(name, "CHEMISTRY_LW_RADIATION") == 0) return 1;
 #endif
-#ifdef H2_FORMATION_ON_DUST
-  if(strcmp(name, "H2_FORMATION_ON_DUST") == 0) return 1;
+#if CHEMISTRY_H2_FORMATION_ON_DUST
+  if(strcmp(name, "CHEMISTRY_H2_FORMATION_ON_DUST") == 0) return 1;
 #endif
-#ifdef THREEBODY
-  if(strcmp(name, "THREEBODY") == 0) return 1;
+#if CHEMISTRY_THREE_BODY
+  if(strcmp(name, "CHEMISTRY_THREE_BODY") == 0) return 1;
 #endif
-#ifdef INVERSE_REACTIONS
-  if(strcmp(name, "INVERSE_REACTIONS") == 0) return 1;
+#ifdef CHEMISTRY_INVERSE_REACTIONS
+  if(strcmp(name, "CHEMISTRY_INVERSE_REACTIONS") == 0) return 1;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
-  if(strcmp(name, "CARBON_OXYGEN_CHEMISTRY") == 0) return 1;
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
+  if(strcmp(name, "CHEMISTRY_SPECIES_CARBON_OXYGEN") == 0) return 1;
 #endif
 #ifdef RYTR_CARBON_OXYGEN_IONIZATION
   if(strcmp(name, "RYTR_CARBON_OXYGEN_IONIZATION") == 0) return 1;
 #endif
-#ifdef CARBON_OXYGEN_HIGH_IONIZATION
-  if(strcmp(name, "CARBON_OXYGEN_HIGH_IONIZATION") == 0) return 1;
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION
+  if(strcmp(name, "CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION") == 0) return 1;
 #endif
 #ifdef RYTR_NCO
   if(strcmp(name, "RYTR_NCO") == 0) return 1;
 #endif
 
   static const char *known_options[] = {
-    "HELIUM", "H2_PLUS", "HD", "HD_PLUS", "DMINUS", "IONIZATION_PHOTON",
-    "LYMANWERNER", "H2_FORMATION_ON_DUST", "THREEBODY", "INVERSE_REACTIONS",
-    "CARBON_OXYGEN_CHEMISTRY", "CARBON_OXYGEN_HIGH_IONIZATION",
+    "CHEMISTRY_SPECIES_HELIUM", "CHEMISTRY_SPECIES_H2_PLUS", "CHEMISTRY_SPECIES_DEUTERIUM", "CHEMISTRY_SPECIES_HD_PLUS", "CHEMISTRY_SPECIES_D_MINUS", "IONIZING_PHOTON",
+    "CHEMISTRY_LW_RADIATION", "CHEMISTRY_H2_FORMATION_ON_DUST", "CHEMISTRY_THREE_BODY", "CHEMISTRY_INVERSE_REACTIONS",
+    "CHEMISTRY_SPECIES_CARBON_OXYGEN", "CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION",
     "RYTR_CARBON_OXYGEN_IONIZATION", "RYTR_NCO"
   };
   for(size_t i = 0; i < sizeof(known_options) / sizeof(known_options[0]); i++)
@@ -326,13 +249,12 @@ int ChemReactionNetwork::parse_modes(char *text, unsigned char *modes) {
 }
 
 int ChemReactionNetwork::append_reaction(const ChemReaction *reaction) {
-  ChemReactionNetwork *network = this;
-  ChemReaction *new_reactions = static_cast<ChemReaction *>(realloc(network->reactions, (network->reaction_count + 1) * sizeof(*network->reactions)));
-  if(new_reactions == NULL)
+  try {
+    reactions.push_back(*reaction);
+    return 1;
+  } catch(const std::bad_alloc &) {
     return 0;
-  network->reactions = new_reactions;
-  network->reactions[network->reaction_count++] = *reaction;
-  return 1;
+  }
 }
 
 int ChemReactionNetwork::reaction_conserves_species_properties(const ChemReaction *reaction) {
@@ -437,7 +359,7 @@ failure:
   }
 
   fclose(table);
-  if(network->reaction_count == 0 || !network->build_species_reaction_index()) {
+  if(network->reactions.size() == 0 || !network->build_species_reaction_index()) {
 
     return {};
   }
@@ -448,16 +370,9 @@ chemistry::ResourceOwner<ChemReactionNetwork> chemistry::load_network(const char
   return ChemReactionNetwork::create(root);
 }
 
-
-ChemReactionNetwork::~ChemReactionNetwork() {
-  free_species_reaction_index();
-  free(reactions);
-}
+ChemReactionNetwork::~ChemReactionNetwork() = default;
 
 void chemistry::ModelResourceDeleter::operator()(ChemReactionNetwork *p) const noexcept { delete p; }
-
-
-
 
 double ChemReactionNetwork::integer_power(double value, unsigned char exponent) {
   double result = 1.0;
@@ -473,15 +388,13 @@ double ChemReactionNetwork::reaction_coefficient(const ChemReaction *reaction, c
 
 size_t ChemReactionNetwork::size() const {
   const ChemReactionNetwork *network = this;
-  return network == NULL ? 0 : network->reaction_count;
+  return network->reactions.size();
 }
-
-size_t chemistry_network_reaction_count(const ChemReactionNetwork *network) { if(!network) return 0; return network->size(); }
 
 size_t ChemReactionNetwork::species_reaction_count(enum SPECIES species,
     unsigned char mode) const {
   const ChemReactionNetwork *network = this;
-  if(network == NULL || species < 0 || species >= sEND)
+  if(species < 0 || species >= sEND)
     return 0;
   const ChemSpeciesReactionIndex *index =
       &network->species_reaction_index[species];
@@ -495,10 +408,6 @@ size_t ChemReactionNetwork::species_reaction_count(enum SPECIES species,
   }
   return count;
 }
-
-size_t chemistry_network_species_reaction_count(
-    const ChemReactionNetwork *network, enum SPECIES species,
-    unsigned char mode) { if(!network) return 0; return network->species_reaction_count(species, mode); }
 
 int ChemReactionNetwork::intermediate_equilibrium_abundance(enum SPECIES species, unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *equilibrium_abundance, double *relaxation_time) const {
   const ChemReactionNetwork *network = this;
@@ -551,8 +460,6 @@ int ChemReactionNetwork::intermediate_equilibrium_abundance(enum SPECIES species
     *relaxation_time = 1.0 / destruction;
   return isfinite(*equilibrium_abundance) && *equilibrium_abundance >= 0.0;
 }
-
-int chemistry_network_intermediate_equilibrium_abundance(const ChemReactionNetwork *network, enum SPECIES species, unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *equilibrium_abundance, double *relaxation_time) { return network->intermediate_equilibrium_abundance(species, mode, nH, abund, forward_rates, inverse_rates, equilibrium_abundance, relaxation_time); }
 
 void ChemReactionNetwork::rhs_accumulate(unsigned char mode, double nH, const double *abund,
     const double *forward_rates, const double *inverse_rates, double *rhs,
@@ -610,10 +517,6 @@ void ChemReactionNetwork::rhs(unsigned char mode, double nH, const double *abund
                                    inverse_rates, rhs, NULL, NULL);
 }
 
-void chemistry_network_rhs(const ChemReactionNetwork *network,
-    unsigned char mode, double nH, const double *abund,
-    const double *forward_rates, const double *inverse_rates, double *rhs) { network->rhs(mode, nH, abund, forward_rates, inverse_rates, rhs); }
-
 void ChemReactionNetwork::rhs_gross(unsigned char mode, double nH, const double *abund,
     const double *forward_rates, const double *inverse_rates, double *rhs,
     double *production, double *loss) const {
@@ -621,11 +524,6 @@ void ChemReactionNetwork::rhs_gross(unsigned char mode, double nH, const double 
   network->rhs_accumulate(mode, nH, abund, forward_rates,
                                    inverse_rates, rhs, production, loss);
 }
-
-void chemistry_network_rhs_gross(const ChemReactionNetwork *network,
-    unsigned char mode, double nH, const double *abund,
-    const double *forward_rates, const double *inverse_rates, double *rhs,
-    double *production, double *loss) { network->rhs_gross(mode, nH, abund, forward_rates, inverse_rates, rhs, production, loss); }
 
 void ChemReactionNetwork::jacobian_column(unsigned char mode, int differentiated_species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *column) const {
   const ChemReactionNetwork *network = this;
@@ -667,8 +565,6 @@ void ChemReactionNetwork::jacobian_column(unsigned char mode, int differentiated
   }
 }
 
-void chemistry_network_jacobian_column(const ChemReactionNetwork *network, unsigned char mode, int differentiated_species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *column) { network->jacobian_column(mode, differentiated_species, nH, abund, forward_rates, inverse_rates, column); }
-
 void ChemReactionNetwork::jacobian(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double jacobian[N_SP][N_SP]) const {
   const ChemReactionNetwork *network = this;
   double number_density[sEND];
@@ -704,8 +600,6 @@ void ChemReactionNetwork::jacobian(unsigned char mode, double nH, const double *
     }
   }
 }
-
-void chemistry_network_jacobian(const ChemReactionNetwork *network, unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double jacobian[N_SP][N_SP]) { network->jacobian(mode, nH, abund, forward_rates, inverse_rates, jacobian); }
 
 void ChemReactionNetwork::intermediate_system(unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, const enum SPECIES *intermediate_species, int n_intermediate, double *rhs, double *matrix) const {
   const ChemReactionNetwork *network = this;
@@ -762,8 +656,6 @@ void ChemReactionNetwork::intermediate_system(unsigned char mode, double nH, con
   }
 }
 
-void chemistry_network_intermediate_system(const ChemReactionNetwork *network, unsigned char mode, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, const enum SPECIES *intermediate_species, int n_intermediate, double *rhs, double *matrix) { network->intermediate_system(mode, nH, abund, forward_rates, inverse_rates, intermediate_species, n_intermediate, rhs, matrix); }
-
 void ChemReactionNetwork::production_destruction(double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction) const {
   const ChemReactionNetwork *network = this;
   double number_density[sEND];
@@ -796,8 +688,6 @@ void ChemReactionNetwork::production_destruction(double nH, const double *abund,
   }
 }
 
-void chemistry_network_production_destruction(const ChemReactionNetwork *network, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction) { network->production_destruction(nH, abund, forward_rates, inverse_rates, production, destruction); }
-
 void ChemReactionNetwork::species_production_destruction(enum SPECIES species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction) const {
   const ChemReactionNetwork *network = this;
   *production = 0.0;
@@ -827,8 +717,6 @@ void ChemReactionNetwork::species_production_destruction(enum SPECIES species, d
     }
   }
 }
-
-void chemistry_network_species_production_destruction(const ChemReactionNetwork *network, enum SPECIES species, double nH, const double *abund, const double *forward_rates, const double *inverse_rates, double *production, double *destruction) { network->species_production_destruction(species, nH, abund, forward_rates, inverse_rates, production, destruction); }
 
 void ChemReactionNetwork::species_gross_rhs(enum SPECIES species, unsigned char mode, double nH, const double *abund,
     const double *forward_rates, const double *inverse_rates,
@@ -861,8 +749,3 @@ void ChemReactionNetwork::species_gross_rhs(enum SPECIES species, unsigned char 
       *loss -= contribution;
   }
 }
-
-void chemistry_network_species_gross_rhs(const ChemReactionNetwork *network,
-    enum SPECIES species, unsigned char mode, double nH, const double *abund,
-    const double *forward_rates, const double *inverse_rates,
-    double *production, double *loss) { network->species_gross_rhs(species, mode, nH, abund, forward_rates, inverse_rates, production, loss); }

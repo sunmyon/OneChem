@@ -34,8 +34,8 @@ void print_newton_iteration(
          temperature, abundance[sH2I],
          abundance[sH2I] - initial_abundance[sH2I], reaction_rhs[sH2I] * dt);
 
-#ifdef ID_CHEM_DEBUG
-#ifdef HD
+#if CHEMISTRY_DEBUG
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   printf("[%d] T_gas=%g err=%g flag=%d y=%g %g %g %g %g %g %g %g dt=%g\n",
          iteration, temperature, newton_step_error, limiting_species,
          abundance[sELEC], abundance[sHI], abundance[sHII], abundance[sH2I],
@@ -55,16 +55,15 @@ void print_newton_iteration(
 void print_newton_jacobian(
     const ChemWorkspace *work, int iteration,
     double rhs_jacobian[N_SP][N_SP]) {
-#ifdef ID_CHEM_DEBUG
+#if CHEMISTRY_DEBUG
   if (!work->diagnostics_enabled)
     return;
 
   for (int species = 0; species < N_SP; species++) {
-    printf("[%d] rhs_jacobian[%d]=%g %g %g %g %g %g %g %g\n", iteration,
-           species, rhs_jacobian[species][0], rhs_jacobian[species][1],
-           rhs_jacobian[species][2], rhs_jacobian[species][3],
-           rhs_jacobian[species][4], rhs_jacobian[species][5],
-           rhs_jacobian[species][6], rhs_jacobian[species][7]);
+    printf("[%d] rhs_jacobian[%d]=", iteration, species);
+    for(int column = 0; column < N_SP; ++column)
+      printf("%s%g", column ? " " : "", rhs_jacobian[species][column]);
+    printf("\n");
   }
 #else
   (void)work;
@@ -100,28 +99,28 @@ static void print_current_abundances(const double *abundance) {
   printf("y[%d]=%g, y[%d]=%g, y[%d]=%g, ", sELEC, abundance[sELEC], sHI,
          abundance[sHI], sHII, abundance[sHII]);
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   printf("y[%d]=%g, y[%d]=%g, y[%d]=%g, ", sHeI, abundance[sHeI], sHeII,
          abundance[sHeII], sHeIII, abundance[sHeIII]);
 #endif
 
   printf("y[%d]=%g, ", sH2I, abundance[sH2I]);
 
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   printf("y[%d]=%g, ", sH2II, abundance[sH2II]);
 #endif
 
   printf("y[%d]=%g\n", sHM, abundance[sHM]);
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   printf("y[%d]=%g, y[%d]=%g y[%d]=%g", sDI, abundance[sDI], sDII,
          abundance[sDII], sHDI, abundance[sHDI]);
 
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   printf(" y[%d]=%g", sHDII, abundance[sHDII]);
 #endif
 
-#ifdef HD_MINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   printf(" y[%d]=%g", sDM, abundance[sDM]);
 #endif
 
@@ -134,7 +133,7 @@ static void print_initial_abundances(const double *initial_abundance) {
          initial_abundance[sELEC], sHI, initial_abundance[sHI], sHII,
          initial_abundance[sHII]);
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   printf("abundance[%d]=%g, abundance[%d]=%g, abundance[%d]=%g, ", sHeI,
          initial_abundance[sHeI], sHeII, initial_abundance[sHeII], sHeIII,
          initial_abundance[sHeIII]);
@@ -142,22 +141,22 @@ static void print_initial_abundances(const double *initial_abundance) {
 
   printf("abundance[%d]=%g, ", sH2I, initial_abundance[sH2I]);
 
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   printf("abundance[%d]=%g, ", sH2II, initial_abundance[sH2II]);
 #endif
 
   printf("abundance[%d]=%g\n", sHM, initial_abundance[sHM]);
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   printf("abundance[%d]=%g, abundance[%d]=%g abundance[%d]=%g", sDI,
          initial_abundance[sDI], sDII, initial_abundance[sDII], sHDI,
          initial_abundance[sHDI]);
 
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   printf(" abundance[%d]=%g", sHDII, initial_abundance[sHDII]);
 #endif
 
-#ifdef HD_MINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   printf(" abundance[%d]=%g", sDM, initial_abundance[sDM]);
 #endif
 
@@ -190,7 +189,7 @@ static void print_failure_species(
     const ChemConservationSystem *conservation) {
   double final_rhs[N_SP];
 
-  chemistry_network_rhs(work->rates.network, CHEM_REACTION_IMPLICIT, nH,
+  (work->rates.network)->rhs( CHEM_REACTION_IMPLICIT, nH,
                         abundance, work->rates.forward, work->rates.inverse,
                         final_rhs);
 

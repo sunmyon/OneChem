@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-#define CHEMISTRY_ABI_VERSION 1u
+#define CHEMISTRY_ABI_VERSION 2u
 
 typedef struct ChemistryConfig {
   uint32_t abi_version;
@@ -12,6 +12,8 @@ typedef struct ChemistryConfig {
   const char *table_root;
 
   double timescale_safety_factor;
+  /* Print resolved build settings after successful creation; default: enabled. */
+  int print_configuration;
 } ChemistryConfig;
 
 

@@ -133,9 +133,9 @@ static void integrate_group(double temperature, int group,
     photon_integral += photon_weight;
     for(absorber = 0; absorber < PHOTOIONIZATION_ABSORBER_COUNT; absorber++)
       opacity_sum[absorber] += photon_weight *
-          photoionization_cross_section(absorber, energy);
+          photoionization_cross_section(static_cast<PhotoionizationTransition>(absorber), energy);
     for(transition = 0; transition < PHOTOIONIZATION_TRANSITION_COUNT; transition++) {
-      const double sigma = photoionization_cross_section(transition, energy);
+      const double sigma = photoionization_cross_section(static_cast<PhotoionizationTransition>(transition), energy);
       const double excess = (energy - photo_fit[transition].threshold) *
                             PHOTO_EV_TO_ERG;
       rate[transition] += photon_weight * sigma / PHOTO_FOUR_PI;
@@ -156,7 +156,7 @@ int photoionization_bins_init(PhotoionizationBinTables *tables)
   double reference[PHOTOIONIZATION_ABSORBER_COUNT];
   for(absorber = 0; absorber < PHOTOIONIZATION_ABSORBER_COUNT; absorber++)
     reference[absorber] = photoionization_cross_section(
-        absorber, photoionization_threshold_energy(absorber));
+        static_cast<PhotoionizationTransition>(absorber), photoionization_threshold_energy(static_cast<PhotoionizationTransition>(absorber)));
   if(tables == NULL)
     return 0;
   memset(tables, 0, sizeof(*tables));

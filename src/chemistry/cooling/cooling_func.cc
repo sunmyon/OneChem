@@ -11,7 +11,6 @@
 #include "chemistry_tables.h"
 #include "cooling_func.h"
 
-#ifdef CHEMISTRY_SC
 
 double C0[6]={152.519  ,     49.534,   -118.858 ,     92.536 ,    -34.194 ,    4.982  };
 
@@ -390,7 +389,7 @@ double OxygenI_twolevel_cooling(double nOI, double ne, double nH,
   R21 = A21 + nH * gamma21H  + gamma21e * ne;
   R12 = nH * gamma12H  + gamma12e * ne;
 
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
   double Texc, Q21;
   Texc = 227.7;
   Q21  = 1. / (exp(Texc/radiation_temperature) - 1.);
@@ -422,7 +421,7 @@ double OxygenI_twolevel_cooling(double nOI, double ne, double nH,
   else
     Lambda = n2 * A21 * delE_21;
 
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
   double fac;
   //fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
   fac = 1. - Q21 * (g2/g1 * R21/R12 - 1);
@@ -517,7 +516,7 @@ double CarbonII_twolevel_cooling(double nCII, double ne, double nH,
   R21 = A21 + nH * gamma21H  + gamma21e * ne;
   R12 = nH * gamma12H  + gamma12e * ne;
 
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
   double Texc, Q21;
   Texc = 92.;
   Q21  = 1. / (exp(Texc/radiation_temperature) - 1.);
@@ -550,7 +549,7 @@ double CarbonII_twolevel_cooling(double nCII, double ne, double nH,
     Lambda = n2 * A21 * delE_21;
 
 
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
   double fac;
   //  fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
   fac = 1. - Q21 * (g2/g1 * R21/R12 - 1);
@@ -808,7 +807,7 @@ double CarbonI_twolevel_cooling(double nCI, double ne, double nH,
   R21 = A21 + nH * gamma21H  + gamma21e * ne;
   R12 = nH * gamma12H  + gamma12e * ne;
 
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
   double Texc, Q21;
   Texc = 23.6;
   Q21  = 1. / (exp(Texc/radiation_temperature) - 1.);
@@ -844,7 +843,7 @@ double CarbonI_twolevel_cooling(double nCI, double ne, double nH,
   else
     Lambda = n2 * A21 * delE_21;
 
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
   double fac;
   //fac = 1. - Q21 * (g2/g1 * n1/n2 - 1);
   fac = 1. - Q21 * (g2/g1 * R21/R12 - 1);
@@ -979,7 +978,7 @@ static int gaussj3(double a[3][3], int n, double b[3][2], int m)
 #undef SWAP
 
 
-#if defined(CONTINUUM_COOLING_MATSUKOBA) || defined(METAL_LINE_COOLING_SD93)
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA || CHEMISTRY_METAL_LINE_COOLING_SD93
 struct ChemistryContinuumOpacityTables {
 public:
   ChemistryContinuumOpacityTables() = default;
@@ -990,17 +989,17 @@ public:
     double rho_cgs, double l_Jeans, struct opacities *opac) const;
 
   static chemistry::ResourceOwner<ChemistryContinuumOpacityTables> create(const char *table_root) noexcept;
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
   double metal_cooling_rate(double temperature) const;
 #endif
 private:
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
   int read_metal_cooling(const char *table_root);
-  double *SD93_Tgas = nullptr, *SD93_CoolRate = nullptr;
+  std::unique_ptr<double[]> SD93_Tgas, SD93_CoolRate;
   double TMax_SD93 = 0., TMin_SD93 = 0.;
   int nT_SD93 = 0;
 #endif
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
   int read_opacities(const char *table_root);
   static void lntrim(char *str);
   static int opacity_upper_index(const double *grid, int size, double value);
@@ -1011,10 +1010,10 @@ private:
 
   int temperature_count{};
   int density_count{};
-  double *temperature{};
-  double *density{};
-  double *rosseland{};
-  double *planck{};
+  std::unique_ptr<double[]> temperature;
+  std::unique_ptr<double[]> density;
+  std::unique_ptr<double[]> rosseland;
+  std::unique_ptr<double[]> planck;
   double density_min{};
   double density_max{};
   double temperature_min{};
@@ -1026,26 +1025,15 @@ private:
 chemistry::ResourceOwner<ChemistryContinuumOpacityTables> ChemistryContinuumOpacityTables::create(const char *table_root) noexcept {
   chemistry::ResourceOwner<ChemistryContinuumOpacityTables> tables{new(std::nothrow) ChemistryContinuumOpacityTables{}};
   if(!tables) return {};
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
   if(!tables->read_opacities(table_root)) {  return {}; }
 #endif
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
   if(!tables->read_metal_cooling(table_root)) {  return {}; }
 #endif
   return tables;
 }
-ChemistryContinuumOpacityTables::~ChemistryContinuumOpacityTables() {
-#ifdef CONTINUUM_COOLING_MATSUKOBA
-  free(temperature);
-  free(density);
-  free(rosseland);
-  free(planck);
-#endif
-#ifdef METAL_LINE_COOLING_SD93
-  free(SD93_Tgas);
-  free(SD93_CoolRate);
-#endif
-}
+ChemistryContinuumOpacityTables::~ChemistryContinuumOpacityTables() = default;
 void chemistry::ModelResourceDeleter::operator()(ChemistryContinuumOpacityTables *p) const noexcept { delete p; }
 
 chemistry::ResourceOwner<ChemistryContinuumOpacityTables> chemistry::load_continuum_opacity(const char *root) noexcept {
@@ -1055,7 +1043,7 @@ chemistry::ResourceOwner<ChemistryContinuumOpacityTables> chemistry::load_contin
 
 #endif
 
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
 static const char fname_SD93[]="continuum_metal.dat";
 
 int ChemistryContinuumOpacityTables::read_metal_cooling(const char *table_root){
@@ -1081,12 +1069,11 @@ int ChemistryContinuumOpacityTables::read_metal_cooling(const char *table_root){
     rewind(fp);
     nT_SD93   = count;
 
-    if(!(SD93_Tgas = static_cast<double *>(malloc(sizeof(double)*nT_SD93))) ||
-       !(SD93_CoolRate = static_cast<double *>(malloc(sizeof(double)*nT_SD93)))){
+    if(!(SD93_Tgas = std::unique_ptr<double[]>(new(std::nothrow) double[nT_SD93])) ||
+       !(SD93_CoolRate = std::unique_ptr<double[]>(new(std::nothrow) double[nT_SD93]))){
       printf("Can't allocate memory.\n");
-      free(SD93_Tgas);
-      free(SD93_CoolRate);
-      SD93_Tgas = SD93_CoolRate = NULL;
+      SD93_Tgas.reset();
+      SD93_CoolRate.reset();
       fclose(fp);
       return 0;
     }
@@ -1153,7 +1140,7 @@ double get_cooling_rate_SD93(const ChemistryContinuumOpacityTables *tables, doub
 
 
 
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
 
 
 
@@ -1168,7 +1155,7 @@ private:
 enum ContCooling{
   cH_fb,
   cHM_fb,
-#ifdef HELIUM_COOLING
+#if CHEMISTRY_HELIUM_COOLING
   cHeI_fb,
 #endif
   cHM_ff,
@@ -1183,8 +1170,8 @@ enum ContCooling{
     std::array<std::array<double, 5>, 7> A_Cont{};
   A_Cont[cH_fb][0]    =-22.410, A_Cont[cH_fb][1]    =-0.51833 , A_Cont[cH_fb][2]    = 2.3058e-3, A_Cont[cH_fb][3]    = 0.0000, A_Cont[cH_fb][4]    = 0.0000;
   A_Cont[cHM_fb][0]   =-31.211, A_Cont[cHM_fb][1]   = 1.1678  , A_Cont[cHM_fb][2]   =-3.0473e-2, A_Cont[cHM_fb][3]   = 0.0000, A_Cont[cHM_fb][4]   = 0.0000;
-#ifdef HELIUM_COOLING
-  A_Cont[cHeI_fb][0]  =-21.4171,A_Cont[cHM_fb][1]   = -0.995727, A_Cont[cHM_fb][2]  = 0.0714639, A_Cont[cHM_fb][3]   = 0.0000, A_Cont[cHM_fb][4]   = 0.0000;
+#if CHEMISTRY_HELIUM_COOLING
+  A_Cont[cHeI_fb][0]  =-21.4171,A_Cont[cHeI_fb][1]   = -0.995727, A_Cont[cHeI_fb][2]  = 0.0714639, A_Cont[cHeI_fb][3]   = 0.0000, A_Cont[cHeI_fb][4]   = 0.0000;
 #endif
   A_Cont[cHM_ff][0]   =-38.564, A_Cont[cHM_ff][1]   = 3.4681  , A_Cont[cHM_ff][2]   =-0.17880  , A_Cont[cHM_ff][3]   = 0.0000, A_Cont[cHM_ff][4]   = 0.0000;
   A_Cont[cH_ff][0]    =-28.030, A_Cont[cH_ff][1]    = 0.54235 , A_Cont[cH_ff][2]    =-5.3291e-3, A_Cont[cH_ff][3]    = 0.0000, A_Cont[cH_ff][4]    = 0.0000;
@@ -1266,8 +1253,11 @@ double ContinuumEmission::cooling(double T_gas, double rho_cgs,
   double n_HI   = n_nuclei * abund[sHI];
   double n_HII  = n_nuclei * abund[sHII];
   double n_H2I  = n_nuclei * abund[sH2I];
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double n_HeI  = n_nuclei * abund[sHeI];
+#if CHEMISTRY_HELIUM_COOLING
+  double n_HeII = n_nuclei * abund[sHeII];
+#endif
 #else
   double n_HeI  = n_nuclei * XHe;
   //n_HeI  = 0.;
@@ -1277,7 +1267,7 @@ double ContinuumEmission::cooling(double T_gas, double rho_cgs,
   double lambda_tot_thin = 4 * M_PI *
     ( pow(10., f[cH_fb] ) * n_HII * n_elec +
       pow(10., f[cHM_fb]) * n_HI  * n_elec +
-#ifdef HELIUM_COOLING
+#if CHEMISTRY_HELIUM_COOLING
       pow(10., f[cHeI_fb]) * n_HeII* n_elec +
 #endif
       pow(10., f[cHM_ff]) * n_HI  * n_elec +
@@ -1286,7 +1276,7 @@ double ContinuumEmission::cooling(double T_gas, double rho_cgs,
       pow(10., f[cH2He_CIE]) * n_H2I * n_HeI
       );
 
-#ifdef ID_CHEM_DEBUG
+#if CHEMISTRY_DEBUG
   if(diagnostics_enabled)
     printf("cool_rate_cont=%g %g %g %g %g %g\n"
 	   , pow(10, f[cH_fb] ) * n_HII * n_elec
@@ -1425,10 +1415,10 @@ void ChemistryContinuumOpacityTables::lntrim(char *str) {
 
 int ChemistryContinuumOpacityTables::read_opacities(const char *table_root) {
   ChemistryContinuumOpacityTables *tables = this;
-  double *Kappa_Tgas = NULL;
-  double *Kappa_rho = NULL;
-  double *Kappa_Rossland = NULL;
-  double *Kappa_Planck = NULL;
+  std::unique_ptr<double[]> Kappa_Tgas;
+  std::unique_ptr<double[]> Kappa_rho;
+  std::unique_ptr<double[]> Kappa_Rossland;
+  std::unique_ptr<double[]> Kappa_Planck;
   double RhoMin_tau = 0.;
   double RhoMax_tau = 0.;
   double TMin_tau = 0.;
@@ -1469,22 +1459,22 @@ int ChemistryContinuumOpacityTables::read_opacities(const char *table_root) {
     n_T   = count_T-1;
     n_rho = count_rho-1;
 
-    if(!(Kappa_Tgas = static_cast<double *>(malloc(sizeof(double)*n_T)))){
+    if(!(Kappa_Tgas = std::unique_ptr<double[]>(new(std::nothrow) double[n_T]))){
       printf("Can't allocate memory.\n");
       goto fail;
     }
 
-    if(!(Kappa_rho = static_cast<double *>(malloc(sizeof(double)*n_rho)))){
+    if(!(Kappa_rho = std::unique_ptr<double[]>(new(std::nothrow) double[n_rho]))){
       printf("Can't allocate memory.\n");
       goto fail;
     }
 
-    if(!(Kappa_Rossland = static_cast<double *>(malloc(sizeof(double)*(n_T)*(n_rho))))){
+    if(!(Kappa_Rossland = std::unique_ptr<double[]>(new(std::nothrow) double[(n_T)*(n_rho)]))){
       printf("Can't allocate memory.\n");
       goto fail;
     }
 
-    if(!(Kappa_Planck = static_cast<double *>(malloc(sizeof(double)*(n_T)*(n_rho))))){
+    if(!(Kappa_Planck = std::unique_ptr<double[]>(new(std::nothrow) double[(n_T)*(n_rho)]))){
       printf("Can't allocate memory.\n");
       goto fail;
     }
@@ -1558,10 +1548,10 @@ int ChemistryContinuumOpacityTables::read_opacities(const char *table_root) {
 
   tables->temperature_count = n_T;
   tables->density_count = n_rho;
-  tables->temperature = Kappa_Tgas;
-  tables->density = Kappa_rho;
-  tables->rosseland = Kappa_Rossland;
-  tables->planck = Kappa_Planck;
+  tables->temperature = std::move(Kappa_Tgas);
+  tables->density = std::move(Kappa_rho);
+  tables->rosseland = std::move(Kappa_Rossland);
+  tables->planck = std::move(Kappa_Planck);
   tables->density_min = RhoMin_tau;
   tables->density_max = RhoMax_tau;
   tables->temperature_min = TMin_tau;
@@ -1573,20 +1563,16 @@ fail:
     fclose(fp_p);
   if(fp_r != NULL)
     fclose(fp_r);
-  free(Kappa_Tgas);
-  free(Kappa_rho);
-  free(Kappa_Rossland);
-  free(Kappa_Planck);
   return 0;
 }
 
 void ChemistryContinuumOpacityTables::get_opacities(double T_gas,
     double rho_cgs, double *kappa_Rossland, double *kappa_Planck) const {
   const ChemistryContinuumOpacityTables *tables = this;
-  const double *Kappa_Tgas = tables->temperature;
-  const double *Kappa_rho = tables->density;
-  const double *Kappa_Rossland = tables->rosseland;
-  const double *Kappa_Planck = tables->planck;
+  const double *Kappa_Tgas = tables->temperature.get();
+  const double *Kappa_rho = tables->density.get();
+  const double *Kappa_Rossland = tables->rosseland.get();
+  const double *Kappa_Planck = tables->planck.get();
   const int n_T = tables->temperature_count;
   const int n_rho = tables->density_count;
   const double TMax_tau = tables->temperature_max;
@@ -1641,10 +1627,10 @@ void ChemistryContinuumOpacityTables::get_opacities(double T_gas,
 void ChemistryContinuumOpacityTables::get_opacities_log(double T_gas,
     double rho_cgs, double *kappa_Rossland, double *kappa_Planck) const {
   const ChemistryContinuumOpacityTables *tables = this;
-  const double *Kappa_Tgas = tables->temperature;
-  const double *Kappa_rho = tables->density;
-  const double *Kappa_Rossland = tables->rosseland;
-  const double *Kappa_Planck = tables->planck;
+  const double *Kappa_Tgas = tables->temperature.get();
+  const double *Kappa_rho = tables->density.get();
+  const double *Kappa_Rossland = tables->rosseland.get();
+  const double *Kappa_Planck = tables->planck.get();
   const int n_T = tables->temperature_count;
   const int n_rho = tables->density_count;
   int i_T, i_rho;
@@ -1885,7 +1871,7 @@ double fesc_Lya(double xnH,double T_K,double y_H,double y_e,double rr,double vel
   cool_A21 = -A_21  * DE_21 * eV_to_erg * fesc_Lya * n_H * r_21/(1. + r_21);
   cool_2ph = -A_2ph * DE_21 * eV_to_erg            * n_H * r_21/(1. + r_21);
 
-#ifdef ID_CHEM_DEBUG
+#if CHEMISTRY_DEBUG
   if(diagnostics_enabled)
     printf("[HI cooling] nH=%g HI=%g e=%g C_21=%g r21=%g cool_A21=%g\n"
 	   , n_H, y_H, y_e, C_21, r_21, cool_A21);
@@ -1901,4 +1887,3 @@ double fesc_Lya(double xnH,double T_K,double y_H,double y_e,double rr,double vel
 
   return fesc_Lya;
 }
-#endif

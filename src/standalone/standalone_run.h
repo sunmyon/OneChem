@@ -20,27 +20,27 @@ typedef struct sph_particle_data
 
   double elec;
   double HI, HII, HM;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double HeI, HeII, HeIII;
 #endif
   double H2I;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   double H2II;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double DI, DII, HDI;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   double HDII;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   double DM;
 #endif
 #endif
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double CI, CII, CO, CO2;
   double OI, OH, H2O, O2;
-#ifndef CHEM_INTERMEDIATE_EQUILIBRIUM
+#ifndef CHEMISTRY_INTERMEDIATE_EQUILIBRIUM
   double COII, CH, CH2;
   double OII, OHII, H2OII, H3OII, O2II;
 #endif
@@ -60,7 +60,7 @@ typedef struct sph_particle_data
   double edot_radHI, edot_radHeI, edot_radHeII;
   double edot_cont, edot_2ph;
   double edot_CI, edot_CII, edot_OI;
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double edot_CO, edot_OH, edot_H2O;
 #endif
   double edot_dust, edot_PE;
@@ -74,26 +74,23 @@ typedef struct sph_particle_data
   double n_crit;
   double Jeans_Length;
 
-#ifdef SHIELD_6RAY
-  double ColumnDens_H2[6], ColumnDens_HI[6], ColumnDens_HD[6];
-#endif
-#ifdef H2_OPACITY
+#if CHEMISTRY_H2_OPACITY
   double DelV[3];
 #endif
   double tau_cont;
   double fesc_H2;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double fesc_HD;
 #endif
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
   FLOAT J21;
   FLOAT rate_Hminus_pd;
   FLOAT rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   FLOAT rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   FLOAT G0;
 #endif
 #endif
@@ -107,16 +104,10 @@ typedef struct sph_particle_data
   FLOAT l_core;
 #endif
 
-#if defined(IONIZATION_PHOTON) || defined(X_RAY)
+#if defined(IONIZING_PHOTON)
   FLOAT d_tau_0, d_r, dist_source;
   FLOAT tau_ion, d_tau;
   double k22, piHI;
-#ifdef X_RAY
-  double k24, piHeI;
-#ifdef X_RAY_2nd
-  double k22_2nd, k24_2nd, piHI_2nd;
-#endif
-#endif
   FLOAT n_nuclei_ch;
   int flag_ch;
 #endif
@@ -179,23 +170,20 @@ typedef struct StandaloneRunState
 
   double Epsilon;
 
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
   double J21;
   double LymanWerner;
   FLOAT rate_Hminus_pd;
   FLOAT rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   FLOAT rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double G0;
 #endif
 #endif
 
-#ifdef X_RAY
-  double X_J21;
-#endif
-#ifdef SHIELD_LW
+#ifdef CHEMISTRY_LW_SELF_SHIELDING
   double LenColumnDens;
 #endif
 

@@ -29,9 +29,9 @@ For every case: `converged=1`, `T_final` within the stated tolerance, no
 `|e_new - e_old - de| / max(e_new, e_old)` below 1e-3 (the 138196 K answer had
 about 3.9, so the returned temperature must be a root of the energy equation).
 
-* `call2_default` - default build (`CHEM_NEWTON_RESIDUAL_GATE_LIMIT = 1e3`): no
+* `call2_default` - default build (`CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT = 1e3`): no
   failed trial (`dT=nan`) messages and the bisection guard silent.
-* `call2_gate1` - built with `-DCHEM_NEWTON_RESIDUAL_GATE_LIMIT=1.0` so chemistry
+* `call2_gate1` - built with `-DCHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT=1.0` so chemistry
   trials fail as before.  Failed trials **must** occur and `solve_bisection` **must**
   report a non-finite residual, and the answer must still be 19630.6 K.  This
   guards the bisection fix independently of the residual-gate relaxation; if a
@@ -44,3 +44,10 @@ about 3.9, so the returned temperature must be a root of the energy equation).
 Different builds/compilers land on slightly different roots of the energy
 equation (the energy solver stops at a relative step of ~1e-5), so temperatures
 are compared to a few 1e-5 relative, not bit-exactly.
+
+The captured cases predate the species-dependent helium continuum cooling
+default. Their flags explicitly set `CHEMISTRY_HELIUM_COOLING=0` to reproduce
+the original physics; new helium-enabled builds default to `1`.
+
+The captured cases also retain `CHEMISTRY_UPDATE_CORE_LENGTH=0`: their original
+solver used the host-supplied length rather than recomputing it at each trial.

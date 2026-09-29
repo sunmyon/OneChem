@@ -2,7 +2,7 @@
 
 This directory owns the compatibility boundary between the 1-zone host and
 `../chemistry/`. It contains the legacy `chemdata_in` / `chemdata_out`
-transfer structures, host-unit conversion, compatibility entry points, and the
+transfer structures, host-unit conversion, per-run ChemistryStandaloneAdapter instances, and the
 optional uniform-background bridge.
 
 None of these files belongs to the portable chemistry core or its AREPO source

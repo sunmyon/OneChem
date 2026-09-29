@@ -1,6 +1,7 @@
 #include "thermodynamics/thermodynamics.h"
 #include "chemistry_model.hpp"
 #include "solver/fixed_rate_solver.hpp"
+#include "solver/chemistry_solver.h"
 #include "chemistry_core.h"
 #include "reaction_network/reaction_rates.h"
 #include "cooling/chemistry_cooling.h"
@@ -60,9 +61,27 @@ int main(int argc, char **argv)
   ChemStepData step{};
   chemistry::Driver::prepare_cell(environment, initial, temperature, dt, step);
   chemistry::ReactionRateEvaluator evaluator(environment, initial, prepared);
-  CHECK(evaluator.evaluate(step) == 0);
-  CHECK(evaluator.evaluate_timescale() == 0);
+  evaluator.evaluate(step);
+  evaluator.evaluate_timescale();
   const auto first_rates = prepared.rates;
+  // Both selectable explicit update orders must preserve a physical state.
+  auto explicit_state = initial;
+  auto explicit_workspace = prepared;
+  CHECK(chemistry::ExplicitSolver{}.solve(environment, step, explicit_state,
+                                         explicit_workspace, 1.0) == CHEMISTRY_STATUS_OK);
+  for(double abundance : explicit_state.abund)
+    CHECK(std::isfinite(abundance) && abundance >= 0.0);
+  CHECK(std::fabs(chemistry_net_charge(explicit_state.abund)) < 1.e-12);
+  for(int element = 0; element < CHEM_ELEMENT_COUNT; ++element) {
+    double before = 0., after = 0.;
+    for(int species = 0; species < N_SP; ++species) {
+      const int nuclei = chemistry_species_definition(static_cast<SPECIES>(species))->nuclei[element];
+      before += nuclei * initial.abund[species];
+      after += nuclei * explicit_state.abund[species];
+    }
+    CHECK(std::fabs(after - before) <= 1.e-10 * std::fmax(before, 1.e-30));
+  }
+
   const double first_timescale = prepared.evaluation.t_chem;
   const double first_energy_rate = prepared.evaluation.rhoU_dot_chem;
   auto other_environment = environment;
@@ -70,14 +89,14 @@ int main(int argc, char **argv)
   ChemWorkspace other_workspace{};
   other_workspace.thermodynamics.temperature = 300.;
   chemistry::ReactionRateEvaluator other(other_environment, initial, other_workspace);
-  CHECK(other.evaluate(step) == 0);
-  CHECK(other.evaluate_timescale() == 0);
+  other.evaluate(step);
+  other.evaluate_timescale();
   CHECK(std::memcmp(&first_rates, &prepared.rates, sizeof(first_rates)) == 0);
   CHECK(prepared.evaluation.t_chem == first_timescale);
   CHECK(prepared.evaluation.rhoU_dot_chem == first_energy_rate);
   // Interleaved evaluation must not retain a different cell's inputs.
-  CHECK(evaluator.evaluate(step) == 0);
-  CHECK(evaluator.evaluate_timescale() == 0);
+  evaluator.evaluate(step);
+  evaluator.evaluate_timescale();
   CHECK(std::memcmp(&first_rates, &prepared.rates, sizeof(first_rates)) == 0);
   CHECK(prepared.evaluation.t_chem == first_timescale);
   CHECK(prepared.evaluation.rhoU_dot_chem == first_energy_rate);

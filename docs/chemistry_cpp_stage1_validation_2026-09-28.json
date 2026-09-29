@@ -1,0 +1,35 @@
+{
+  "baseline_commit": "782d7101e3c45cc733976662661e3ace19c2bc60",
+  "platform": "Darwin arm64",
+  "compiler": "Homebrew clang version 20.1.7",
+  "cpp_compiler": "Homebrew clang version 20.1.7",
+  "optimization": "-O2",
+  "feature_flags_file": "tests/replay/arepo_chemistry_flags.txt",
+  "feature_flags_sha256": "5a816c03e4ee83d441ae6a7dc8518f64783bea0a7e1fbfe5c0b2f4b3972f5229",
+  "cases": [
+    {
+      "case": "call1_default",
+      "diagnostics_and_abundances_identical_excluding_elapsed_s": true,
+      "normalized_log_sha256": "498c09b3b37825c3c6f9ec6085f248f3c3bc4144f15a0967b047e675defc0c5e",
+      "summary": "CHEM_STEP converged=1 status=0 elapsed_s=<wall-clock> n_nuclei_cm3=1933.6773980652906 T_initial_K=19474.871030768918 T_final_K=18663.82177658191 Z=0.018146899407057427 dt_s=47082519531.25"
+    },
+    {
+      "case": "call2_default",
+      "diagnostics_and_abundances_identical_excluding_elapsed_s": true,
+      "normalized_log_sha256": "eb49b84d088e249c19066d54808482e4dcf3753769196dd776de072320159984",
+      "summary": "CHEM_STEP converged=1 status=0 elapsed_s=<wall-clock> n_nuclei_cm3=1947.8357108931234 T_initial_K=18873.994601657221 T_final_K=19630.634139888323 Z=0.018181308488244636 dt_s=47082519531.25"
+    },
+    {
+      "case": "call2_gate1",
+      "diagnostics_and_abundances_identical_excluding_elapsed_s": true,
+      "normalized_log_sha256": "45475415028e796d4528a5bbb12598edd108bc2beea84bab63b35f08c72fd522",
+      "summary": "CHEM_STEP converged=1 status=0 elapsed_s=<wall-clock> n_nuclei_cm3=1947.8357108931234 T_initial_K=18873.994601657221 T_final_K=19630.653974805424 Z=0.018181308488244636 dt_s=47082519531.25"
+    },
+    {
+      "case": "id1339855177",
+      "diagnostics_and_abundances_identical_excluding_elapsed_s": true,
+      "normalized_log_sha256": "527037047d9b054a772ff87700b80a04f8e6d7a6ec357968a7b830ba1fbaf68e",
+      "summary": "CHEM_STEP converged=1 status=0 elapsed_s=<wall-clock> n_nuclei_cm3=162853.84981910812 T_initial_K=98403.320240371235 T_final_K=7995.0884405584229 Z=0.017223331299522575 dt_s=11684976441.676025"
+    }
+  ]
+}

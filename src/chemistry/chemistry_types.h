@@ -7,7 +7,7 @@
 
 typedef struct {
   double H2_escape_fraction;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double HD_escape_fraction;
 #endif
   double edot_rad, edot_chem;
@@ -15,27 +15,27 @@ typedef struct {
   double edot_ciHI, edot_H2form_gas, edot_HMform;
   double edot_H2form_HM, edot_H2form_dust, edot_H2form_3body;
   double n_crit;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double edot_ceHeI, edot_ceHeII;
   double edot_ciHeI, edot_ciHeII, edot_ciHeIS;
   double edot_reHeII1, edot_reHeII2, edot_reHeIII;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double edot_HD;
 #endif
 #ifdef METALLICITY
   double edot_CI, edot_CII, edot_OI;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double edot_CO, edot_OH, edot_H2O;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double edot_dust;
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
   double edot_PE;
 #endif
 #endif
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
   double edot_cont;
 #else
   double edot_reHI, edot_brem, edot_CIE, edot_cont;
@@ -81,7 +81,7 @@ typedef struct ChemRunView {
   const ChemistryDustTables *dust_tables;
   const ChemistryContinuumOpacityTables *continuum_opacity_tables;
   double timescale_safety_factor;
-#ifdef FIX_TEMPERATURE
+#ifdef CHEMISTRY_FIXED_TEMPERATURE
   double fixed_temperature;
 #endif
 } ChemRunView;
@@ -96,7 +96,7 @@ typedef struct {
   double background_G0;
   double background_rate_Hminus_pd;
   double background_rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double background_rate_HD_diss;
 #endif
 } ChemGlobalStep;
@@ -111,7 +111,7 @@ typedef struct {
   double J21;
   double rate_Hminus_pd;
   double rate_H2_diss;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double rate_HD_diss;
 #endif
   double G0;
@@ -120,13 +120,13 @@ typedef struct {
   double photoionization_rate_HI;
   double photoheating_rate_HI;
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double photoionization_rate_HeI;
   double photoheating_rate_HeI;
   double photoionization_rate_HeII;
   double photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double photoionization_rate_C[3];
   double photoheating_rate_C[3];
   double photoionization_rate_O[3];
@@ -162,13 +162,13 @@ typedef struct {
   double G0;
   double k22;
   double piHI;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double photoionization_rate_HeI;
   double photoheating_rate_HeI;
   double photoionization_rate_HeII;
   double photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double photoionization_rate_C[3];
   double photoheating_rate_C[3];
   double photoionization_rate_O[3];

@@ -37,7 +37,7 @@ double chemistry_newton_evaluate_residual(
 
   for(int species = 0; species < N_SP; species++) {
     if(chemistry_species_is_intermediate_equilibrium(static_cast<SPECIES>(species)) ||
-       conservation->is_dependent[species] ||
+       conservation->dependent(species) ||
        dmax(fabs(initial_abundance[species]), fabs(abundance[species])) <
            CHEM_NEWTON_MATERIAL_ABUNDANCE)
       continue;
@@ -45,8 +45,7 @@ double chemistry_newton_evaluate_residual(
     double change = abundance[species] - initial_abundance[species];
     double gross_scale = dt * (production[species] + loss[species]) +
                          fabs(change);
-    size_t reaction_terms = chemistry_network_species_reaction_count(
-        rates->network, static_cast<SPECIES>(species), CHEM_REACTION_IMPLICIT);
+    size_t reaction_terms = (rates->network)->species_reaction_count( static_cast<SPECIES>(species), CHEM_REACTION_IMPLICIT);
     double rhs_roundoff = chemistry_newton_roundoff_factor(
         reaction_terms + 1) * dt * (production[species] + loss[species]);
     double residual_roundoff = chemistry_newton_roundoff_factor(3) *
@@ -72,11 +71,10 @@ double chemistry_newton_evaluate_residual(
   size_t constraint_terms[CHEM_MAX_CONSERVATION_CONSTRAINTS] = {0};
 
   for(int species = 0; species < N_SP; species++) {
-    if(conservation->is_dependent[species])
+    if(conservation->dependent(species))
       continue;
     double change = abundance[species] - initial_abundance[species];
-    size_t reaction_terms = chemistry_network_species_reaction_count(
-        rates->network, static_cast<SPECIES>(species), CHEM_REACTION_IMPLICIT);
+    size_t reaction_terms = (rates->network)->species_reaction_count( static_cast<SPECIES>(species), CHEM_REACTION_IMPLICIT);
     double independent_roundoff =
         chemistry_newton_roundoff_factor(reaction_terms + 1) * dt *
             (production[species] + loss[species]) +
@@ -86,8 +84,8 @@ double chemistry_newton_evaluate_residual(
             dmax(upper_bound[species],
                  dmax(fabs(initial_abundance[species]),
                       fabs(abundance[species])));
-    for(int constraint = 0; constraint < conservation->count; constraint++) {
-      double coefficient = conservation->coefficient[constraint][species];
+    for(int constraint = 0; constraint < conservation->constraint_count(); constraint++) {
+      double coefficient = conservation->weight(constraint, species);
       if(coefficient == 0.0)
         continue;
       double term = coefficient * species_residual[species];
@@ -100,13 +98,13 @@ double chemistry_newton_evaluate_residual(
       constraint_terms[constraint]++;
     }
   }
-  for(int constraint = 0; constraint < conservation->count; constraint++)
+  for(int constraint = 0; constraint < conservation->constraint_count(); constraint++)
     constraint_roundoff[constraint] +=
         chemistry_newton_roundoff_factor(constraint_terms[constraint] + 1) *
         constraint_absolute[constraint];
 
-  for(int dependent = 0; dependent < conservation->count; dependent++) {
-    enum SPECIES species = conservation->dependent_species[dependent];
+  for(int dependent = 0; dependent < conservation->constraint_count(); dependent++) {
+    enum SPECIES species = conservation->reservoir(dependent);
     if(dmax(fabs(initial_abundance[species]), fabs(abundance[species])) <
        CHEM_NEWTON_MATERIAL_ABUNDANCE)
       continue;
@@ -114,9 +112,9 @@ double chemistry_newton_evaluate_residual(
     double implied_absolute = 0.0;
     double implied_gross = 0.0;
     double implied_roundoff = 0.0;
-    for(int constraint = 0; constraint < conservation->count; constraint++) {
-      double inverse = conservation->dependent_inverse[
-          constraint * conservation->count + dependent];
+    for(int constraint = 0; constraint < conservation->constraint_count(); constraint++) {
+      double inverse = conservation->inverse_entry(
+          constraint * conservation->constraint_count() + dependent);
       double term = inverse * constraint_residual[constraint];
       implied_residual -= term;
       implied_absolute += fabs(term);
@@ -124,7 +122,7 @@ double chemistry_newton_evaluate_residual(
       implied_roundoff += fabs(inverse) * constraint_roundoff[constraint];
     }
     implied_roundoff += chemistry_newton_roundoff_factor(
-        (size_t)conservation->count + 1) * implied_absolute;
+        (size_t)conservation->constraint_count() + 1) * implied_absolute;
     double change = abundance[species] - initial_abundance[species];
     double gross_scale = dt * (production[species] + loss[species]) +
                          fabs(change);
@@ -150,7 +148,7 @@ double chemistry_newton_material_step_norm(
   double norm = 0.0;
   *limiting_species = -1;
   for(int species = 0; species < N_SP; species++) {
-    if(conservation->is_dependent[species])
+    if(conservation->dependent(species))
       continue;
     double before = abundance[species] - step[species];
     if(dmax(fabs(before), fabs(abundance[species])) <
@@ -199,10 +197,10 @@ static double chemistry_newton_dependent_derivative(
     const ChemConservationSystem *conservation)
 {
   double derivative = 0.0;
-  for(int constraint = 0; constraint < conservation->count; constraint++)
-    derivative -= conservation->dependent_inverse[
-        constraint * conservation->count + dependent] *
-        conservation->coefficient[constraint][variable_species];
+  for(int constraint = 0; constraint < conservation->constraint_count(); constraint++)
+    derivative -= conservation->inverse_entry(
+        constraint * conservation->constraint_count() + dependent) *
+        conservation->weight(constraint, variable_species);
   return derivative;
 }
 
@@ -361,9 +359,9 @@ static int chemistry_newton_project_negative_charge_carrier(
     ChemNewtonStepResult *result)
 {
   int charge_dependent = -1;
-  for(int dependent = 0; dependent < conservation->count; dependent++) {
-    enum SPECIES species = conservation->dependent_species[dependent];
-    if(conservation->total[dependent] == 0.0 &&
+  for(int dependent = 0; dependent < conservation->constraint_count(); dependent++) {
+    enum SPECIES species = conservation->reservoir(dependent);
+    if(conservation->constraint_total(dependent) == 0.0 &&
        chemistry_species_definition(static_cast<SPECIES>(species))->charge < 0) {
       charge_dependent = dependent;
       break;
@@ -373,7 +371,7 @@ static int chemistry_newton_project_negative_charge_carrier(
     return 0;
 
   enum SPECIES dependent_species =
-      conservation->dependent_species[charge_dependent];
+      conservation->reservoir(charge_dependent);
   if(!isfinite(trial[dependent_species]) ||
      trial[dependent_species] >= lower_bound[dependent_species])
     return 0;
@@ -462,8 +460,7 @@ int chemistry_newton_build_explicit_guess(
     const ChemRates *rates, const ChemConservationSystem *conservation)
 {
   double rhs[N_SP], step[N_SP] = {0.0};
-  chemistry_network_rhs(
-      rates->network, CHEM_REACTION_IMPLICIT, nH, initial_abundance,
+  (rates->network)->rhs( CHEM_REACTION_IMPLICIT, nH, initial_abundance,
       rates->forward, rates->inverse, rhs);
 
   for(int species = 0; species < N_SP; species++) {
@@ -501,15 +498,15 @@ int chemistry_newton_reselect_conservation_chart(
    */
   ChemConservationSystem replacement;
   if(!(&replacement)->build(metallicity, system->abundance) ||
-     replacement.count != system->conservation.count)
+     replacement.constraint_count() != system->conservation.constraint_count())
     return 0;
 
   int changed = 0;
   for(int constraint = 0;
-      constraint < system->conservation.count;
+      constraint < system->conservation.constraint_count();
       constraint++)
-    changed |= replacement.dependent_species[constraint] !=
-               system->conservation.dependent_species[constraint];
+    changed |= replacement.reservoir(constraint) !=
+               system->conservation.reservoir(constraint);
   if(!changed)
     return 0;
 

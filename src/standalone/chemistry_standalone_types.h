@@ -8,7 +8,6 @@
 #include "chemistry_build_config.h"
 #include "chemistry_types.h"
 
-#ifdef CHEMISTRY_SC
 typedef struct chemdata_in
 {
   MyIDType ID;
@@ -27,25 +26,25 @@ typedef struct chemdata_in
   double rate_Hminus_pd;
   double rate_H2_diss;
   double J21;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double rate_HD_diss;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   double G0;
 #endif
 #endif
 
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
   double k22;
   double piHI;
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double photoionization_rate_HeI;
   double photoheating_rate_HeI;
   double photoionization_rate_HeII;
   double photoheating_rate_HeII;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double photoionization_rate_C[3];
   double photoheating_rate_C[3];
   double photoionization_rate_O[3];
@@ -73,4 +72,3 @@ typedef struct chemdata_out
   double inverse_rates[CHEM_RATE_COUNT];
   ChemDiagnostics diagnostics;
 } chemdata_out;
-#endif

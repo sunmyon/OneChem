@@ -15,7 +15,7 @@ struct global_data_all_processes {
   double cf_atime;
   double Time;
   int ComovingIntegrationOn;
-  double J21;
+  double J21, Teff;
   double rate_Hminus_pd;
   double rate_H2_diss;
   double G0;

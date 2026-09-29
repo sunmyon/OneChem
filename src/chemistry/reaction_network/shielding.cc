@@ -13,9 +13,8 @@
 #include "shielding.h"
 #include "thermodynamics.h"
 
-#ifdef CHEMISTRY_SC
 
-#ifdef SHIELD_LW
+#ifdef CHEMISTRY_LW_SELF_SHIELDING
 double SelfShield(double ColumnDens, double T_gas, double b)
 {
   double x = ColumnDens/5.e14;
@@ -31,5 +30,3 @@ double EachShield(double ColumnDens, double alpha, double delta, double eta)
   return exp(-alpha*x)/pow(1.+x, delta);
 }
 #endif
-
-#endif /* CHEMISTRY_SC */

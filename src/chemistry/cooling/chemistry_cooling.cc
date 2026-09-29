@@ -18,7 +18,6 @@
 #include "chemistry_tables.h"
 #include "thermodynamics.h"
 
-#ifdef CHEMISTRY_SC
 
 ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_data) {
   const auto *environment = &environment_;
@@ -41,21 +40,21 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   double profile_timer = profile_start();
 #endif
   work->diagnostics.H2_escape_fraction = 1.0;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   work->diagnostics.HD_escape_fraction = 1.0;
 #endif
   work->diagnostics.edot_H2 = 0.0;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   work->diagnostics.edot_HD = 0.0;
 #endif
   work->diagnostics.edot_ceHI = 0.0;
 #ifdef METALLICITY
   work->diagnostics.edot_CI = work->diagnostics.edot_CII = work->diagnostics.edot_OI = 0.0;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   work->diagnostics.edot_CO = work->diagnostics.edot_OH = work->diagnostics.edot_H2O = 0.0;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   work->diagnostics.edot_dust = 0.0;
 #endif
   work->diagnostics.edot_cont = 0.0;
@@ -99,21 +98,21 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   const double c_T = (T_gas - T_table[i_T])/(T_table[i_T+1]-T_table[i_T]);
 
   /* --------- Interpolate temperature dependent coefficients. */
-#ifdef HLINE_COOLING_THIN
+#if CHEMISTRY_HLINE_COOLING_THIN
   double ceHI  = ceHIa[i_T]   + c_T*(ceHIa[i_T+1] -ceHIa[i_T]);
 #endif
 
-#ifndef CONTINUUM_COOLING_MATSUKOBA
+#if !CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
   double reHII = reHIIa[i_T]  + c_T*(reHIIa[i_T+1]-reHIIa[i_T]);
   double brem  = brema[i_T]   + c_T*(brema[i_T+1] -brema[i_T]);
   double cie   = H2_CIE[i_T]  + c_T*(H2_CIE[i_T+1]-H2_CIE[i_T]);
 #endif
 
-#if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
+#if defined(CHEMISTRY_SPECIES_HELIUM) || CHEMISTRY_HELIUM_EQ_COOLING
   double ceHeI  = ceHeIa[i_T]  + c_T*(ceHeIa[i_T+1] - ceHeIa[i_T]);
   double ceHeII = ceHeIIa[i_T] + c_T*(ceHeIIa[i_T+1]- ceHeIIa[i_T]);
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double ciHeI  = ciHeIa[i_T]  + c_T*(ciHeIa[i_T+1]  -ciHeIa[i_T]);
   double ciHeII = ciHeIIa[i_T] + c_T*(ciHeIIa[i_T+1] -ciHeIIa[i_T]);
   double ciHeIS = ciHeISa[i_T] + c_T*(ciHeISa[i_T+1] -ciHeISa[i_T]);
@@ -132,7 +131,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   /************************ line cooling by H, He, H2, HD, CI, OII ******************************/
   /**********************************************************************************************/
 
-#ifdef UPDATE_L_CORE_IN_SOLVER
+#if CHEMISTRY_UPDATE_CORE_LENGTH
   const double l_core = get_core_radius(rho_gas, T_gas);
 #else
   const double l_core = step->jeans_length;
@@ -140,7 +139,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
 
   /******************************* Hydrogen lines ***********************************************/
   double edot_ceHI = 0.;
-#ifdef HLINE_COOLING_THIN
+#if CHEMISTRY_HLINE_COOLING_THIN
   edot_ceHI   = -ceHI  *state->abund[sHI]  *state->abund[sELEC]     *n_nuclei*n_nuclei;
 #else
   if(n_nuclei < 1.e8){
@@ -156,14 +155,14 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
 #endif
 
   /******************************* Helium lines **************************************************/
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double edot_ceHeI  = -ceHeI *state->abund[sHeII]*state->abund[sELEC]*state->abund[sELEC]*n_nuclei*n_nuclei*n_nuclei;
   double edot_ceHeII = -ceHeII*state->abund[sHeII]*state->abund[sELEC]     *n_nuclei*n_nuclei;
 
   double edot_ciHeI  = -ciHeI *state->abund[sHeI] *state->abund[sELEC]     *n_nuclei*n_nuclei;
   double edot_ciHeII = -ciHeII*state->abund[sHeII]*state->abund[sELEC]     *n_nuclei*n_nuclei;
   double edot_ciHeIS  = -ciHeIS *state->abund[sHeII]*state->abund[sELEC]*state->abund[sELEC]*n_nuclei*n_nuclei*n_nuclei;
-#elif defined(HELIUM_EQ_COOLING)
+#elif CHEMISTRY_HELIUM_EQ_COOLING
   double denom = work->rates.forward[4]*work->rates.forward[6] + work->rates.forward[3]*work->rates.forward[6] + work->rates.forward[3]*work->rates.forward[5];
   if(denom < 1.e-100)
     denom = 1.e-100;
@@ -184,25 +183,25 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   double yHII = state->abund[sHII]  / XH;
   double yH2I = state->abund[sH2I]  / XH;
   double y_e  = state->abund[sELEC] / XH;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double yHeI = state->abund[sHeI]  / XH;
 #else
   double yHeI = XHe / XH;
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double yHDI = state->abund[sHDI]/XH;
 #endif
 
   double edot_H2 = H2_cooling(nH, T_gas, yHI, yH2I, yHeI, yHII, y_e);
   double edot_HD = 0.0;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   edot_HD = HD_cooling_GP12(
       nH, T_gas, environment->global->cmb_temperature, yHI, yHDI,
       work->diagnostics_enabled);
 #endif
 
 
-#ifdef H2_OPACITY  /* accounting for the local optical depth to H2 lines   */
+#if CHEMISTRY_H2_OPACITY  /* accounting for the local optical depth to H2 lines   */
   if(n_nuclei > 1.0e4){
     double N_H2 = l_core * n_nuclei * state->abund[sH2I];
     double f_reduce_H2 = fesc_fit(T_gas, N_H2);
@@ -221,7 +220,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
     if(work->diagnostics_enabled)
       printf("f_reduce=%g\n", f_reduce_H2);
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     double N_HD = l_core * n_nuclei * state->abund[sHDI];
     double f_reduce_HD = fesc_HD_fit(T_gas, N_HD);
     work->diagnostics.HD_escape_fraction = f_reduce_HD;
@@ -245,7 +244,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   if(work->diagnostics_enabled)
     printf("f_metal=%g\n", metallicity);
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   double nOI  = n_nuclei * state->abund[sOI];
   double nCI  = n_nuclei * state->abund[sCI];
   double nCII = n_nuclei * state->abund[sCII];
@@ -265,9 +264,9 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   double edot_CII = -1.0 * cool_rate_CII;
 #endif
 
-#ifdef MOLECULAR_LINE_COOLING
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
   double radiation_temperature = 0.0;
-#ifdef CMB_HEATING
+#ifdef CHEMISTRY_CMB_HEATING
   radiation_temperature = environment->global->cmb_temperature;
 #endif
   double cool_rate_CO, cool_rate_OH, cool_rate_H2O;
@@ -285,7 +284,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   /******************************************************************************************/
 
   double edot_cont = 0.;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   /* The Matsukoba continuum term already contains continuum emission.  Keep
    * the separately reported He recombination components zero on that path so
    * they are neither undefined nor counted twice. */
@@ -293,7 +292,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   double edot_reHeII2 = 0.0;
   double edot_reHeIII = 0.0;
 #endif
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
   edot_cont = -continuum_cooling_rate_thin(
       T_gas, rho_gas, state->abund, work->diagnostics_enabled);
 #else
@@ -301,7 +300,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   double edot_CIE     = -cie  *  state->abund[sH2I] * state->abund[sH2I]  * n_nuclei*n_nuclei;
   double edot_brem    = -brem * state->abund[sHII]  *  state->abund[sELEC]*n_nuclei*n_nuclei;
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   edot_brem    -= brem*(state->abund[sHeII]+4.0*state->abund[sHeIII]) * state->abund[sELEC]*n_nuclei*n_nuclei;
   edot_reHeII1 = -reHeII1*state->abund[sHeII] *state->abund[sELEC]*n_nuclei*n_nuclei;
   edot_reHeII2 = -reHeII2*state->abund[sHeII] *state->abund[sELEC]*n_nuclei*n_nuclei;
@@ -312,10 +311,10 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   /********************** opacity for the continuum process *******************************/
 
   double edot_dust = 0.;
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   edot_dust = work->continuum.dust_cooling_rate;
 #endif
-#if defined(DUST_COOLING) && defined(LYMANWERNER)
+#if CHEMISTRY_DUST_COOLING && defined(CHEMISTRY_LW_RADIATION)
   double edot_PE = 0.;
   if(work->continuum.dust_temperature < 1000.){
     double G0 = step->G0;
@@ -326,19 +325,19 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   }
 #endif
 
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
   double edot_metal_SD93 = -1. * get_cooling_rate_SD93(environment->run->continuum_opacity_tables, T_gas) * metallicity * n_nuclei * n_nuclei;
 #endif
 
-#ifdef CONT_OPACITY
+#if CHEMISTRY_CONT_OPACITY
   edot_ceHI *= exp(-tau_cont);
-#if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
+#if defined(CHEMISTRY_SPECIES_HELIUM) || CHEMISTRY_HELIUM_EQ_COOLING
   edot_ceHeI *= exp(-tau_cont);
   edot_ceHeII *= exp(-tau_cont);
 #endif
 
   edot_H2   *= exp(-tau_cont);
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   edot_HD   *= exp(-tau_cont);
 #endif
 #ifdef METALLICITY
@@ -346,13 +345,13 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   edot_CII  *= exp(-tau_cont);
   edot_OI   *= exp(-tau_cont);
 #endif
-#ifdef MOLECULAR_LINE_COOLING
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
   edot_CO   *= exp(-tau_cont);
   edot_OH   *= exp(-tau_cont);
   edot_H2O  *= exp(-tau_cont);
 #endif
 
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
   edot_metal_SD93 *= exp(-tau_cont);
 #endif
 
@@ -362,7 +361,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   /* ========= Heating functions ============================================================== */
   /* --------- Photoinization heating */
   double edot_radHI   = step->piHI  *state->abund[sHI]  *n_nuclei;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double edot_radHeI = step->photoheating_rate_HeI * state->abund[sHeI] * n_nuclei;
   double edot_radHeII = step->photoheating_rate_HeII * state->abund[sHeII] * n_nuclei;
 #endif
@@ -379,40 +378,38 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
 
   /* ========= net cooling rate in erg/sec/cm3 ================================================= */
   double edot = edot_ceHI + edot_comp + edot_H2
-#if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
+#if defined(CHEMISTRY_SPECIES_HELIUM) || CHEMISTRY_HELIUM_EQ_COOLING
     + edot_ceHeI + edot_ceHeII
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     + edot_ciHeI + edot_ciHeII + edot_ciHeIS
     + edot_reHeII1 + edot_reHeII2 + edot_reHeIII
 #endif
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
     + edot_HD
 #endif
 #ifdef METALLICITY
     + edot_CI + edot_CII + edot_OI
 #endif
-#ifdef MOLECULAR_LINE_COOLING
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
     + edot_CO + edot_OH + edot_H2O
 #endif
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
     + edot_metal_SD93
 #endif
-#ifdef DUST_COOLING
-#ifndef CHEM_DISABLE_DUST_COOLING_RATE
+#if CHEMISTRY_DUST_COOLING
     + edot_dust
-#endif
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
     + edot_PE
 #endif
 #endif
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
     + edot_cont
 #else
     + edot_reHI + edot_brem + edot_CIE
 #endif
     + edot_radHI
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     + edot_radHeI + edot_radHeII
 #endif
 #ifdef RYTR_CARBON_OXYGEN_IONIZATION
@@ -426,7 +423,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   }
 
   if(work->diagnostics_enabled){
-#ifdef MOLECULAR_LINE_COOLING
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
     printf("molecular_cooling: CO=%g OH=%g H2O=%g T=%g Tcmb=%g nH2=%g l_core=%g\n",
            edot_CO, edot_OH, edot_H2O, T_gas, radiation_temperature,
            n_nuclei * state->abund[sH2I], l_core);
@@ -441,7 +438,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
 #endif
   }
 
-#ifdef ID_CHEM_DEBUG
+#if CHEMISTRY_DEBUG
   if(work->diagnostics_enabled)
     printf("cool_rate:tot=%g HI=%g H2=%g comp=%g CI=%g CII=%g OI=%g dust=%g cont=%g f_reduce=%g Tdust=%g\n",
 	   edot, edot_ceHI, edot_H2, edot_comp, edot_CI, edot_CII, edot_OI, edot_dust,  edot_cont, continuum_reduction_factor, work->continuum.dust_temperature);
@@ -459,7 +456,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   work->diagnostics.edot_comp = edot_comp;
   work->diagnostics.edot_H2 = edot_H2;
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   work->diagnostics.edot_ceHeI = edot_ceHeI;
   work->diagnostics.edot_ceHeII = edot_ceHeII;
   work->diagnostics.edot_ciHeI = edot_ciHeI;
@@ -471,7 +468,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   work->diagnostics.edot_reHeIII = edot_reHeIII;
 #endif
 
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
   work->diagnostics.edot_cont = edot_cont;
 #else
   work->diagnostics.edot_reHI = edot_reHI;
@@ -480,7 +477,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   work->diagnostics.edot_cont = edot_reHI + edot_brem + edot_CIE;
 #endif
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   work->diagnostics.edot_HD = edot_HD;
 #endif
 #ifdef METALLICITY
@@ -488,14 +485,14 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   work->diagnostics.edot_CII = edot_CII;
   work->diagnostics.edot_OI  = edot_OI;
 #endif
-#ifdef MOLECULAR_LINE_COOLING
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
   work->diagnostics.edot_CO = edot_CO;
   work->diagnostics.edot_OH = edot_OH;
   work->diagnostics.edot_H2O = edot_H2O;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   work->diagnostics.edot_dust = edot_dust;
-#ifdef LYMANWERNER
+#ifdef CHEMISTRY_LW_RADIATION
   work->diagnostics.edot_PE = edot_PE;
 #endif
 #endif
@@ -526,7 +523,7 @@ ChemistryStatus chemistry::CoolingEvaluator::high_temperature(const ChemStepData
   const double rho_gas = environment->rho_cgs;
   const double n_nuclei  = rho_gas/PROTONMASS;
   const double T_gas = work->thermodynamics.temperature;
-#ifdef UPDATE_L_CORE_IN_SOLVER
+#if CHEMISTRY_UPDATE_CORE_LENGTH
   const double l_core = get_core_radius(rho_gas, T_gas);
 #else
   const double l_core = step->jeans_length;
@@ -537,7 +534,7 @@ ChemistryStatus chemistry::CoolingEvaluator::high_temperature(const ChemStepData
   /******************************************************************************************/
 
   double edot_cont = 0.;
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
   edot_cont = -continuum_cooling_rate_thin(
       T_gas, rho_gas, state->abund, work->diagnostics_enabled);
 #endif
@@ -549,14 +546,14 @@ ChemistryStatus chemistry::CoolingEvaluator::high_temperature(const ChemStepData
 
   /********************** opacity for the continuum process *******************************/
 
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
   double edot_metal_SD93 = -1. * get_cooling_rate_SD93(environment->run->continuum_opacity_tables, T_gas) * environment->metallicity * n_nuclei * n_nuclei;
 #endif
 
   /* ========= Heating functions ============================================================== */
   /* --------- Photoinization heating */
   double edot_radHI   = step->piHI  *state->abund[sHI] *n_nuclei;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double edot_radHeI = step->photoheating_rate_HeI * state->abund[sHeI] * n_nuclei;
   double edot_radHeII = step->photoheating_rate_HeII * state->abund[sHeII] * n_nuclei;
 #endif
@@ -573,14 +570,14 @@ ChemistryStatus chemistry::CoolingEvaluator::high_temperature(const ChemStepData
 
   /* ========= net cooling rate in erg/sec/cm3 ================================================= */
   double edot = edot_reHI + edot_brem
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
     + edot_metal_SD93
 #endif
-#ifdef CONTINUUM_COOLING_MATSUKOBA
+#if CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
     + edot_cont
 #endif
     + edot_radHI
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     + edot_radHeI + edot_radHeII
 #endif
 #ifdef RYTR_CARBON_OXYGEN_IONIZATION
@@ -600,7 +597,7 @@ ChemistryStatus chemistry::CoolingEvaluator::high_temperature(const ChemStepData
   work->evaluation.t_cool_rad = (rhoU/edot); /* in seconds */
 
   if(work->diagnostics_enabled){
-#ifdef METAL_LINE_COOLING_SD93
+#if CHEMISTRY_METAL_LINE_COOLING_SD93
     printf("cool_rate:tot=%g reHI=%g brem=%g cont_metal=%g T_gas=%g rhoU=%g t_cool=%g\n"
 	   , edot, edot_reHI, edot_brem, edot_metal_SD93, T_gas, rhoU, work->evaluation.t_cool_rad);
 #else
@@ -639,14 +636,14 @@ ChemistryStatus chemistry::CoolingEvaluator::chemical(double dt, const double *a
   double n_HI   = n_nuclei * state->abund[sHI];
   double n_HM   = n_nuclei * state->abund[sHM];
   double n_H2I  = n_nuclei * state->abund[sH2I];
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   double n_H2II = n_nuclei * state->abund[sH2II];
 #endif
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
   double n_HeI  = n_nuclei * state->abund[sHeI];
   double n_HeII = n_nuclei * state->abund[sHeII];
 #endif
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double n_DI = n_nuclei * state->abund[sDI];
   double n_DII = n_nuclei * state->abund[sDII];
   double n_HDI = n_nuclei * state->abund[sHDI];
@@ -663,26 +660,26 @@ ChemistryStatus chemistry::CoolingEvaluator::chemical(double dt, const double *a
 
   if(dt == 0.){
     edot_H2form_HM = eV_to_erg * ( work->rates.forward[8] * n_HM * n_HI * 3.73/ (1. + n_crit/n_HI)
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 				   + work->rates.forward[10] * n_H2II * n_HI * (1.83 / (1. + n_crit/n_HI))
 #endif
 				   ); //1.38?? modified to 1.83
 
 
     edot_H2form_dust = 0.;
-#ifdef H2_FORMATION_ON_DUST
+#if CHEMISTRY_H2_FORMATION_ON_DUST
     edot_H2form_dust = eV_to_erg * work->rates.forward[51] * n_HI * (0.2 + 4.28/ (1. + n_crit/n_HI));
 #endif
 
     edot_H2form_3body = 0.;
-#ifdef THREEBODY
+#if CHEMISTRY_THREE_BODY
     edot_H2form_3body = 4.48 * eV_to_erg * ( ( work->rates.forward[55]*n_HI + work->rates.forward[57]*n_H2I ) * n_HI * n_HI
 					     - ( work->rates.forward[11]*n_HI + work->rates.forward[58]*n_H2I) * n_H2I );
 #endif
     edot_H2form = edot_H2form_HM + edot_H2form_3body + edot_H2form_dust;
 
     edot_ciHI   = -13.598 * eV_to_erg * work->rates.forward[1] * n_HI * n_elec;
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     edot_ciHeI  = -24.587 * eV_to_erg * work->rates.forward[3] * n_HeI  * n_elec;
     edot_ciHeII = -54.416 * eV_to_erg * work->rates.forward[5] * n_HeII * n_elec;
 #endif
@@ -691,13 +688,13 @@ ChemistryStatus chemistry::CoolingEvaluator::chemical(double dt, const double *a
   }else{
     if(XH * n_nuclei < N_THREEBODY){
       edot_H2form_HM_loss = eV_to_erg * ( work->rates.forward[8]  * n_HM   * n_HI * 3.73 / (1. + n_nuclei/n_crit)
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 					  + work->rates.forward[10] * n_H2II * n_HI * 1.83 / (1. + n_nuclei/n_crit)
 #endif
 					  );
 
       edot_H2form_dust_loss = 0.;
-#ifdef H2_FORMATION_ON_DUST
+#if CHEMISTRY_H2_FORMATION_ON_DUST
       edot_H2form_dust_loss = eV_to_erg * work->rates.forward[51] * n_HI * 4.28 / (1. + n_nuclei/n_crit);
 #endif
       edot_H2diss_FUV = eV_to_erg * work->rates.forward[29] * n_H2I * 4.48;
@@ -709,7 +706,7 @@ ChemistryStatus chemistry::CoolingEvaluator::chemical(double dt, const double *a
       edot_H2form = edot_H2form_3body - edot_H2form_HM_loss - edot_H2form_dust_loss + edot_H2diss_FUV;
 
       edot_H2form_HM = eV_to_erg * ( work->rates.forward[8] * n_HM * n_HI * 3.73/ (1. + n_crit/n_nuclei)
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
 				     + work->rates.forward[10] * n_H2II * n_HI * (1.83 / (1. + n_crit/n_nuclei))
 #endif
 				     ); //1.38?? modified to 1.83
@@ -723,12 +720,12 @@ ChemistryStatus chemistry::CoolingEvaluator::chemical(double dt, const double *a
     }
 
     edot_ciHI   = -13.598 * eV_to_erg * d_abundance[sHII]    * n_nuclei / dt;
-#ifdef IONIZATION_PHOTON
+#ifdef IONIZING_PHOTON
     edot_ciHI_EUV = 13.598 * eV_to_erg * work->rates.forward[22] * n_HI;
     edot_ciHI  += edot_ciHI_EUV;
 #endif
 
-#ifdef HELIUM
+#ifdef CHEMISTRY_SPECIES_HELIUM
     edot_ciHeI  = -24.587 * eV_to_erg * d_abundance[sHeII]   * n_nuclei / dt;
     edot_ciHeII = -54.416 * eV_to_erg * d_abundance[sHeIII]  * n_nuclei / dt;
 #endif
@@ -799,9 +796,3 @@ ChemistryStatus chemistry::CoolingEvaluator::chemical(double dt, const double *a
 
   return CHEMISTRY_STATUS_OK;
 }
-
-
-
-
-
-#endif /* CHEMISTRY_SC */

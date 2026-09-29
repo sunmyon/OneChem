@@ -71,7 +71,7 @@ repository was modified.
 - Compiled cleanly under three configurations: the high-ionization replay
   build (`-DHELIUM -DCARBON_OXYGEN_HIGH_IONIZATION ... -DCHEM_REPLAY_EXTERNAL_RADIATION`),
   a build matching AREPO's `energy_pivot_initial_states.fixture` conditions
-  (`-DHD -DIONIZATION_PHOTON -DLW_RADIATION_LOCAL -DBACKGROUND_LW_RADIATION
+  (`-DHD -DIONIZING_PHOTON -DLW_RADIATION_LOCAL -DCHEMISTRY_BACKGROUND_LW_RADIATION
   -DTHERMAL_FEEDBACK -DDUST_COOLING`), and a bare default build.
 - Regression baseline (`make check-chemistry-initialization`): fails
   identically (`short-step solve failed` x3, exit 2) with and without this
@@ -84,7 +84,7 @@ repository was modified.
   on this fixture; this confirms the change is behavior-preserving on the
   happy path).
 - Forced a genuine chemistry Newton failure (a disposable, scratch-only
-  build with `MAX_ITER_CHEM` temporarily set to 1) to exercise the new
+  build with `CHEMISTRY_MAX_ITERATIONS` temporarily set to 1) to exercise the new
   unconditional log: confirmed `CHEM_NOT_CONVERGED` and the
   `/*CHEMISTRY_RERUN_V1*/` line both fire, and that the emitted replay line,
   fed straight back into `--chem-step` on a normal (non-crippled) build,

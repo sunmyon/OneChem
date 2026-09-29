@@ -5,23 +5,13 @@
 #include "forward_rates.h"
 #include "chemistry_tables.h"
 
-#ifdef CHEM_HIRANO
-#ifndef O05_CHEM
-#define O05_CHEM
-#endif
-#endif
-
-#if defined(TBR_FLOW07) + defined(TBR_ABEL02) + defined(TBR_FORR13) > 1
-#error "Select only one three-body forward-rate prescription"
-#endif
-
 static double rate_zero(double T)
 {
   (void)T;
   return 0.;
 }
 
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
 /* Omukai (2005), Table 1.  Metal-network rates use table slots 100 + Z. */
 static double rate_Z1(double T)  { (void)T; return 6.80e-10; }
 static double rate_Z2(double T)  { return 7.00e-10 * exp(-232.0 / T); }
@@ -60,7 +50,7 @@ static double rate_Z34(double T) { return 2.38e-10 * exp(-1760.0 / T); }
 static double rate_Z35(double T) { (void)T; return 2.70e-10; }
 static double rate_Z40(double T) { (void)T; return 1.00e-17; }
 
-#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION
 #define METAL_ION_KB_EV 8.617385e-5
 
 typedef struct { double threshold, p, a, x, k; } MetalCollisionalFit;
@@ -218,7 +208,7 @@ static double rate_2_case_a(double T)
 {
   double x, x2, x3, x4, x5, x6, x7, x8, x9;
 
-#ifdef CHEM_HIRANO
+#if CHEMISTRY_HIRANO
   if(T < 5500.)
     return 0.;
 #endif
@@ -247,7 +237,7 @@ static double rate_2_case_a(double T)
 
 static double rate_2_case_b(double T)
 {
-#ifdef CHEM_HIRANO
+#if CHEMISTRY_HIRANO
   if(T < 5500.)
     return 0.;
 #endif
@@ -469,7 +459,7 @@ static double rate_12_enzo(double T)
 
 double chemistry_log_forward_rate_12(double temperature)
 {
-#ifdef ENZO_CHEM
+#if CHEMISTRY_ENZO
   return log_rate_12_enzo(temperature);
 #else
   return log_rate_12_default(temperature);
@@ -574,7 +564,7 @@ static double rate_20_enzo(double T) { return T > 617. ? 1.32e-6*pow(T, -0.76) :
 static double rate_21(double T) { return 4.64e-8/sqrt(T/eV_to_K); }
 static double rate_30_matsukoba(double T) { return 1.2e-17*pow(T, 1.2)*exp(-1.578e5/T); }
 
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
 static double rate_31_hirano(double T) { return 3.6e-12*pow(T/300.0, -0.75); }
 static double rate_32_hirano(double T) { return 2.0e-10*pow(T, 0.402)*exp(-37.1/T) - 3.31e-17*pow(T, 1.48); }
 static double rate_32_default(double T) { return 3.7e-10*pow(T, 0.28)*exp(-43.0/T); }
@@ -586,7 +576,7 @@ static double rate_37_hirano(double T) { (void)T; return 1.6e-9; }
 static double rate_37_default(double T) { (void)T; return 2.1e-9; }
 static double rate_38(double T) { return 3.2e-11*exp(-3624.0/T); }
 static double rate_39(double T) { return 1.0e-9*exp(-464.0/T); }
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
 static double rate_36(double T) { (void)T; return 6.4e-10; }
 static double rate_40(double T)
 {
@@ -598,7 +588,7 @@ static double rate_40(double T)
 }
 static double rate_42(double T) { return 7.2e-8/sqrt(T); }
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
 static double rate_43(double T) { return 3.0e-16*pow(T/300.0, 0.95)*exp(-T/9320.0); }
 static double rate_44(double T) { return 5.7e-8*pow(T/300.0, -0.5); }
 static double rate_45(double T) { return 4.6e-8*pow(T/300.0, -0.5); }
@@ -614,7 +604,7 @@ static double rate_56(double T) { return 6.5e-7/sqrt(T)*exp(-52000.0/T)*(1.0 - e
 static double rate_57(double T) { return (4.5e-29/T)/40.0; }
 static double rate_58(double T) { return 5.0e-8/sqrt(T)*exp(-52000.0/T)*(1.0 - exp(-6000.0/T)); }
 
-#ifdef CASE_B
+#if CHEMISTRY_CASE_B
 #define FORWARD_RATE_2 rate_2_case_b
 #define FORWARD_RATE_4 rate_4_case_b
 #define FORWARD_RATE_6 rate_6_case_b
@@ -624,13 +614,13 @@ static double rate_58(double T) { return 5.0e-8/sqrt(T)*exp(-52000.0/T)*(1.0 - e
 #define FORWARD_RATE_6 rate_6_case_a
 #endif
 
-#ifdef ENZO_CHEM
+#if CHEMISTRY_ENZO
 #define FORWARD_RATE_7 rate_7_enzo
 #define FORWARD_RATE_8 rate_8_enzo
-#elif defined(O05_CHEM)
+#elif CHEMISTRY_O05
 #define FORWARD_RATE_7 rate_7_gp98
 #define FORWARD_RATE_8 rate_8_gp98
-#elif defined(CONTINUUM_COOLING_MATSUKOBA)
+#elif CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
 #define FORWARD_RATE_7 rate_7_matsukoba
 #define FORWARD_RATE_8 rate_8_matsukoba
 #else
@@ -638,7 +628,7 @@ static double rate_58(double T) { return 5.0e-8/sqrt(T)*exp(-52000.0/T)*(1.0 - e
 #define FORWARD_RATE_8 rate_8_gp98
 #endif
 
-#ifdef ENZO_CHEM
+#if CHEMISTRY_ENZO
 #define FORWARD_RATE_11 rate_11_enzo
 #define FORWARD_RATE_12 rate_12_enzo
 #define FORWARD_RATE_14 rate_zero
@@ -652,27 +642,27 @@ static double rate_58(double T) { return 5.0e-8/sqrt(T)*exp(-52000.0/T)*(1.0 - e
 #define FORWARD_RATE_20 rate_20_default
 #endif
 
-#ifdef ENZO_CHEM
+#if CHEMISTRY_ENZO
 #define FORWARD_RATE_13 rate_13_enzo
-#elif defined(O05_CHEM)
+#elif CHEMISTRY_O05
 #define FORWARD_RATE_13 rate_13_default
-#elif defined(CONTINUUM_COOLING_MATSUKOBA)
+#elif CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
 #define FORWARD_RATE_13 rate_13_matsukoba
 #else
 #define FORWARD_RATE_13 rate_13_default
 #endif
 
-#ifdef ENZO_CHEM
+#if CHEMISTRY_ENZO
 #define FORWARD_RATE_18 rate_18_enzo
-#elif defined(CHEM_HIRANO)
+#elif CHEMISTRY_HIRANO
 #define FORWARD_RATE_18 rate_18_hirano
-#elif defined(CONTINUUM_COOLING_MATSUKOBA)
+#elif CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
 #define FORWARD_RATE_18 rate_18_matsukoba
 #else
 #define FORWARD_RATE_18 rate_18_default
 #endif
 
-#if !defined(ENZO_CHEM) && !defined(CHEM_HIRANO) && defined(CONTINUUM_COOLING_MATSUKOBA)
+#if !CHEMISTRY_ENZO && !CHEMISTRY_HIRANO && CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
 #define FORWARD_RATE_16 rate_zero
 #define FORWARD_RATE_17 rate_zero
 #else
@@ -680,17 +670,17 @@ static double rate_58(double T) { return 5.0e-8/sqrt(T)*exp(-52000.0/T)*(1.0 - e
 #define FORWARD_RATE_17 rate_17_default
 #endif
 
-#ifdef O05_CHEM
+#if CHEMISTRY_O05
 #define FORWARD_RATE_30 rate_zero
-#elif defined(CONTINUUM_COOLING_MATSUKOBA)
+#elif CHEMISTRY_CONTINUUM_COOLING_MATSUKOBA
 #define FORWARD_RATE_30 rate_30_matsukoba
 #else
 #define FORWARD_RATE_30 rate_zero
 #endif
 
-#if defined(TBR_FLOW07)
+#if CHEMISTRY_THREE_BODY_FLOW07
 #define FORWARD_RATE_55 rate_55_flower07
-#elif defined(TBR_ABEL02)
+#elif CHEMISTRY_THREE_BODY_ABEL02
 #define FORWARD_RATE_55 rate_55_abel02
 #else
 #define FORWARD_RATE_55 rate_55_forrey13
@@ -701,7 +691,7 @@ static constexpr auto forward_rates = [] {
 
   table[1] = rate_1;
   table[2] = FORWARD_RATE_2;
-#if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
+#if defined(CHEMISTRY_SPECIES_HELIUM) || CHEMISTRY_HELIUM_EQ_COOLING
   table[3] = rate_3;
   table[4] = FORWARD_RATE_4;
   table[5] = rate_5;
@@ -709,30 +699,30 @@ static constexpr auto forward_rates = [] {
 #endif
   table[7] = FORWARD_RATE_7;
   table[8] = FORWARD_RATE_8;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   table[9] = rate_9;
   table[10] = rate_10;
 #endif
   table[11] = FORWARD_RATE_11;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   table[12] = FORWARD_RATE_12;
 #endif
   table[13] = FORWARD_RATE_13;
-#if defined(HELIUM) || defined(HELIUM_EQ_COOLING)
+#if defined(CHEMISTRY_SPECIES_HELIUM) || CHEMISTRY_HELIUM_EQ_COOLING
   table[14] = FORWARD_RATE_14;
   table[15] = FORWARD_RATE_15;
 #endif
   table[16] = FORWARD_RATE_16;
   table[17] = FORWARD_RATE_17;
   table[18] = FORWARD_RATE_18;
-#ifdef H2_PLUS
+#ifdef CHEMISTRY_SPECIES_H2_PLUS
   table[19] = rate_19;
   table[20] = FORWARD_RATE_20;
   table[21] = rate_21;
 #endif
   table[30] = FORWARD_RATE_30;
-#ifdef HD
-#ifdef CHEM_HIRANO
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
+#if CHEMISTRY_HIRANO
   table[31] = rate_31_hirano;
   table[32] = rate_32_hirano;
   table[33] = rate_33_hirano;
@@ -748,13 +738,13 @@ static constexpr auto forward_rates = [] {
   table[35] = rate_35;
   table[38] = rate_38;
   table[39] = rate_39;
-#ifdef HD_PLUS
+#ifdef CHEMISTRY_SPECIES_HD_PLUS
   table[36] = rate_36;
   table[40] = rate_40;
   table[41] = rate_40;
   table[42] = rate_42;
 #endif
-#ifdef DMINUS
+#ifdef CHEMISTRY_SPECIES_D_MINUS
   table[43] = rate_43;
   table[44] = rate_44;
   table[45] = rate_45;
@@ -767,8 +757,8 @@ static constexpr auto forward_rates = [] {
   table[56] = rate_56;
   table[57] = rate_57;
   table[58] = rate_58;
-#ifdef CARBON_OXYGEN_CHEMISTRY
-#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION
   table[101] = rate_metal_ctr_3;
   table[102] = rate_metal_cti_3;
 #else
@@ -800,7 +790,7 @@ static constexpr auto forward_rates = [] {
   table[125] = rate_Z25;
   table[126] = rate_Z26;
   table[127] = rate_Z27;
-#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION
   table[128] = rate_metal_rr_0;
 #else
   table[128] = rate_Z28;
@@ -813,7 +803,7 @@ static constexpr auto forward_rates = [] {
   table[134] = rate_Z34;
   table[135] = rate_Z35;
   table[140] = rate_Z40;
-#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION
   table[141] = rate_metal_ci_0;
   table[142] = rate_metal_ci_1;
   table[143] = rate_metal_ci_2;

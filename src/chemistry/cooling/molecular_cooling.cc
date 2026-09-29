@@ -11,7 +11,7 @@
 #include "chemistry_tables.h"
 #include "molecular_cooling.h"
 
-#ifdef MOLECULAR_LINE_COOLING
+#if CHEMISTRY_MOLECULAR_LINE_COOLING
 
 #define MOLECULAR_COOLING_MAX_T 11
 #define MOLECULAR_COOLING_MAX_COLUMN 11

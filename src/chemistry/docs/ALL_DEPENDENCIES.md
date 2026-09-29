@@ -36,7 +36,7 @@ singleton.
 
 Compile-time features are not represented as runtime switches in
 `ChemRunContext`.  For example, `fixed_temperature` exists only under
-`FIX_TEMPERATURE`; HD-only fields remain guarded by `HD`.  The context carries
+`CHEMISTRY_FIXED_TEMPERATURE`; HD-only fields remain guarded by `HD`.  The context carries
 values required by the selected build, not features excluded from that build.
 The fixed H/He/D reference composition is similarly not a run input: it defines
 the normalization of `Abund[]` and is exposed as immutable chemistry ABI

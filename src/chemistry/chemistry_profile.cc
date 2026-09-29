@@ -22,28 +22,33 @@ typedef struct {
 } ResidualTrace;
 
 #define TRACE_COUNT 96
-static double profile_seconds[CHEM_PROFILE_COUNT];
-static unsigned long profile_calls[CHEM_PROFILE_COUNT];
-static ResidualTrace traces[TRACE_COUNT];
-static unsigned long trace_next;
-static int last_failure;
-static unsigned long equilibrium_initializations;
-static unsigned long limited_equilibrium_initializations;
-static double minimum_equilibrium_initialization_fraction = 1.0;
-static unsigned long equilibrium_electron_ratio_gt_2;
-static unsigned long equilibrium_electron_ratio_gt_10;
-static unsigned long equilibrium_electron_ratio_gt_1e3;
-static double maximum_equilibrium_electron_ratio = 1.0;
-static unsigned long newton_solve_histogram[6];
-static unsigned long newton_solves;
-static unsigned long newton_solves_with_reset;
-static unsigned long newton_solves_with_clipping;
-static unsigned long newton_reset_count;
-static unsigned long newton_clipped_steps;
-static unsigned long newton_max_iterations;
-static unsigned long clipped_species_count[N_SP];
-static unsigned long newton_limiter_count[N_SP];
-static unsigned long high_density_newton_limiter_count[N_SP];
+namespace {
+struct ProfileState {
+  double profile_seconds[CHEM_PROFILE_COUNT]{};
+  unsigned long profile_calls[CHEM_PROFILE_COUNT]{};
+  ResidualTrace traces[TRACE_COUNT]{};
+  unsigned long trace_next{};
+  int last_failure{};
+  unsigned long equilibrium_initializations{};
+  unsigned long limited_equilibrium_initializations{};
+  double minimum_equilibrium_initialization_fraction = 1.0;
+  unsigned long equilibrium_electron_ratio_gt_2{};
+  unsigned long equilibrium_electron_ratio_gt_10{};
+  unsigned long equilibrium_electron_ratio_gt_1e3{};
+  double maximum_equilibrium_electron_ratio = 1.0;
+  unsigned long newton_solve_histogram[6]{};
+  unsigned long newton_solves{};
+  unsigned long newton_solves_with_reset{};
+  unsigned long newton_solves_with_clipping{};
+  unsigned long newton_reset_count{};
+  unsigned long newton_clipped_steps{};
+  unsigned long newton_max_iterations{};
+  unsigned long clipped_species_count[N_SP]{};
+  unsigned long newton_limiter_count[N_SP]{};
+  unsigned long high_density_newton_limiter_count[N_SP]{};
+};
+thread_local ProfileState profile;
+} // namespace
 
 double profile_start(void)
 {
@@ -54,39 +59,39 @@ double profile_start(void)
 
 void profile_end(ChemistryProfileSection section, double started_at)
 {
-  profile_seconds[section] += profile_start() - started_at;
-  profile_calls[section]++;
+  profile.profile_seconds[section] += profile_start() - started_at;
+  profile.profile_calls[section]++;
 }
 
 void chemistry_profile_set_failure(int reason)
 {
-  last_failure = reason;
+  profile.last_failure = reason;
 }
 
 int chemistry_profile_last_failure(void)
 {
-  return last_failure;
+  return profile.last_failure;
 }
 
 void chemistry_profile_record_equilibrium_initialization(double fraction,
                                                          double electron_before,
                                                          double electron_after)
 {
-  equilibrium_initializations++;
+  profile.equilibrium_initializations++;
   if(fraction < 1.0) {
-    limited_equilibrium_initializations++;
-    if(fraction < minimum_equilibrium_initialization_fraction)
-      minimum_equilibrium_initialization_fraction = fraction;
+    profile.limited_equilibrium_initializations++;
+    if(fraction < profile.minimum_equilibrium_initialization_fraction)
+      profile.minimum_equilibrium_initialization_fraction = fraction;
   }
   double ratio = electron_after / dmax(electron_before, 1.e-300);
   if(ratio > 2.0)
-    equilibrium_electron_ratio_gt_2++;
+    profile.equilibrium_electron_ratio_gt_2++;
   if(ratio > 10.0)
-    equilibrium_electron_ratio_gt_10++;
+    profile.equilibrium_electron_ratio_gt_10++;
   if(ratio > 1.e3)
-    equilibrium_electron_ratio_gt_1e3++;
-  if(ratio > maximum_equilibrium_electron_ratio)
-    maximum_equilibrium_electron_ratio = ratio;
+    profile.equilibrium_electron_ratio_gt_1e3++;
+  if(ratio > profile.maximum_equilibrium_electron_ratio)
+    profile.maximum_equilibrium_electron_ratio = ratio;
 }
 
 void chemistry_profile_record_newton_solve(int iterations, int reset_count,
@@ -96,31 +101,31 @@ void chemistry_profile_record_newton_solve(int iterations, int reset_count,
   int bucket = 0;
   while(bucket < 5 && iterations > boundaries[bucket])
     bucket++;
-  newton_solve_histogram[bucket]++;
-  newton_solves++;
+  profile.newton_solve_histogram[bucket]++;
+  profile.newton_solves++;
   if(reset_count > 0)
-    newton_solves_with_reset++;
+    profile.newton_solves_with_reset++;
   if(clipped_steps > 0)
-    newton_solves_with_clipping++;
-  newton_reset_count += (unsigned long)reset_count;
-  newton_clipped_steps += (unsigned long)clipped_steps;
-  if((unsigned long)iterations > newton_max_iterations)
-    newton_max_iterations = (unsigned long)iterations;
+    profile.newton_solves_with_clipping++;
+  profile.newton_reset_count += (unsigned long)reset_count;
+  profile.newton_clipped_steps += (unsigned long)clipped_steps;
+  if((unsigned long)iterations > profile.newton_max_iterations)
+    profile.newton_max_iterations = (unsigned long)iterations;
 }
 
 void chemistry_profile_record_clipped_species(int species)
 {
   if(species >= 0 && species < N_SP)
-    clipped_species_count[species]++;
+    profile.clipped_species_count[species]++;
 }
 
 void chemistry_profile_record_newton_limiter(int species, double nH)
 {
   if(species < 0 || species >= N_SP)
     return;
-  newton_limiter_count[species]++;
+  profile.newton_limiter_count[species]++;
   if(nH >= 1.e12)
-    high_density_newton_limiter_count[species]++;
+    profile.high_density_newton_limiter_count[species]++;
 }
 
 void chemistry_profile_record_residual(const ChemEnvironment *environment, const ChemState *state,
@@ -128,7 +133,7 @@ void chemistry_profile_record_residual(const ChemEnvironment *environment, const
                                        double energy_old, double energy_new, double residual,
                                        int chemistry_status)
 {
-  ResidualTrace *trace = &traces[trace_next++ % TRACE_COUNT];
+  ResidualTrace *trace = &profile.traces[profile.trace_next++ % TRACE_COUNT];
   memset(trace, 0, sizeof(*trace));
   trace->temperature = temperature;
   trace->dt = dt;
@@ -143,7 +148,7 @@ void chemistry_profile_record_residual(const ChemEnvironment *environment, const
   trace->chem_Hion = work->diagnostics.edot_ciHI;
   trace->chem_Hminus = work->diagnostics.edot_HMform;
   trace->rad_H2 = work->diagnostics.edot_H2;
-#ifdef HD
+#ifdef CHEMISTRY_SPECIES_DEUTERIUM
   trace->rad_HD = work->diagnostics.edot_HD;
 #endif
   trace->rad_HI = work->diagnostics.edot_ceHI;
@@ -152,19 +157,19 @@ void chemistry_profile_record_residual(const ChemEnvironment *environment, const
   trace->rad_CII = work->diagnostics.edot_CII;
   trace->rad_OI = work->diagnostics.edot_OI;
 #endif
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   trace->rad_CO = work->diagnostics.edot_CO;
   trace->rad_OH = work->diagnostics.edot_OH;
   trace->rad_H2O = work->diagnostics.edot_H2O;
 #endif
-#ifdef DUST_COOLING
+#if CHEMISTRY_DUST_COOLING
   trace->rad_dust = work->diagnostics.edot_dust;
 #endif
   trace->rad_continuum = work->diagnostics.edot_cont;
   trace->rad_other = trace->radiative - trace->rad_H2 - trace->rad_HD - trace->rad_HI -
                      trace->rad_CI - trace->rad_CII - trace->rad_OI - trace->rad_CO -
                      trace->rad_OH - trace->rad_H2O - trace->rad_dust - trace->rad_continuum;
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   trace->CI = state->abund[sCI]; trace->CII = state->abund[sCII];
   trace->CO = state->abund[sCO]; trace->CO2 = state->abund[sCO2];
   trace->OI = state->abund[sOI]; trace->OH = state->abund[sOH];
@@ -179,12 +184,12 @@ void chemistry_profile_record_residual(const ChemEnvironment *environment, const
 
 void chemistry_profile_report_energy_warning(void)
 {
-  unsigned long count = trace_next < TRACE_COUNT ? trace_next : TRACE_COUNT;
-  unsigned long first = trace_next - count;
+  unsigned long count = profile.trace_next < TRACE_COUNT ? profile.trace_next : TRACE_COUNT;
+  unsigned long first = profile.trace_next - count;
   fprintf(stderr, "PROFILE_RESIDUAL_BEGIN count=%lu\n", count);
   fprintf(stderr, "# T status g eold enew chem H2chem Hionchem HMchem rad H2 HD HI CI CII OI CO OH H2O dust cont other n Z dt\n");
-  for(unsigned long index = first; index < trace_next; index++) {
-    ResidualTrace *t = &traces[index % TRACE_COUNT];
+  for(unsigned long index = first; index < profile.trace_next; index++) {
+    ResidualTrace *t = &profile.traces[index % TRACE_COUNT];
     fprintf(stderr, "RES %.17g %d %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g %.17g\n",
             t->temperature, t->chemistry_status, t->residual, t->energy_old, t->energy_new,
             t->chemical, t->chem_H2, t->chem_Hion, t->chem_Hminus, t->radiative,
@@ -208,43 +213,43 @@ void chemistry_profile_report(void)
     "Newton linear solve", "Newton step", "chemical cooling", "radiative cooling",
     "molecular cooling", "dust temperature"
   };
-  double total = profile_seconds[CHEM_PROFILE_TOTAL];
+  double total = profile.profile_seconds[CHEM_PROFILE_TOTAL];
   fprintf(stderr, "PROFILE_TIMING_BEGIN\n");
   for(int section = 0; section < CHEM_PROFILE_COUNT; section++)
     fprintf(stderr, "PROFILE_TIME %-22s %.9g s %8.3f %% calls=%lu\n", names[section],
-            profile_seconds[section], total > 0.0 ? 100.0 * profile_seconds[section] / total : 0.0,
-            profile_calls[section]);
+            profile.profile_seconds[section], total > 0.0 ? 100.0 * profile.profile_seconds[section] / total : 0.0,
+            profile.profile_calls[section]);
   fprintf(stderr,
           "PROFILE_EQUILIBRIUM_INITIALIZATION calls=%lu limited=%lu min_fraction=%.17g\n",
-          equilibrium_initializations, limited_equilibrium_initializations,
-          minimum_equilibrium_initialization_fraction);
+          profile.equilibrium_initializations, profile.limited_equilibrium_initializations,
+          profile.minimum_equilibrium_initialization_fraction);
   fprintf(stderr,
           "PROFILE_EQUILIBRIUM_ELECTRON ratio_gt_2=%lu ratio_gt_10=%lu ratio_gt_1e3=%lu max_ratio=%.17g\n",
-          equilibrium_electron_ratio_gt_2, equilibrium_electron_ratio_gt_10,
-          equilibrium_electron_ratio_gt_1e3,
-          maximum_equilibrium_electron_ratio);
+          profile.equilibrium_electron_ratio_gt_2, profile.equilibrium_electron_ratio_gt_10,
+          profile.equilibrium_electron_ratio_gt_1e3,
+          profile.maximum_equilibrium_electron_ratio);
   fprintf(stderr,
           "PROFILE_NEWTON_SOLVES calls=%lu with_reset=%lu resets=%lu with_clipping=%lu clipped_steps=%lu max_iterations=%lu\n",
-          newton_solves, newton_solves_with_reset, newton_reset_count,
-          newton_solves_with_clipping, newton_clipped_steps,
-          newton_max_iterations);
+          profile.newton_solves, profile.newton_solves_with_reset, profile.newton_reset_count,
+          profile.newton_solves_with_clipping, profile.newton_clipped_steps,
+          profile.newton_max_iterations);
   fprintf(stderr,
           "PROFILE_NEWTON_HIST le2=%lu le4=%lu le8=%lu le16=%lu le69=%lu ge70=%lu\n",
-          newton_solve_histogram[0], newton_solve_histogram[1],
-          newton_solve_histogram[2], newton_solve_histogram[3],
-          newton_solve_histogram[4], newton_solve_histogram[5]);
+          profile.newton_solve_histogram[0], profile.newton_solve_histogram[1],
+          profile.newton_solve_histogram[2], profile.newton_solve_histogram[3],
+          profile.newton_solve_histogram[4], profile.newton_solve_histogram[5]);
   for(int species = 0; species < N_SP; species++)
-    if(clipped_species_count[species] > 0)
+    if(profile.clipped_species_count[species] > 0)
       fprintf(stderr, "PROFILE_CLIPPED_SPECIES name=%s count=%lu\n",
               chemistry_species_definition(static_cast<SPECIES>(species))->name,
-              clipped_species_count[species]);
+              profile.clipped_species_count[species]);
   for(int species = 0; species < N_SP; species++)
-    if(newton_limiter_count[species] > 0)
+    if(profile.newton_limiter_count[species] > 0)
       fprintf(stderr,
               "PROFILE_NEWTON_LIMITER name=%s count=%lu high_density_count=%lu\n",
               chemistry_species_definition(static_cast<SPECIES>(species))->name,
-              newton_limiter_count[species],
-              high_density_newton_limiter_count[species]);
+              profile.newton_limiter_count[species],
+              profile.high_density_newton_limiter_count[species]);
   fprintf(stderr, "PROFILE_TIMING_END\n");
 }
 

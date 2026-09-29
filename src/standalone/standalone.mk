@@ -4,4 +4,4 @@ include src/chemistry/mk/core.mk
 # core source list above must not contain host adapters.
 CHEMISTRY_STANDALONE_ADAPTER_SOURCES += \
   src/standalone/chemistry_standalone_adapter.cc \
-  src/standalone/chemistry_standalone_background.c
+  src/standalone/chemistry_standalone_background.cc

@@ -3,7 +3,7 @@ set -eu
 
 cc_command=${CC:-cc}
 include_flags="-Iinclude -I.  -Icooling   -Ireaction_network -Isolver -Ithermodynamics -Itables"
-feature_flags="-DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY -DHD -DMETALLICITY=-4."
+feature_flags="-DCHEMISTRY_SPECIES_CARBON_OXYGEN -DCHEMISTRY_SPECIES_DEUTERIUM -DMETALLICITY=-4."
 
 modules="
 chemistry_driver.cc

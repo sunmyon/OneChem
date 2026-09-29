@@ -329,11 +329,11 @@ double linear(double *xa,double *ya,int m,double x){
 
 double partition_H2(double temperature)
 {
-#ifdef PARTITION_H2_EBM1989
+#if CHEMISTRY_H2_PARTITION_EBM1989
   return partition_H2_EBM1989(temperature);
-#elif defined(PARTITION_H2_I87)
+#elif CHEMISTRY_H2_PARTITION_I87
   return partition_H2_Irwin1987(temperature);
-#elif defined(PARTITION_H2_R85)
+#elif CHEMISTRY_H2_PARTITION_R85
   return partition_H2_Rossi1985(temperature);
 #else
   return partition_H2_EBM1989_fitted_by_Matsukoba(temperature);

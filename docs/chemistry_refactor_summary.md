@@ -1,5 +1,9 @@
 # chemistry_new 整理・拡張準備のまとめ
 
+> Historical migration notes. For current options see
+> [/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md](/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md).
+> The current portable explicit-update default is SIMULTANEOUS.
+
 ## 目的
 
 この作業の目的は、現在の H/He/D chemistry の計算結果と速度を保ちながら、C/O chemistry を追加できる形へ `chemistry_new` を整理することである。
@@ -1151,7 +1155,7 @@ clean buildでの36条件結果は次の通りだった。
 
 OFFの全出力ファイルは16-warning基準`/tmp/1zone_energy_continuation_off_final2`と完全一致した。ONの全出力ファイルも2-warning基準`/tmp/1zone_on_final_output`と完全一致した。したがって今回の変更は進化解を変えず、回復済みの内部trialと実際の最終failureを報告上で区別するものである。
 
-診断保持の確認として、一時的に`MAX_ITER_CHEM=1`で保存stepを単独実行したところ、`iteration is not converged`、`CHEM_FAILURE_INPUT_BEGIN`以下の全入力、species別failure情報が従来どおり出力され、非収束statusになった。確認後のproduction binaryは既定1000反復、`INTERMEDIATE_EQUILIBRIUM=1`、`CARBON_OXYGEN_CONSERVATION=1`でbuildし直した。
+診断保持の確認として、一時的に`CHEMISTRY_MAX_ITERATIONS=1`で保存stepを単独実行したところ、`iteration is not converged`、`CHEM_FAILURE_INPUT_BEGIN`以下の全入力、species別failure情報が従来どおり出力され、非収束statusになった。確認後のproduction binaryは既定1000反復、`INTERMEDIATE_EQUILIBRIUM=1`、`CARBON_OXYGEN_CONSERVATION=1`でbuildし直した。
 
 ### full implicit平衡初期化におけるNewton LU再利用
 

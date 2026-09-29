@@ -26,13 +26,13 @@ FixedRateProblem::FixedRateProblem(
       hydrogen_density_(XH * nuclei_density_) {
   environment_.run = &run_;
   environment_.global = &global_;
-  valid_ = chemistry_prepare_implicit_newton_problem(
-      &environment_, &initial_, &rates_, hydrogen_density_, &reference_, &seed_);
+  valid_ = seed_.prepare(
+      &environment_, &initial_, &rates_, hydrogen_density_, reference_);
 }
 
 void FixedRateProblem::evaluate_rhs(const double *abundance, double *rhs,
                                     double *production, double *loss) const {
-  chemistry_network_rhs_gross(rates_.network, CHEM_REACTION_IMPLICIT,
+  (rates_.network)->rhs_gross( CHEM_REACTION_IMPLICIT,
                               hydrogen_density_, abundance, rates_.forward,
                               rates_.inverse, rhs, production, loss);
 }
@@ -48,9 +48,8 @@ double FixedRateProblem::evaluate_residual(
 bool FixedRateProblem::build_jacobian(
     const ChemNewtonSystem &system, const double *rhs, int rebuild,
     int &force_numerical, double jacobian[N_SP][N_SP]) const {
-  return chemistry_build_newton_jacobian(
-      hydrogen_density_, system.abundance, rhs, &rates_, &system.conservation,
-      system.solver_species, system.solver_species_count, rebuild,
+  return system.build_jacobian(
+      hydrogen_density_, rhs, &rates_, rebuild,
       &force_numerical, jacobian);
 }
 
@@ -78,19 +77,7 @@ typedef enum {
   NEWTON_STEP_RECOVER_BASIN
 } NewtonStepOutcome;
 
-/* Limit on the certified Newton residual (chemistry_newton_evaluate_residual,
- * where 1 corresponds to 1e-10 of the gross reaction activity) above which an
- * iterate is rejected as grossly inconsistent.  Convergence is decided by the
- * Newton step criterion together with the clipping hold and
- * NEWTON_REQUIRED_CONFIRMATIONS; the residual is only a sanity veto.  A tight
- * (~1) limit can never be met by a stiff, ill-conditioned species once the
- * Newton correction is smaller than the representable change of that species
- * (one ulp of the abundance moves the residual by more than the tolerance), so
- * an already-converged solution would be rejected and restarted.  Overridable
- * at compile time for testing. */
-#ifndef CHEM_NEWTON_RESIDUAL_GATE_LIMIT
-#define CHEM_NEWTON_RESIDUAL_GATE_LIMIT 1.0e3
-#endif
+
 
 enum {
   NEWTON_REQUIRED_CONFIRMATIONS = 2,
@@ -171,8 +158,8 @@ static int chemistry_step_has_relevant_clip(
         dmax(fabs(abundance_before_step), fabs(abundance[species])) >=
             convergence_abundance_threshold;
 
-#if defined(CHEM_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION) &&                  \
-    !defined(CHEM_EQUILIBRIUM_SPECIES_CONVERGENCE)
+#if defined(CHEMISTRY_FULL_IMPLICIT_EQUILIBRIUM_INITIALIZATION) &&                  \
+    !defined(CHEMISTRY_EQUILIBRIUM_SPECIES_CONVERGENCE)
     if(chemistry_is_full_implicit_initialized_intermediate(static_cast<SPECIES>(species)))
       relevant_clip = 0;
 #endif
@@ -321,7 +308,7 @@ NewtonStepOutcome NewtonSession::finish_step(NewtonIterationData *iteration_data
   if(newton->boundary_streak >= NEWTON_BOUNDARY_STEPS_BEFORE_RESELECTION)
     newton->chart_reselection_requested = 1;
 
-  if(iteration_data->residual_error > CHEM_NEWTON_RESIDUAL_GATE_LIMIT ||
+  if(iteration_data->residual_error > CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT ||
       relevant_step_was_clipped){
     newton->convergence_count = 0;
   }else if(newton->clipping_hold > 0){
@@ -415,8 +402,8 @@ int NewtonSession::run(ChemState *state, ChemWorkspace *work,
   work->rates = problem_.rates();
   work->thermodynamics.temperature = T_gas;
   work->evaluation.err_chem = 1.0;
-  if(!problem_.valid() || !chemistry_initialize_implicit_newton_guess(
-      nH, dt, options_.initial_guess, &problem_.rates(), &system)){
+  if(!problem_.valid() || !system.initialize(
+      nH, dt, options_.initial_guess, &problem_.rates())){
     *state = state_old;
     return 0;
   }
@@ -487,7 +474,7 @@ restart_newton_basin:
     /* Reduced Jacobian and linear solve. */
     int rebuild_newton_matrix = 1;
 
-#ifdef CHEM_NEWTON_LU_REUSE
+#ifdef CHEMISTRY_NEWTON_LU_REUSE
     /* Reuse is limited to the mandatory second convergence confirmation after
      * an already tiny correction. This guard preserves the thermochemical
      * branch selected by a freshly rebuilt Jacobian. */
@@ -527,7 +514,7 @@ restart_newton_basin:
 
     double linear_solve_timer = profile_start();
     int linear_solver_status = 1;
-#ifdef CHEM_NEWTON_LU_REUSE
+#ifdef CHEMISTRY_NEWTON_LU_REUSE
     if(rebuild_newton_matrix){
       linear_solver_status = numerics::LapackDense::factorize(
           system.solver_species_count, newton_matrix, lapack_pivots);
@@ -636,16 +623,13 @@ restart_newton_basin:
     return 0;
   }
 
-  chemistry_update_implicit_timescale(work, dt, abundance, initial_abundance,
-                                      conservation);
+  system.update_timescale(work, dt);
 
   /* Phase 4: export the converged state and evaluate chemical cooling. */
   work->evaluation.err_chem = 0.0;
 
-  return chemistry_export_implicit_solution(
-      environment, step, state, work, &state_old, dt, nH, T_gas,
-      initialization_floor, cooling_initial_abundance, abundance,
-      conservation);
+  return system.export_solution(
+      environment, state, work, &state_old, dt, nH);
 }
 
 ChemistryStatus FixedRateSolver::solve(const FixedRateProblem &problem,

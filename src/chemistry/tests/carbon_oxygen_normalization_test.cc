@@ -70,7 +70,7 @@ int main(void)
     const ChemSpeciesDefinition *sp = chemistry_species_definition(static_cast<SPECIES>(j));
     if(sp->nuclei[CHEM_ELEMENT_C] || sp->nuclei[CHEM_ELEMENT_O]) assert(a[j] == 0.0);
   }
-#ifdef CARBON_OXYGEN_CHEMISTRY
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
   memcpy(before, a, sizeof(a));
   assert(chemistry_normalize_abundances(a, TGCHEM_NUM_ABUNDANCES, 1.0) == CHEMISTRY_STATUS_INCOMPATIBLE_STATE);
   assert(memcmp(a, before, sizeof(a)) == 0);
@@ -81,7 +81,7 @@ int main(void)
   assert(memcmp(a, before, sizeof(a)) == 0);
   a[sCO2] = 0;
   a[sOI] = 0;
-#ifdef CARBON_OXYGEN_HIGH_IONIZATION
+#ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN_HIGH_IONIZATION
   /* All C/O in high ions: the former hard-coded lists failed this state. */
   a[sCIII] = 1.e-4;
   a[sOIII] = 1.e-4;

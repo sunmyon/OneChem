@@ -4,7 +4,7 @@ CHEMISTRY_ROOT = chemistry
 include $(SRC_DIR)/chemistry/mk/core.mk
 
 CHEMISTRY_AREPO_ADAPTER_SOURCES += \
-  radiation/radiation_rates.c \
+  radiation/radiation_rates.cc \
   chemistry/adapters/arepo/chem_balance.cc
 
 CHEMISTRY_AREPO_INCLUDE_FLAGS += \
@@ -52,4 +52,8 @@ CHEMISTRY_CXX ?= $(if $(strip $(CPPC)),$(CPPC),mpicxx)
 CHEMISTRY_PORTABLE_CPP_OBJECTS := $(addprefix $(BUILD_DIR)/,$(patsubst %.cc,%.o,$(filter %.cc,$(CHEMISTRY_PORTABLE_CORE_SOURCES))))
 # A pattern rule must not replace the host Makefile's default goal.
 $(BUILD_DIR)/$(CHEMISTRY_ROOT)/%.o: $(SRC_DIR)/$(CHEMISTRY_ROOT)/%.cc
+	$(CHEMISTRY_CXX) $(filter-out -std=%,$(CFLAGS)) -std=c++17 -c $< -o $@
+
+# Radiation is also C++17; the older host still calls its C-linkage boundary.
+$(BUILD_DIR)/radiation/%.o: $(SRC_DIR)/radiation/%.cc
 	$(CHEMISTRY_CXX) $(filter-out -std=%,$(CFLAGS)) -std=c++17 -c $< -o $@
