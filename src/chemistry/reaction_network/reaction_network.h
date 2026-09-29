@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include "chemistry_core.h"
 
+
 typedef struct ChemReactionNetwork ChemReactionNetwork;
 
 typedef enum {
@@ -32,9 +33,8 @@ typedef struct {
   ChemReactionTerm terms[CHEM_MAX_REACTION_TERMS];
 } ChemReaction;
 
-int chemistry_network_create(const char *table_root,
-                             ChemReactionNetwork **network);
-void chemistry_network_destroy(ChemReactionNetwork *network);
+
+
 size_t chemistry_network_reaction_count(const ChemReactionNetwork *network);
 size_t chemistry_network_species_reaction_count(
     const ChemReactionNetwork *network, enum SPECIES species,

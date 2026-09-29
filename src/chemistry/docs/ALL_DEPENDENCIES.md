@@ -1,5 +1,9 @@
 # Migration of `All` dependencies
 
+> Historical migration notes. Current C++ ownership and calling contracts are in
+> [/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md](/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md).
+> References below to the transitional C context or InitChem do not describe the current API.
+
 `All` is removed by lifetime and responsibility, not replaced with a second
 global bag.  The initial inventory from `5d30197` is grouped as follows.
 

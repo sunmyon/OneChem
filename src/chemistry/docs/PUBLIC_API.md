@@ -1,77 +1,58 @@
-# Host-independent chemistry API
+# Native C++ interface
 
-External hydrodynamics codes include only `chemistry/chemistry.h`. They do not
-include the internal solver headers or reproduce the chemistry data layout.
+Include `/Users/j/Desktop/codex/1ZONE/src/chemistry/chemistry_model.hpp` for Model,
+Driver and workspace declarations. The host and core must use matching species
+and physics compile options. The implementation requires C++17.
 
-## Ownership and call order
-
-```c
-ChemistryConfig config;
-ChemistryContext *context = NULL;
-
+```cpp
+ChemistryConfig config{};
 chemistry_config_defaults(&config);
-/* Directory that contains the chemistry tables/ subdirectory. */
-config.table_root = chemistry_table_directory;
-config.timescale_safety_factor = 0.01;
-chemistry_context_create(&config, &context);
+config.table_root = table_root; // directory containing tables/
+auto created = chemistry::Model::create(config);
+if(created.status != CHEMISTRY_STATUS_OK) return created.status;
 
-ChemistryGlobalEnvironment global = {0};
-ChemistryStepContext step;
-global.cmb_temperature = cmb_temperature_K;
+ChemistryGlobalEnvironment global{};
 global.scale_factor = scale_factor;
-chemistry_step_prepare(context, &global, &step);
+global.cmb_temperature = cmb_temperature;
+ChemistryStepContext step{};
+auto status = chemistry::Driver::prepare(global, step);
+if(status != CHEMISTRY_STATUS_OK) return status;
 
-size_t bytes = chemistry_workspace_size(context);
-/* Allocate `bytes` with normal C alignment once per concurrent caller. */
-ChemistryWorkspace *workspace = NULL;
-chemistry_workspace_init(context, storage, bytes, &workspace);
-
-ChemistryCellEnvironment cell = {0};
-cell.density_cgs = density_g_cm3;
-cell.metallicity = metallicity_in_solar_units;
-ChemistryState state = {abundances, chemistry_species_count(context),
-                        specific_thermal_energy_cgs, gamma};
-ChemistryResult result;
-ChemistryAdvanceOptions options = {
-    CHEMISTRY_MODE_DEFAULT, CHEMISTRY_SOLVER_AUTO};
-
-chemistry_advance(context, &step, workspace, &cell, duration_s, &options,
-                  &state, &result);
-
-chemistry_context_destroy(context);
+ChemWorkspace workspace{};
+ChemistryAdvanceOptions options{CHEMISTRY_MODE_DEFAULT, CHEMISTRY_SOLVER_AUTO};
+ChemistryResult result{};
+status = chemistry::Driver{}.advance(*created.model, step, workspace, cell,
+                                    duration_s, options, state, result);
 ```
 
-The context owns its loaded network and table objects and is read-only after
-creation. A step is prepared once for values shared by many cells. Each
-simultaneous chemistry call requires a separate workspace. The host owns
-abundance and workspace storage. A build with `CHEMISTRY_PROFILE` uses
-process-wide profiling counters; concurrent profiled calls require external
-synchronization.
+The host initializes cell and state before advance. State.abundances points to
+an array of TGCHEM_NUM_ABUNDANCES elements. Config.table_root is used only during
+creation. Model::Handle releases all resources on scope exit; no teardown API or
+raw workspace allocation is needed.
 
-## Data contract
+## Contracts
 
-- Density, time, specific thermal energy, rates, and heating terms use
-  CGS units stated in the public structures.
-- Abundances use `n_species / (rho / proton_mass)` and the feature-dependent
-  ordering reported by `chemistry_species_name()`.
-- `metallicity` is in solar units.
-- `J21` describes the radiation field. Chemistry consumes the final `G0` and
-  photo-rates supplied alongside it; it does not reconstruct local rates from
-  local `J21`.
-- The core computes its shielding columns from the local state; columns are not
-  host inputs in the current public API.
-- A non-OK solver return leaves `ChemistryState` unchanged. Diagnostic values
-  may still be returned in `ChemistryResult`. Invalid arguments are rejected
-  before either object is modified.
+- Density, duration, energy, heating and rates use CGS units stated in the value
+  structures. Abundances use n_species / (rho / proton_mass).
+- Species metadata is available through chemistry_species_definition; composition
+  is immutable compile-time metadata. Metallicity is in solar units.
+- A shared step supplies CMB temperature, scale factor, time and uniform radiation.
+  Cell inputs supply local conditions and final photo-rates/heating rates.
+- Chemistry computes shielding from its state. The host supplies radiation rates;
+  chemistry does not reconstruct them from local J21.
+- The host-value Driver overload validates/imports into temporary state. A solver
+  failure leaves caller abundances, energy and gamma unchanged. Diagnostics may
+  be returned even on failure. Invalid arguments are rejected before outputs change.
+- Each simultaneous call needs a separate ChemWorkspace. Model data is read-only.
+  Profiling mode uses process-wide counters and needs external synchronization.
+- All native solver entry points return ChemistryStatus with OK meaning success.
+  The internal-state Driver overload may mutate its state before a failure;
+  callers needing transactional behavior use the host-value overload.
 
-The HeI/HeII photoionization, He photoheating, and CO photodissociation fields
-are reserved extension inputs. They default to zero and are intentionally not
-connected to reactions until the host radiation model supplies them.
+The old opaque ChemistryContext/ChemistryWorkspace, InitChem/DestroyChem and C
+advance/evaluator wrappers have been removed. There is no compatibility flag.
+The C-readable value headers do not imply that core functions have a C ABI.
+Host C hooks and foreign libraries may still use C linkage at adapter boundaries.
 
-## Adapter boundary
-
-An adapter performs only host-specific work: unit conversion, cell selection,
-communication, and committing the accepted state. AREPO's `All`, `P`, `SphP`,
-time-bin, and MPI logic therefore remain in the AREPO adapter. The numerical
-chemistry, energy coupling, and subcycling are reached only through
-`chemistry_advance()`.
+HeI/HeII photo-rates/heating and CO dissociation fields remain subject to the
+compiled reaction network; supplying a field does not enable absent physics.

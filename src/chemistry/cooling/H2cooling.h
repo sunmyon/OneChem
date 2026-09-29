@@ -1,6 +1,9 @@
 #ifndef H2COOLING_H
 #define H2COOLING_H
 
+
+double H2_cooling(double nH, double temperature, double yHI, double yH2, double yHeI, double yHII, double yElectron);
+
 typedef double (*H2CoolingFunction)(double nH, double temperature, double yHI, double yH2, double yHeI, double yHII, double yElectron);
 typedef double (*HDCoolingFunction)(double nH, double temperature, double yHI, double yHD);
 typedef double (*LineEscapeFunction)(double temperature, double columnDensity);
@@ -17,5 +20,6 @@ double fesc_HD_fit(double temperature, double columnDensity);
 
 double fesc_fit(double temperature, double columnDensity);
 double fesc_unity(double temperature, double columnDensity);
+
 
 #endif

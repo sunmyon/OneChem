@@ -44,6 +44,10 @@ typedef struct RadiationBackgroundState {
   unsigned long revision;
 } RadiationBackgroundState;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int radiation_rate_context_init(RadiationRateContext *context);
 void radiation_rate_context_destroy(RadiationRateContext *context);
 
@@ -70,3 +74,7 @@ double radiation_hminus_photodetachment_cross_section(
 
 /* Temporary source-compatible entry point for the selected AREPO RayTrace. */
 double Hminus_detachment_John1988(double photon_energy_ev);
+
+#ifdef __cplusplus
+}
+#endif

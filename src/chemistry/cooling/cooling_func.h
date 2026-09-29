@@ -17,6 +17,7 @@ struct opacities {
   double f_reduce;
 };
 
+
 double calc_continuum_opacities(const ChemistryContinuumOpacityTables *tables,
                                 double temperature, double density,
                                 double length, struct opacities *opacities);
@@ -29,16 +30,15 @@ double fesc_Lya(double nH, double temperature, double y_H, double y_e,
                 double radius, double velocity, double *cooling_rate_Lya,
                 double *cooling_rate_2ph, int diagnostics_enabled);
 
-#ifdef CONTINUUM_COOLING_MATSUKOBA
 double H_criticaldensity(double nH, double temperature, double column_H, double y_H, double y_e);
-int continuum_opacity_tables_create(const char *table_root,
-                                    ChemistryContinuumOpacityTables **tables);
-void continuum_opacity_tables_destroy(ChemistryContinuumOpacityTables *tables);
-void tabulate_cooling_rate_cont_thin(void);
+
+#if defined(CONTINUUM_COOLING_MATSUKOBA) || defined(METAL_LINE_COOLING_SD93)
+
+
 #endif
 
 #ifdef METAL_LINE_COOLING_SD93
-int read_continuum_cooling_rate_table_SD93(const char *table_root);
+double get_cooling_rate_SD93(const ChemistryContinuumOpacityTables *tables, double temperature);
 #endif
 
 double OxygenI_twolevel_cooling(double nOI, double ne, double nH,
@@ -53,5 +53,7 @@ double CarbonII_twolevel_cooling(double nCII, double ne, double nH,
                                  double temperature,
                                  double radiation_temperature,
                                  int diagnostics_enabled);
+
+
 
 #endif

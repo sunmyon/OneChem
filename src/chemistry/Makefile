@@ -1,42 +1,42 @@
 CC ?= cc
+CXX ?= c++
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -pedantic
 CPPFLAGS ?=
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic
 
 PUBLIC_INCLUDE := -Iinclude
 
+
 .PHONY: api-check arepo-adapter-check arepo-adapter-compile-check arepo-background-check core-dependency-check global-state-check host-boundary-check no-lazy-init-check no-process-termination-check radiation-check check
 api-check:
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PUBLIC_INCLUDE) -fsyntax-only tests/public_api_compile.c
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PUBLIC_INCLUDE) -I. -DCHEMISTRY_SC -fsyntax-only tests/cpp_api_link.cc
 
 arepo-adapter-check:
 	sh tests/check_arepo_adapter_contract.sh
 
 arepo-adapter-compile-check:
-	$(CC) $(CPPFLAGS) $(CFLAGS) -DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY -DHD -DMETALLICITY=-4. \
-	  -Iinclude -I. -Icommon -Iadapters/arepo \
-	  -fsyntax-only tests/arepo_public_api_compile.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY -DHD -DMETALLICITY=-4. \
-	  -Iinclude -I. -Icommon -Icooling -Idriver -Iinitialization -Ireaction_network \
-	  -Isolver -Ithermodynamics -Itables -Iadapters/arepo \
-	  -fsyntax-only adapters/arepo/chemistry_arepo_adapter.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -DCHEMISTRY_SC -DHD -DLYMANWERNER \
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Iinclude -Iadapters/arepo -fsyntax-only tests/arepo_public_api_compile.c
+	mpicxx $(CPPFLAGS) -std=c++17 -DCHEMISTRY_SC -DHD -DLYMANWERNER \
 	  -DBACKGROUND_LW_RADIATION -DMETALLICITY=-4. \
-	  -Itests/arepo_host_mock -Iinclude -I. -Icommon -Iadapters/arepo -I.. \
-	  -fsyntax-only adapters/arepo/chemistry_arepo_host.c
+	  -Itests/arepo_host_mock -Iinclude -I. -Ithermodynamics -Icooling -Iadapters/arepo -I.. \
+	  -fsyntax-only adapters/arepo/chem_balance.cc
+	mpicxx $(CPPFLAGS) -std=c++17 -DCHEMISTRY_SC -DHD -DCHEM_BALANCE \
+	  -Itests/arepo_host_mock -Iinclude -I. -Ithermodynamics -Icooling -Iadapters/arepo -I.. \
+	  -fsyntax-only adapters/arepo/chem_balance.cc
 
 arepo-background-check:
-	$(CC) $(CPPFLAGS) $(CFLAGS) -DCHEMISTRY_SC -DHD -DLYMANWERNER \
-	  -DBACKGROUND_LW_RADIATION -DTYPE_B -DMETALLICITY=-4. \
-	  -Itests/arepo_host_mock -Iinclude -I. -Icommon -Iadapters/arepo -I.. \
-	  ../radiation/radiation_rates.c \
-	  adapters/arepo/chemistry_arepo_host.c \
-	  tests/arepo_background_bridge_test.c -lm \
-	  -o tests/arepo_background_bridge_test
-	./tests/arepo_background_bridge_test
-	$(RM) tests/arepo_background_bridge_test
+	@set -e; for mode in local imported; do \
+	  sources="adapters/arepo/chem_balance.cc"; options=""; \
+	  if [ "$$mode" = imported ]; then sources=""; options="-DCHEM_BALANCE"; fi; \
+	  CC=mpicc CXX=mpicxx CPPFLAGS="$(CPPFLAGS)" \
+	    CHEM_TEST_FLAGS="-DCHEMISTRY_SC -DHD -DLYMANWERNER -DBACKGROUND_LW_RADIATION -DTYPE_B -DMETALLICITY=-4. $$options -Itests/arepo_host_mock -Iinclude -I. -Ithermodynamics -Icooling -Iadapters/arepo -I.." \
+	    CHEM_TEST_LIBS="-lm" sh tests/run_mixed_core_test.sh \
+	      ../radiation/radiation_rates.c $$sources tests/arepo_background_bridge_test.cc; \
+	done
 
 core-dependency-check:
-	CC="$(CC)" sh tests/check_core_dependencies.sh
+	CC="$(CC)" CXX="$(CXX)" sh tests/check_core_dependencies.sh
 
 no-lazy-init-check:
 	sh tests/check_no_lazy_initialization.sh
@@ -58,20 +58,16 @@ radiation-check:
 .PHONY: high-ionization-option-check metal-ionization-check photoionization-check co-photodissociation-check carbon-oxygen-normalization-check
 high-ionization-option-check:
 	@set -e; for options in "" "-DCARBON_OXYGEN_HIGH_IONIZATION -DEXPECT_HIGH_IONIZATION"; do \
-	  $(CC) $(CPPFLAGS) $(CFLAGS) -DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY -DMETALLICITY=-4. $$options \
-	    -I. -Icommon species.c tests/high_ionization_option_test.c -lm -o tests/high_ionization_option_test; \
-	  ./tests/high_ionization_option_test; \
+	  CC="$(CC)" CXX="$(CXX)" CPPFLAGS="$(CPPFLAGS)" \
+	    CHEM_TEST_FLAGS="-Wall -Wextra -Werror -pedantic -DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY -DMETALLICITY=-4. $$options -I." \
+	    CHEM_TEST_LIBS="-lm" sh tests/run_mixed_core_test.sh species.cc tests/high_ionization_option_test.cc; \
 	done
-	$(RM) tests/high_ionization_option_test
 
 metal-ionization-check:
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-function -DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY \
-	  -DCARBON_OXYGEN_HIGH_IONIZATION -DRYTR_CARBON_OXYGEN_IONIZATION -DRYTR_NCO -DMETALLICITY=-4. \
-	  -I. -Icommon -Ireaction_network -Itables \
-	  species.c reaction_network/forward_rates.c reaction_network/reaction_network.c \
-	  tests/metal_ionization_network_test.c -lm -o tests/metal_ionization_network_test
-	./tests/metal_ionization_network_test
-	$(RM) tests/metal_ionization_network_test
+	CC="$(CC)" CXX="$(CXX)" CPPFLAGS="$(CPPFLAGS)" \
+	  CHEM_TEST_FLAGS="-Wall -Wextra -Wno-unused-function -DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY -DCARBON_OXYGEN_HIGH_IONIZATION -DRYTR_CARBON_OXYGEN_IONIZATION -DRYTR_NCO -DMETALLICITY=-4. -I. -Ireaction_network -Itables" \
+	  CHEM_TEST_LIBS="-lm" sh tests/run_mixed_core_test.sh \
+	  species.cc reaction_network/forward_rates.cc reaction_network/reaction_network.cc tests/metal_ionization_network_test.cc
 
 photoionization-check:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I../radiation \
@@ -90,11 +86,9 @@ co-photodissociation-check:
 carbon-oxygen-normalization-check:
 	@set -e; for options in "" "-DCARBON_OXYGEN_CHEMISTRY" \
 	  "-DCARBON_OXYGEN_CHEMISTRY -DCARBON_OXYGEN_HIGH_IONIZATION"; do \
-	  $(CC) $(CPPFLAGS) $(CFLAGS) -DCHEMISTRY_SC -DMETALLICITY -DHELIUM -DHD -DHD_PLUS -DDMINUS -DH2_PLUS $$options \
-	    -Iinclude -I. -Icommon species.c interface/chemistry_normalize.c tests/carbon_oxygen_normalization_test.c \
-	    -lm -o tests/carbon_oxygen_normalization_test; \
-	  ./tests/carbon_oxygen_normalization_test; \
+	  CC="$(CC)" CXX="$(CXX)" CPPFLAGS="$(CPPFLAGS)" \
+	    CHEM_TEST_FLAGS="-Wall -Wextra -Werror -pedantic -DCHEMISTRY_SC -DMETALLICITY -DHELIUM -DHD -DHD_PLUS -DDMINUS -DH2_PLUS $$options -Iinclude -I." \
+	    CHEM_TEST_LIBS="-lm" sh tests/run_mixed_core_test.sh species.cc tests/carbon_oxygen_normalization_test.cc; \
 	done
-	$(RM) tests/carbon_oxygen_normalization_test
 
 check: api-check arepo-adapter-check arepo-adapter-compile-check arepo-background-check core-dependency-check global-state-check host-boundary-check no-lazy-init-check no-process-termination-check radiation-check

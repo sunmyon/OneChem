@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-adapter=interface/chem_balance.c
-api_adapter=adapters/arepo/chemistry_arepo_adapter.c
+adapter=adapters/arepo/chem_balance.cc
+api_adapter=$adapter
 
 if ! grep -q 'return chemistry_temperature(abund, gamma, utherm_cgs);' "$adapter"; then
   echo "error: AREPO compute_temp no longer delegates to chemistry_temperature" >&2
@@ -14,7 +14,7 @@ if grep -n 'compute_abundances_d' "$adapter"; then
   exit 1
 fi
 
-if ! grep -q 'chemistry_arepo_advance' "$adapter"; then
+if ! grep -q 'chemistry::Driver{}[.]advance' "$adapter"; then
   echo "error: chem_balance does not call the explicit AREPO adapter" >&2
   exit 1
 fi
@@ -24,8 +24,8 @@ if grep -n 'chemistry_core_advance' "$api_adapter"; then
   exit 1
 fi
 
-if ! grep -q 'status = chemistry_advance(' "$api_adapter"; then
-  echo "error: AREPO adapter does not call chemistry_advance" >&2
+if ! grep -q 'chemistry::Driver{}[.]advance(' "$api_adapter"; then
+  echo "error: AREPO adapter does not call chemistry::Driver{}[.]advance" >&2
   exit 1
 fi
 

@@ -1,6 +1,7 @@
 #ifndef CHEMISTRY_STATUS_H
 #define CHEMISTRY_STATUS_H
 
+
 typedef enum ChemistryStatus {
   CHEMISTRY_STATUS_OK = 0,
   CHEMISTRY_STATUS_INVALID_ARGUMENT,
@@ -11,6 +12,10 @@ typedef enum ChemistryStatus {
   CHEMISTRY_STATUS_INTERNAL_ERROR
 } ChemistryStatus;
 
+
+#ifdef __cplusplus
 const char *chemistry_status_string(ChemistryStatus status);
+#endif
+
 
 #endif

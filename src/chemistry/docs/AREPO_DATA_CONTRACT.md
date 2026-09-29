@@ -48,7 +48,7 @@ safe to unify them.
 
 ## Adapter-owned operations
 
-`chem_balance.c` owns AREPO communication buffers, time-bin conversion,
+`/Users/j/Desktop/codex/1ZONE/src/chemistry/adapters/arepo/chem_balance.cc` owns AREPO communication buffers, time-bin conversion,
 physical-density conversion, abundance storage/advection, and committing the
 accepted thermal-energy difference to `SphP[i].Energy`.  None of those types or
 operations belongs in the chemistry core.

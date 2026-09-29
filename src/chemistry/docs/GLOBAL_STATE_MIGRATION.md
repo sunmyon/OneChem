@@ -1,5 +1,9 @@
 # Mutable global-state migration
 
+> Historical migration notes. Current C++ ownership and calling contracts are in
+> [/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md](/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md).
+> References below to the transitional C context or InitChem do not describe the current API.
+
 The target is zero mutable global state in chemistry core.  Immutable physical
 constants, compile-time coefficient arrays, and stateless function tables may
 remain module-local `static const`; they have no initialization lifetime or

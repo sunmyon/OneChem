@@ -6,7 +6,7 @@
  * host has declared it (normally through allvars.h).
  */
 #include "chemistry_build_config.h"
-#include "chemistry_diagnostics.h"
+#include "chemistry_types.h"
 
 #ifdef CHEMISTRY_SC
 typedef struct chemdata_in

@@ -3,6 +3,10 @@
 #include "chemistry_types.h"
 #include "radiation/radiation_rates.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct chemdata_in;
 struct chemdata_out;
 
@@ -12,7 +16,7 @@ typedef struct {
 } ChemStandaloneUnits;
 
 /* Called once per run, after the standalone host has established its units. */
-void chemistry_standalone_configure(const ChemRunContext *run,
+void chemistry_standalone_configure(const ChemRunView *run,
                                     const ChemStandaloneUnits *units);
 int chemistry_standalone_set_timescale_safety_factor(double value);
 
@@ -43,3 +47,7 @@ int compute_equilibrium_abundances_d(const struct chemdata_in *input,
                                      const struct chemdata_out *output,
                                      double temperature, double duration_s,
                                      double *full_abundance);
+
+#ifdef __cplusplus
+}
+#endif

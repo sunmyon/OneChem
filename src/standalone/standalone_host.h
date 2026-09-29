@@ -2,6 +2,9 @@
 #define STANDALONE_HOST_H
 
 /* Process termination is owned by the executable, never by portable core. */
+#ifdef __cplusplus
+extern "C"
+#endif
 void endrun(void);
 
 /* Compatibility values required only by the pre-portable chemistry modules. */

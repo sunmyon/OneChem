@@ -1,9 +1,70 @@
 #pragma once
 
 #include "chemistry_build_config.h"
-#include "chemistry_core.h"
-#include "common/chemistry_diagnostics.h"
+#include "species.h"
+
 #include "include/chemistry/chemistry_status.h"
+
+typedef struct {
+  double H2_escape_fraction;
+#ifdef HD
+  double HD_escape_fraction;
+#endif
+  double edot_rad, edot_chem;
+  double edot_H2, edot_comp, edot_ceHI, edot_radHI;
+  double edot_ciHI, edot_H2form_gas, edot_HMform;
+  double edot_H2form_HM, edot_H2form_dust, edot_H2form_3body;
+  double n_crit;
+#ifdef HELIUM
+  double edot_ceHeI, edot_ceHeII;
+  double edot_ciHeI, edot_ciHeII, edot_ciHeIS;
+  double edot_reHeII1, edot_reHeII2, edot_reHeIII;
+#endif
+#ifdef HD
+  double edot_HD;
+#endif
+#ifdef METALLICITY
+  double edot_CI, edot_CII, edot_OI;
+#endif
+#ifdef CARBON_OXYGEN_CHEMISTRY
+  double edot_CO, edot_OH, edot_H2O;
+#endif
+#ifdef DUST_COOLING
+  double edot_dust;
+#ifdef LYMANWERNER
+  double edot_PE;
+#endif
+#endif
+#ifdef CONTINUUM_COOLING_MATSUKOBA
+  double edot_cont;
+#else
+  double edot_reHI, edot_brem, edot_CIE, edot_cont;
+#endif
+} ChemDiagnostics;
+
+typedef enum {
+  CHEM_PROFILE_TOTAL,
+  CHEM_PROFILE_ENERGY_SOLVER,
+  CHEM_PROFILE_ENERGY_RESIDUAL,
+  CHEM_PROFILE_IMPLICIT_CHEMISTRY,
+  CHEM_PROFILE_REACTION_RATES,
+  CHEM_PROFILE_INTERMEDIATES,
+  CHEM_PROFILE_INTERMEDIATE_ASSEMBLY,
+  CHEM_PROFILE_INTERMEDIATE_LINEAR_SOLVE,
+  CHEM_PROFILE_NEWTON_RHS,
+  CHEM_PROFILE_NEWTON_JACOBIAN,
+  CHEM_PROFILE_JACOBIAN_SOLVER_COLUMNS,
+  CHEM_PROFILE_JACOBIAN_RESPONSE,
+  CHEM_PROFILE_JACOBIAN_INTERMEDIATE_SOLVE,
+  CHEM_PROFILE_JACOBIAN_SCHUR,
+  CHEM_PROFILE_NEWTON_LINEAR_SOLVE,
+  CHEM_PROFILE_NEWTON_STEP,
+  CHEM_PROFILE_CHEMICAL_COOLING,
+  CHEM_PROFILE_RADIATIVE_COOLING,
+  CHEM_PROFILE_MOLECULAR_COOLING,
+  CHEM_PROFILE_DUST_TEMPERATURE,
+  CHEM_PROFILE_COUNT
+} ChemistryProfileSection;
 
 typedef struct ChemReactionNetwork ChemReactionNetwork;
 typedef struct ChemistryRateTables ChemistryRateTables;
@@ -11,18 +72,19 @@ typedef struct ChemistryCoolingTables ChemistryCoolingTables;
 typedef struct ChemistryDustTables ChemistryDustTables;
 typedef struct ChemistryContinuumOpacityTables ChemistryContinuumOpacityTables;
 
-typedef struct ChemRunContext {
-  /* Owned by this run context; immutable after InitChem succeeds. */
-  ChemReactionNetwork *network;
-  ChemistryRateTables *rate_tables;
-  ChemistryCoolingTables *cooling_tables;
-  ChemistryDustTables *dust_tables;
-  ChemistryContinuumOpacityTables *continuum_opacity_tables;
+/* Copyable, non-owning inputs to evaluation code. Pointees are immutable;
+ * the owning Model must outlive this view. */
+typedef struct ChemRunView {
+  const ChemReactionNetwork *network;
+  const ChemistryRateTables *rate_tables;
+  const ChemistryCoolingTables *cooling_tables;
+  const ChemistryDustTables *dust_tables;
+  const ChemistryContinuumOpacityTables *continuum_opacity_tables;
   double timescale_safety_factor;
 #ifdef FIX_TEMPERATURE
   double fixed_temperature;
 #endif
-} ChemRunContext;
+} ChemRunView;
 
 typedef struct {
   double cmb_temperature; /* K */
@@ -40,7 +102,7 @@ typedef struct {
 } ChemGlobalStep;
 
 typedef struct {
-  const ChemRunContext *run;
+  const ChemRunView *run;
   const ChemGlobalStep *global;
 
   double rho_cgs;       /* g cm^-3 */

@@ -2,32 +2,35 @@
 set -eu
 
 cc_command=${CC:-cc}
-include_flags="-Iinclude -I. -Icommon -Icooling -Idriver -Iinitialization -Ireaction_network -Isolver -Ithermodynamics -Itables"
+include_flags="-Iinclude -I.  -Icooling   -Ireaction_network -Isolver -Ithermodynamics -Itables"
 feature_flags="-DCHEMISTRY_SC -DCARBON_OXYGEN_CHEMISTRY -DHD -DMETALLICITY=-4."
 
 modules="
-interface/chemistry_api.c
-driver/chemistry_driver.c
-species.c
-common/chemistry_profile.c
-cooling/H2cooling.c
-cooling/chemistry_cooling.c
-cooling/cooling_func.c
-cooling/molecular_cooling.c
-cooling/dust_cooling.c
-initialization/chemistry_init.c
-reaction_network/forward_rates.c
-reaction_network/reaction_network.c
-reaction_network/reaction_rates.c
-reaction_network/shielding.c
-solver/chemistry_solver.c
-solver/saha.c
-thermodynamics/partition.c
-thermodynamics/thermodynamics.c
+chemistry_driver.cc
+species.cc
+chemistry_profile.cc
+chemistry_model.cc
+solver/fixed_rate_solver.cc
+solver/linear_algebra.cc
+cooling/H2cooling.cc
+cooling/chemistry_cooling.cc
+cooling/cooling_func.cc
+cooling/molecular_cooling.cc
+cooling/dust_cooling.cc
+reaction_network/forward_rates.cc
+reaction_network/reaction_network.cc
+reaction_network/reaction_rates.cc
+reaction_network/shielding.cc
+solver/chemistry_solver.cc
+solver/saha.cc
+thermodynamics/partition.cc
+thermodynamics/thermodynamics.cc
 "
 
 for module in $modules; do
-  dependencies=$($cc_command -MM $feature_flags $include_flags "$module")
+  compiler=$cc_command
+  case "$module" in *.cc) compiler="${CXX:-c++} -std=c++17" ;; esac
+  dependencies=$($compiler -MM $feature_flags $include_flags "$module")
   if printf '%s\n' "$dependencies" | grep -Eq '(^|[ /])(allvars|proto|tags)\.h'; then
     printf 'host dependency reached from %s:\n%s\n' "$module" "$dependencies" >&2
     exit 1

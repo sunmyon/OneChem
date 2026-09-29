@@ -228,6 +228,10 @@ CFLAGS =  $(OPT1) -g $(OPTIMIZATION) $(GSL_INCL) -I. -Isrc -Isrc/standalone $(CH
 LIBS   =  $(GSL_INCL) $(GSL_LIBS) -lm $(LAPACK_LIBS) -lgsl -lgslcblas
 
 CC     =  mpicc
+CXX    =  mpicxx
+CXXFLAGS = $(filter-out -std=%,$(CFLAGS)) -std=c++17
+LINKER = $(CC)
+LINKFLAGS = $(CFLAGS)
 
 ifneq (,$(findstring -DCHEMISTRY_OLD,$(OPT1)))
 include legacy/chemistry_old/standalone.mk
@@ -235,22 +239,27 @@ else ifeq ($(USE_CHEMISTRY_PORTABLE),1)
 OPT1 += -DCHEMISTRY_SC
 CHEMISTRY_DIR = src/chemistry
 include src/standalone/standalone.mk
-CHEMISTRY_OBJS = $(CHEMISTRY_PORTABLE_CORE_SOURCES:.c=.o) \
-                 $(CHEMISTRY_STANDALONE_ADAPTER_SOURCES:.c=.o)
+LINKER = $(CXX)
+LINKFLAGS = $(CXXFLAGS)
+CHEMISTRY_OBJS = $(patsubst %.cc,%.o,$(CHEMISTRY_PORTABLE_CORE_SOURCES:.c=.o)) \
+                 $(patsubst %.cc,%.o,$(CHEMISTRY_STANDALONE_ADAPTER_SOURCES:.c=.o))
 CHEMISTRY_SUPPORT_OBJS =
-CHEMISTRY_INCL = $(CHEMISTRY_DIR)/chemistry_core.h \
+CHEMISTRY_INCL = $(wildcard $(CHEMISTRY_DIR)/*.h $(CHEMISTRY_DIR)/*/*.h) \
+                 $(wildcard $(CHEMISTRY_DIR)/include/chemistry/*.h) \
+                 $(CHEMISTRY_DIR)/tables/chemistry_tables.h \
+                 $(CHEMISTRY_DIR)/chemistry_core.h \
                  $(CHEMISTRY_DIR)/chemistry_build_config.h \
                  $(CHEMISTRY_DIR)/chemistry_types.h \
-                 $(CHEMISTRY_DIR)/initialization/chemistry_init.h \
+                 $(wildcard $(CHEMISTRY_DIR)/*.hpp) \
+                 $(wildcard $(CHEMISTRY_DIR)/solver/*.hpp) \
+                 $(CHEMISTRY_DIR)/solver/chemistry_newton_internal.h \
+                 $(CHEMISTRY_DIR)/chemistry_core.h \
                  $(CHEMISTRY_DIR)/solver/chemistry_newton_diagnostics.h \
                  src/standalone/chemistry_standalone_adapter.h \
                  src/standalone/chemistry_standalone_types.h
 CHEMISTRY_INCLUDE_FLAGS = -I$(CHEMISTRY_DIR) \
                           -I$(CHEMISTRY_DIR)/include \
-                          -I$(CHEMISTRY_DIR)/common \
                           -I$(CHEMISTRY_DIR)/cooling \
-                          -I$(CHEMISTRY_DIR)/driver \
-                          -I$(CHEMISTRY_DIR)/initialization \
                           -I$(CHEMISTRY_DIR)/reaction_network \
                           -I$(CHEMISTRY_DIR)/solver \
                           -I$(CHEMISTRY_DIR)/thermodynamics \
@@ -328,24 +337,57 @@ BUILDDIR ?= build
 OBJDIR_OBJS := $(addprefix $(BUILDDIR)/,$(OBJS))
 
 $(EXEC): $(OBJDIR_OBJS)
-	$(CC) $(CFLAGS) $(OBJDIR_OBJS) $(LIBS) -o $(EXEC)
+	$(LINKER) $(LINKFLAGS) $(LDFLAGS) $(OBJDIR_OBJS) $(LIBS) -o $(EXEC)
 
 $(BUILDDIR)/%.o: %.c $(INCL)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
-.PHONY: clean check-chemistry-initialization check-energy-replay
+$(BUILDDIR)/%.o: %.cc $(INCL)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+.PHONY: clean check-chemistry-initialization check-energy-replay check-chemistry-cpp
 
 # Replays captured AREPO energy-step failures (tests/replay) through the
 # standalone build; builds its own binaries in build-replay*.
 check-energy-replay:
 	sh tests/replay/run_energy_step_replay.sh
 
-$(BUILDDIR)/initialization_regression: src/chemistry/tests/initialization_regression.c $(filter-out $(BUILDDIR)/src/standalone/main.o,$(OBJDIR_OBJS))
-	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
+$(BUILDDIR)/initialization_regression: $(BUILDDIR)/src/chemistry/tests/initialization_regression.o $(filter-out $(BUILDDIR)/src/standalone/main.o,$(OBJDIR_OBJS))
+	$(LINKER) $(LINKFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
 check-chemistry-initialization: $(BUILDDIR)/initialization_regression
-	./$(BUILDDIR)/initialization_regression src/chemistry
+	$(abspath $(BUILDDIR))/initialization_regression src/chemistry
+
+$(BUILDDIR)/cpp_api_link: $(BUILDDIR)/src/chemistry/tests/cpp_api_link.o $(BUILDDIR)/src/chemistry/tests/c_status_link.o $(filter-out $(BUILDDIR)/src/standalone/main.o,$(OBJDIR_OBJS))
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
+
+check-chemistry-cpp: $(BUILDDIR)/cpp_api_link
+	$(abspath $(BUILDDIR))/cpp_api_link src/chemistry
+
+.PHONY: check-chemistry-model
+$(BUILDDIR)/model_lifecycle: $(BUILDDIR)/src/chemistry/tests/model_lifecycle.o $(filter-out $(BUILDDIR)/src/standalone/main.o,$(OBJDIR_OBJS))
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
+
+check-chemistry-model: $(BUILDDIR)/model_lifecycle
+	sh src/chemistry/tests/run_model_lifecycle.sh $(abspath $(BUILDDIR))/model_lifecycle src/chemistry
+
+.PHONY: check-chemistry-fixed-rate
+$(BUILDDIR)/fixed_rate_problem: $(BUILDDIR)/src/chemistry/tests/fixed_rate_problem.o $(filter-out $(BUILDDIR)/src/standalone/main.o,$(OBJDIR_OBJS))
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
+
+check-chemistry-fixed-rate: $(BUILDDIR)/fixed_rate_problem
+	$(abspath $(BUILDDIR))/fixed_rate_problem src/chemistry
 
 clean:
 	rm -rf $(BUILDDIR) $(EXEC)
+
+.PHONY: check-chemistry-numerics
+$(BUILDDIR)/numerics_dense: $(BUILDDIR)/src/chemistry/tests/numerics_dense.o $(BUILDDIR)/src/chemistry/solver/linear_algebra.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
+
+check-chemistry-numerics: $(BUILDDIR)/numerics_dense
+	$(abspath $(BUILDDIR))/numerics_dense
+
+-include $(OBJDIR_OBJS:.o=.d) $(wildcard $(BUILDDIR)/src/chemistry/tests/*.d)

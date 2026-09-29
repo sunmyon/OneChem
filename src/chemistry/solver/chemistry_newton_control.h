@@ -2,6 +2,7 @@
 
 #include "chemistry_newton_internal.h"
 
+
 typedef struct {
   int step_was_clipped;
   int clipped_species[N_SP];

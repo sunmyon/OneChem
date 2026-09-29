@@ -5,7 +5,7 @@ set -eu
 # evaluation paths.  Initialization must remain an explicit lifecycle phase.
 forbidden='flag_dust_init|flag_read_SD93|flag_read_opacities|flag_tabulate'
 
-if grep -R -n -E "$forbidden" cooling --include='*.c' --include='*.h'; then
+if grep -R -n -E "$forbidden" cooling --include='*.c' --include='*.cc' --include='*.cpp' --include='*.h' --include='*.hpp'; then
   echo "error: a cooling-time lazy-initialization flag was reintroduced" >&2
   exit 1
 fi

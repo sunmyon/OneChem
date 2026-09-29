@@ -2,7 +2,7 @@
 
 static void use_public_types(void)
 {
-  ChemistryConfig config;
+  ChemistryConfig config = {CHEMISTRY_ABI_VERSION, NULL, 0.1};
   ChemistryComposition composition = chemistry_default_composition();
   ChemistryGlobalEnvironment global = {0};
   ChemistryStepContext step = {0};
@@ -12,7 +12,7 @@ static void use_public_types(void)
   ChemistryState state = {0};
   ChemistryResult result = {0};
 
-  chemistry_config_defaults(&config);
+  (void)config;
   (void)composition;
   (void)global;
   (void)step;

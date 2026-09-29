@@ -1,8 +1,8 @@
 #pragma once
 
-#include "chemistry_core.h"
 #include "chemistry_constants.h"
 #include "chemistry_types.h"
+
 
 double chemistry_temperature(const double *abund, double gamma, double utherm_cgs);
 double chemistry_gamma_from_abundances(const double *abund, double temperature);

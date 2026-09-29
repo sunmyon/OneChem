@@ -4,6 +4,7 @@
 
 #include "chemistry_newton_internal.h"
 
+
 /* The declaration order is the deterministic basin-search order.  Keep the
  * strategies contiguous because the Newton driver advances with reset++.
  * The two non-C/O strategies intentionally occupy the same positions as the

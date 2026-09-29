@@ -7,7 +7,7 @@ if find adapters -type d -name standalone -print | grep -q .; then
 fi
 
 if rg -n 'CHEMISTRY_STANDALONE_HOST|chemdata_(in|out)|chemistry_standalone' \
-    --glob '*.c' --glob '*.h' --glob '*.mk' \
+    --glob '*.c' --glob '*.cc' --glob '*.cpp' --glob '*.h' --glob '*.hpp' --glob '*.mk' \
     --glob '!tests/**' .; then
   echo "error: standalone host contract leaked into portable production code" >&2
   exit 1

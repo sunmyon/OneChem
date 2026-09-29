@@ -1,5 +1,6 @@
 #pragma once
 
+
 /* Preserve the host's historical option spelling. */
 #if defined(IONIZING_PHOTON) && !defined(IONIZATION_PHOTON)
 #define IONIZATION_PHOTON
@@ -28,4 +29,17 @@
 #define CHEM_RATE_COUNT 200
 #else
 #define CHEM_RATE_COUNT 60
+#endif
+
+#if defined(H2_COOLING_G15) + defined(H2_COOLING_GP12) + defined(H2_COOLING_Y06) + defined(H2_COOLING_O00) > 1
+#error "Select only one H2 cooling model"
+#endif
+#if defined(PARTITION_H2_EBM1989) + defined(PARTITION_H2_I87) + defined(PARTITION_H2_R85) > 1
+#error "Select only one H2 partition-function model"
+#endif
+#if defined(H2_COOLING_Y06) || defined(H2_COOLING_O00)
+#error "The selected H2 cooling model has no implementation in the portable chemistry core"
+#endif
+#if defined(H2_OPACITY) && !defined(H2_OPACITY_FIT)
+#error "H2_OPACITY requires an implemented H2 line-escape model"
 #endif

@@ -2,14 +2,12 @@
 
 static void use_arepo_public_types(void)
 {
-  ChemArepoConfig config = {0};
-  ChemArepoContext context = {0};
-  ChemArepoCell cell = {0};
-  ChemArepoState state = {0};
-  ChemArepoResult result = {0};
+  ChemistryConfig config = {0};
+  ChemistryCellEnvironment cell = {0};
+  ChemistryState state = {0};
+  ChemistryResult result = {0};
 
   (void)config;
-  (void)context;
   (void)cell;
   (void)state;
   (void)result;

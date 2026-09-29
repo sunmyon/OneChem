@@ -25,7 +25,7 @@ Internally the adapter performs only these operations:
 2. invoke `chemistry_advance()`;
 3. translate status and accepted outputs back to the legacy structures.
 
-The standalone host configures the adapter once with `ChemRunContext` and
+The standalone host configures the adapter once with a borrowed `ChemRunView` from `chemistry::Model` and
 `ChemStandaloneUnits`, then prepares `ChemGlobalStep` only when shared conditions
 change.  CMB temperature, scale factor, and uniform backgrounds are therefore
 not rebuilt or copied from `All` for every cell call.

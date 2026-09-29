@@ -1,5 +1,9 @@
 # Initialization contract
 
+> Historical migration notes. Current C++ ownership and calling contracts are in
+> [/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md](/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md).
+> References below to the transitional C context or InitChem do not describe the current API.
+
 ## Decision
 
 Chemistry core uses explicit eager initialization.  `chemistry_context_create`

@@ -4,6 +4,7 @@
 #include "chemistry_newton_reset.h"
 #include "chemistry_types.h"
 
+
 /* Diagnostic state must remain cheap in production builds.  The abundance
  * snapshot exists only when random-restart diagnostics are explicitly
  * compiled; otherwise this object occupies one byte and stores no species

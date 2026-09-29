@@ -1,5 +1,9 @@
 # AREPO integration audit
 
+> Historical migration notes. Current C++ ownership and calling contracts are in
+> [/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md](/Users/j/Desktop/codex/1ZONE/src/chemistry/README.md).
+> References below to the transitional C context or InitChem do not describe the current API.
+
 This audit was performed against AREPO commit `984ccbfbf1` on branch
 `sink-wind-feedback`.  The original AREPO checkout was kept unchanged; all
 compile experiments used an archive copy under `/tmp`.

@@ -1,64 +1,126 @@
 #pragma once
 
 #include "chemistry_build_config.h"
-#include "species_definitions.h"
-#include "include/chemistry/chemistry_composition.h"
+#include "chemistry_constants.h"
+#include "species.h"
 
 #ifdef CHEMISTRY_SC
+#include "chemistry_types.h"
+#include "include/chemistry/chemistry.h"
 
-#define H_number_fraction CHEMISTRY_HYDROGEN_NUCLEI_PER_BARYON
-#define He_number_fraction CHEMISTRY_HELIUM_NUCLEI_PER_BARYON
-#define D_number_fraction CHEMISTRY_DEUTERIUM_NUCLEI_PER_BARYON
+#ifdef CHEMISTRY_PROFILE
 
-/* Transitional internal spellings.  These are compile-time aliases, not
- * external variables; new public code should use the descriptive names. */
-#define XH CHEMISTRY_HYDROGEN_NUCLEI_PER_BARYON
-#define XHe CHEMISTRY_HELIUM_NUCLEI_PER_BARYON
+double profile_start(void);
+void profile_end(ChemistryProfileSection section, double started_at);
+void chemistry_profile_set_failure(int reason);
+int chemistry_profile_last_failure(void);
+void chemistry_profile_record_residual(const ChemEnvironment *environment,
+                                       const ChemState *state,
+                                       const ChemWorkspace *work,
+                                       double temperature, double dt,
+                                       double energy_old, double energy_new,
+                                       double residual, int chemistry_status);
+void chemistry_profile_report_energy_warning(void);
+void chemistry_profile_record_equilibrium_initialization(double fraction,
+                                                         double electron_before,
+                                                         double electron_after);
+void chemistry_profile_record_newton_solve(int iterations, int reset_count,
+                                           int clipped_steps);
+void chemistry_profile_record_clipped_species(int species);
+void chemistry_profile_record_newton_limiter(int species, double nH);
+void chemistry_profile_report(void);
 
-#ifndef CLIGHT
-#define CLIGHT CLIGHT_REAL
-#endif
-#ifndef CLIGHT_REAL
-#define CLIGHT_REAL 2.99792458e10
-#endif
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-#define CHEM_DECLARE_SPECIES(symbol, name, charge, h, he, d, c, o) s##symbol,
-enum SPECIES {
-  CHEM_SPECIES_LIST(CHEM_DECLARE_SPECIES)
-  sEND
-};
-#undef CHEM_DECLARE_SPECIES
-
-#define CHEM_COUNT_STORED_SPECIES(symbol, name, charge, h, he, d, c, o) + 1
-enum {
-  sSTORED_END = 0 CHEM_SPECIES_STORED_LIST(CHEM_COUNT_STORED_SPECIES)
-};
-#undef CHEM_COUNT_STORED_SPECIES
-
-#define N_SP sEND
-
-/* AREPO's legacy chems.h may reserve the storage array before including this
- * header. Preserve that value long enough to verify the host allocation. */
-#ifdef TGCHEM_NUM_ABUNDANCES
-enum { CHEMISTRY_HOST_ABUNDANCE_CAPACITY = TGCHEM_NUM_ABUNDANCES };
-#undef TGCHEM_NUM_ABUNDANCES
-#define TGCHEM_NUM_ABUNDANCES sSTORED_END
-typedef char chemistry_host_abundance_capacity_must_match[
-    CHEMISTRY_HOST_ABUNDANCE_CAPACITY == TGCHEM_NUM_ABUNDANCES ? 1 : -1];
 #else
-#define TGCHEM_NUM_ABUNDANCES sSTORED_END
+
+static inline double profile_start(void) { return 0.0; }
+
+static inline void profile_end(ChemistryProfileSection section,
+                               double started_at) {
+  (void)section;
+  (void)started_at;
+}
+
+static inline void chemistry_profile_set_failure(int reason) { (void)reason; }
+
+static inline int chemistry_profile_last_failure(void) { return 0; }
+
+static inline void chemistry_profile_record_residual(
+    const ChemEnvironment *environment, const ChemState *state,
+    const ChemWorkspace *work, double temperature, double dt, double energy_old,
+    double energy_new, double residual, int chemistry_status) {
+  (void)environment;
+  (void)state;
+  (void)work;
+  (void)temperature;
+  (void)dt;
+  (void)energy_old;
+  (void)energy_new;
+  (void)residual;
+  (void)chemistry_status;
+}
+
+static inline void chemistry_profile_report_energy_warning(void) {}
+
+static inline void chemistry_profile_record_equilibrium_initialization(
+    double fraction, double electron_before, double electron_after) {
+  (void)fraction;
+  (void)electron_before;
+  (void)electron_after;
+}
+
+static inline void chemistry_profile_record_newton_solve(int iterations,
+                                                         int reset_count,
+                                                         int clipped_steps) {
+  (void)iterations;
+  (void)reset_count;
+  (void)clipped_steps;
+}
+
+static inline void chemistry_profile_record_clipped_species(int species) {
+  (void)species;
+}
+
+static inline void chemistry_profile_record_newton_limiter(int species,
+                                                           double nH) {
+  (void)species;
+  (void)nH;
+}
+
+static inline void chemistry_profile_report(void) {}
+
 #endif
 
-double compute_gamma_from_abund(const double *abund, double temperature);
-double chemistry_gamma_from_abundances(const double *abund,
-                                       double temperature);
-double chemistry_molecular_weight(const double *abund);
-double chemistry_temperature(const double *abund, double gamma,
-                             double utherm_cgs);
-double chemistry_jeans_radius(double rho_cgs, double temperature,
-                              double thermal_mass_in_proton_masses);
-
+#ifdef __cplusplus
+namespace chemistry {
+class Model;
+// Independent orchestration: the caller owns Model, state and workspace.
+class Driver final {
+public:
+  ChemistryStatus advance(const ChemEnvironment &environment, double duration_s,
+                          ChemState &state, ChemWorkspace &workspace, int mode = 0) const;
+  ChemistryStatus advance(const Model &model, const ChemistryStepContext &step,
+                          ChemWorkspace &workspace, const ChemistryCellEnvironment &cell,
+                          double duration_s, const ChemistryAdvanceOptions &options,
+                          ChemistryState &state, ChemistryResult &result) const;
+  static ChemistryStatus prepare(const ChemistryGlobalEnvironment &global,
+                                 ChemistryStepContext &step);
+  static void prepare_cell(const ChemEnvironment &environment, const ChemState &state,
+                           double temperature, double duration_s, ChemStepData &step);
+private:
+  static void set_high_temperature_hydrogen_state(ChemState &state);
+  static void evaluate_high_temperature_cooling(const ChemEnvironment &environment,
+      const ChemStepData &step, const ChemState &state, double temperature, ChemWorkspace &workspace);
+  static int evolve_high_temperature(const ChemEnvironment &environment, const ChemStepData &step,
+      ChemState &state, double &remaining_time_s, ChemWorkspace &workspace);
+  static ChemSolverPlan select_solvers(double n_nuclei, double time_cooling,
+      double time_chemistry, double time_remaining);
+  static ChemistryStatus evaluate_timesteps(const ChemEnvironment &environment,
+      const ChemStepData &step, const ChemState &state, ChemWorkspace &workspace);
+  static void import_global_environment(const ChemistryStepContext &step, ChemGlobalStep &global);
+  static void import_cell_environment(const Model &model, const ChemGlobalStep &global,
+      const ChemistryCellEnvironment &cell, ChemEnvironment &environment);
+};
+} // namespace chemistry
 #endif
+
+#endif /* CHEMISTRY_SC */

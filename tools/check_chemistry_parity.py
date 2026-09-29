@@ -6,20 +6,15 @@ from pathlib import Path
 import sys
 
 
-CORE_DIRS = (
-    "common", "cooling", "driver", "include", "initialization",
-    "reaction_network", "solver", "tables", "thermodynamics",
-)
-CORE_INTERFACE = ("interface/chemistry_api.c", "interface/chemistry_normalize.c")
+CORE_DIRS = ("cooling", "include", "reaction_network", "solver", "tables", "thermodynamics")
 
 
 def core_files(root):
     files = {p.relative_to(root) for p in root.iterdir()
-             if p.is_file() and p.suffix in (".c", ".h")}
+             if p.is_file() and p.suffix in (".c", ".cc", ".cpp", ".h", ".hpp")}
     for directory in CORE_DIRS:
         files.update(p.relative_to(root) for p in (root / directory).rglob("*")
-                     if p.is_file() and p.suffix in (".c", ".h"))
-    files.update(Path(p) for p in CORE_INTERFACE)
+                     if p.is_file() and p.suffix in (".c", ".cc", ".cpp", ".h", ".hpp"))
     return files
 
 
@@ -32,7 +27,7 @@ def main():
     pairs = ((local / "chemistry", remote / "chemistry_ONECHEM", core_files),
              (local / "radiation", remote / "radiation",
               lambda root: {p.relative_to(root) for p in root.rglob("*")
-                            if p.is_file() and p.suffix in (".c", ".h")}))
+                            if p.is_file() and p.suffix in (".c", ".cc", ".cpp", ".h", ".hpp")}))
     differences = 0
     checked = 0
     for left, right, collect in pairs:
