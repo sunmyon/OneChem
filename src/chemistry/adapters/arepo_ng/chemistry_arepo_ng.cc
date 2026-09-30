@@ -56,6 +56,19 @@ bool ArepoNgCell::update_thermodynamics(double u) {
   gamma=chemistry_gamma_from_abundances(abundance,0.5*(lo+hi));
   return std::isfinite(gamma) && gamma>1 && gamma<2;
 }
+double ArepoNgCell::temperature_at_energy(double u) const {
+  if(!(u>0) || !std::isfinite(u)) return std::numeric_limits<double>::quiet_NaN();
+  if(!(gamma>1) || !std::isfinite(gamma)) return std::numeric_limits<double>::quiet_NaN();
+  // O(1): reuses whatever gamma is already stored, the same way get_pressure()/
+  // get_sound_speed() do -- no re-bisection. Real per-cell mean molecular weight,
+  // not a fixed constant.
+  return (gamma-1.0) * PROTONMASS/BOLTZMANN * chemistry_molecular_weight(abundance) * u;
+}
+double ArepoNgCell::initialize_at_temperature(double temperature) {
+  if(!(temperature>0)) { gamma=std::numeric_limits<double>::quiet_NaN(); return 0; }
+  gamma=chemistry_gamma_from_abundances(abundance,temperature);
+  return BOLTZMANN*temperature/((gamma-1)*PROTONMASS*chemistry_molecular_weight(abundance));
+}
 double ArepoNgCell::energy_at_temperature(double temperature) const {
   if(temperature<=0) return 0;
   const double g=chemistry_gamma_from_abundances(abundance,temperature);

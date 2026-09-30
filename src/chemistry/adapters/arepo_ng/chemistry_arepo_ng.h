@@ -28,6 +28,19 @@ struct ArepoNgCell {
   double number_density(int species, double density_cgs) const; // cm^-3, chemistry proton-mass convention
   bool update_thermodynamics(double internal_energy_cgs);
   double energy_at_temperature(double temperature) const;
+  // Sets gamma from a known temperature (O(1), no solve) and returns the matching
+  // specific internal energy -- for initialization paths where the target
+  // temperature is already known (e.g. InitGasTemp/MinGasTemp), so the caller isn't
+  // forced to immediately invert that same energy back to a temperature via
+  // update_thermodynamics(). Does not validate the result; check gamma afterwards.
+  double initialize_at_temperature(double temperature);
+  // O(1) temperature estimate for a given specific internal energy: uses the stored
+  // gamma (set by the chemistry solver, initialize_at_temperature(), or
+  // update_thermodynamics()) and the real per-cell mean molecular weight -- the same
+  // "gamma frozen between chemistry steps" assumption get_pressure()/
+  // get_sound_speed() already rely on, not a re-solve. Returns NaN if gamma hasn't
+  // been set yet.
+  double temperature_at_energy(double internal_energy_cgs) const;
   void store_conserved(double mass);
   bool recover_composition(double mass);
   bool recover_conserved(double mass, double internal_energy_cgs);
