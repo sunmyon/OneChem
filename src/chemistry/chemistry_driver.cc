@@ -13,6 +13,17 @@
 #include "thermodynamics.h"
 
 
+#if defined(CHEMISTRY_FIXED_TEMPERATURE) && defined(CHEMISTRY_ENERGY_IMPLICIT)
+#error "Fixed-temperature chemistry does not use the implicit energy solver"
+#endif
+#ifdef CHEMISTRY_FIXED_TEMPERATURE
+static void impose_fixed_temperature(ChemState &state, double temperature) {
+  state.gamma = chemistry_gamma_from_abundances(state.abund, temperature);
+  state.utherm_cgs = BOLTZMANN * temperature /
+      ((state.gamma - 1) * PROTONMASS * chemistry_molecular_weight(state.abund));
+}
+#endif
+
 #define MAX_ITERATION 1000
 #define HIGH_TEMPERATURE_THRESHOLD 1.0e5
 
@@ -148,7 +159,7 @@ int chemistry::Driver::evolve_high_temperature(const ChemEnvironment &env, const
     if(workspace->evaluation.t_cool_rad != MAX_REAL_NUMBER)
       dt = dmin(dt, 0.1 * fabs(workspace->evaluation.t_cool_rad));
 
-    if(!(dt > 0.0) || !isfinite(dt))
+    if(!(dt > 0.0) || !isfinite(dt) || *remaining_time_s - dt >= *remaining_time_s)
       return 1;
 
     const double delta_utherm = workspace->evaluation.rhoU_dot_rad /
@@ -235,6 +246,12 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
   state->abund[sELEC] = neutral_electron;
 #endif
   ChemStepData step;
+#ifdef CHEMISTRY_FIXED_TEMPERATURE
+  if(!(environment->run->fixed_temperature > 0) || environment->run->fixed_temperature > 1.e5 ||
+     !isfinite(environment->run->fixed_temperature))
+    return CHEMISTRY_STATUS_INVALID_ARGUMENT;
+  impose_fixed_temperature(*state, environment->run->fixed_temperature);
+#endif
   update_thermodynamic_state(state, &workspace->thermodynamics);
   double T_gas = workspace->thermodynamics.temperature;
   double dtime = duration_s;
@@ -297,6 +314,8 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
 
     ChemSolverPlan solvers = select_solvers(n_nuclei, time1, time2, time3);
     dt = solvers.timestep;
+    if(!(dt > 0.0) || !isfinite(dt) || t_now + dt <= t_now)
+      return CHEMISTRY_STATUS_NOT_CONVERGED;
 
     workspace->evaluation.flag_implicit = solvers.energy == ENERGY_SOLVER_IMPLICIT ? 1 :
                                           solvers.chemistry != CHEMISTRY_SOLVER_EXPLICIT ? 2 : 0;
@@ -343,6 +362,7 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
 
 	state->gamma = chemistry_gamma_from_abundances(state->abund, T_gas_in);
 
+#ifndef CHEMISTRY_FIXED_TEMPERATURE
 	/* Update temperature */
 	ChemistryStatus cooling_status =
 	    chemistry::CoolingEvaluator(*environment, *state, *workspace).radiative(step);
@@ -379,28 +399,34 @@ ChemistryStatus chemistry::Driver::advance(const ChemEnvironment &env, double du
 	  workspace->evaluation.flag_implicit = 1;
 	}
 #endif
+#endif  // !CHEMISTRY_FIXED_TEMPERATURE
       }
 
     t_now += dt;
 
+#ifdef CHEMISTRY_FIXED_TEMPERATURE
+    impose_fixed_temperature(*state, environment->run->fixed_temperature);
+#endif
     update_thermodynamic_state(state, &workspace->thermodynamics);
     T_gas = workspace->thermodynamics.temperature;
 
-#ifdef CHEMISTRY_TEMPERATURE_MAX
+#if defined(CHEMISTRY_TEMPERATURE_MAX) && !defined(CHEMISTRY_FIXED_TEMPERATURE)
     if(T_gas > CHEMISTRY_TEMPERATURE_MAX)
       state->utherm_cgs *= CHEMISTRY_TEMPERATURE_MAX / T_gas;
 #endif
 
 #ifdef CHEMISTRY_FIXED_TEMPERATURE
-    state->utherm_cgs *= environment->run->fixed_temperature / T_gas;
     workspace->evaluation.t_cool_rad = MAX_REAL_NUMBER;
     workspace->evaluation.t_cool_chem = MAX_REAL_NUMBER;
 #endif
 
     /* stop if time = a_end */
-    if(dtime - t_now < dtime/MAX_ITERATION)
+    if(t_now >= dtime)
       goto LOOP_OUT;
   }  /* iter */
+
+  /* Exhausting the subcycle budget is a failure, even for finite states. */
+  return CHEMISTRY_STATUS_NOT_CONVERGED;
 
  LOOP_OUT:;
 

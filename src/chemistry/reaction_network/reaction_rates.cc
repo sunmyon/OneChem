@@ -81,7 +81,11 @@ double chemistry::ReactionRateEvaluator::species_timescale(double abundance, dou
   const double derivative = production - destruction * abundance;
   if(derivative == 0.0)
     return MAX_REAL_NUMBER;
-  return fabs(abundance / derivative);
+  static_assert(CHEMISTRY_TIMESTEP_ABUNDANCE_SCALE > 0.0 &&
+                CHEMISTRY_TIMESTEP_ABUNDANCE_SCALE < 1.0,
+                "invalid chemistry timestep abundance scale");
+  const double scale = dmax(abundance, CHEMISTRY_TIMESTEP_ABUNDANCE_SCALE);
+  return scale / fabs(derivative);
 }
 
 void chemistry::ReactionRateEvaluator::evaluate_timescale()

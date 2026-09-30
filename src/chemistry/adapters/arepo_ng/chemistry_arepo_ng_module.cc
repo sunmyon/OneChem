@@ -18,11 +18,13 @@ double unit_energy() { return All.UnitVelocity_in_cm_per_s * All.UnitVelocity_in
 
 class ChemistryModule final: public BaseModule {
   chemistry::ArepoNgAdapter adapter;
+  sim *simulation_=nullptr;
+  ArepoNgEnvironmentProvider environment_provider_=nullptr;
   char table_root[200]{};
   double cmb_temperature=2.728;
   int distribute=0;
 public:
-  ChemistryModule() { moduleName="Chemistry"; }
+  explicit ChemistryModule(ArepoNgEnvironmentProvider provider) : environment_provider_(provider) { moduleName="Chemistry"; }
   void onRegisterParameters(tParameters *params) override {
     params->add_param("ChemistryTableRoot",table_root,PARAM_STRING,PARAM_FIXED);
     params->add_param("ChemistryInitialMetallicity",&initial_metallicity,PARAM_DOUBLE,PARAM_FIXED);
@@ -32,6 +34,7 @@ public:
     params->add_param("ChemistryBalanceWork",&distribute,PARAM_INT,PARAM_FIXED);
   }
   void onBegrunBeforeInit(sim *simulation) override {
+    simulation_=simulation;
     // Module parameter storage is outside All's automatically broadcast block.
     MPI_Bcast(table_root,sizeof(table_root),MPI_CHAR,0,simulation->Communicator);
     MPI_Bcast(&initial_metallicity,1,MPI_DOUBLE,0,simulation->Communicator);
@@ -55,6 +58,10 @@ public:
         Terminate("CHEMISTRY: invalid saved particle composition");
       p->Pressure=p->get_pressure(); p->Csnd=p->get_sound_speed();
     }
+  }
+  void onStartOfTimestep(simparticles *, mymesh *mesh) override {
+    simulation_->NgbTree->update_data_of_ghost_cells<ngbtree::primitives>();
+    mesh->calculate_gradients();
   }
   void onSnapshotAddFields(snap_io *snap) override {
     snap->init_field<unsigned long long,sph_particle_data>(
@@ -82,6 +89,7 @@ public:
       chemistry::ArepoNgWork w{};
       w.environment.density_cgs=p->Density*All.UnitDensity_in_cgs;
       w.environment.metallicity=p->Chemistry.metallicity;
+      if(environment_provider_) environment_provider_(p(),w.environment);
       std::copy(std::begin(p->Chemistry.abundance),std::end(p->Chemistry.abundance),w.abundance);
       w.internal_energy_cgs=p->Utherm*unit_energy(); w.gamma=p->Chemistry.gamma;
       // NG advances cells on the actual particle bin (min of gravity/hydro),
@@ -109,7 +117,7 @@ public:
 };
 } // namespace
 
-BaseModule *create_arepo_ng_chemistry_module() { return new ChemistryModule; }
+BaseModule *create_arepo_ng_chemistry_module(ArepoNgEnvironmentProvider provider) { return new ChemistryModule(provider); }
 void chemistry_ng_initialize_particle(sph_particle_data *p, bool initialize_energy) {
   double hydrogen=p->Chemistry.abundance[sHI]+p->Chemistry.abundance[sHII]+2*p->Chemistry.abundance[sH2I];
   if(hydrogen==0 && p->Chemistry.network_signature==0) {

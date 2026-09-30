@@ -25,6 +25,7 @@ struct ArepoNgCell {
   double gamma;
   std::uint64_t network_signature;
   void initialize(double mass, double metallicity_solar);
+  double number_density(int species, double density_cgs) const; // cm^-3, chemistry proton-mass convention
   bool update_thermodynamics(double internal_energy_cgs);
   double energy_at_temperature(double temperature) const;
   void store_conserved(double mass);
@@ -62,5 +63,7 @@ private:
 
 class BaseModule;
 struct sph_particle_data;
-BaseModule *create_arepo_ng_chemistry_module();
+// Optional host radiation preparation, called before MPI work redistribution.
+using ArepoNgEnvironmentProvider = void (*)(const sph_particle_data *, ChemistryCellEnvironment &);
+BaseModule *create_arepo_ng_chemistry_module(ArepoNgEnvironmentProvider provider = nullptr);
 void chemistry_ng_initialize_particle(sph_particle_data *, bool initialize_energy);

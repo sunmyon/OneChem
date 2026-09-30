@@ -344,6 +344,17 @@ Model::Creation Model::create(const ChemistryConfig &config) noexcept {
   const auto status = model->initialize(config.table_root);
   if(status != CHEMISTRY_STATUS_OK) return {nullptr, status};
   model->view_.timescale_safety_factor = config.timescale_safety_factor;
+#ifdef CHEMISTRY_FIXED_TEMPERATURE
+#ifndef CHEMISTRY_FIXED_TEMPERATURE_K
+#define CHEMISTRY_FIXED_TEMPERATURE_K 10000.
+#endif
+  model->view_.fixed_temperature = CHEMISTRY_FIXED_TEMPERATURE_K;
+  // The high-temperature equilibrium shortcut evolves energy; this fixed-T
+  // option deliberately supports the low-temperature reaction network only.
+  if(!(model->view_.fixed_temperature > 0) || model->view_.fixed_temperature > 1.e5 ||
+     !std::isfinite(model->view_.fixed_temperature))
+    return {nullptr, CHEMISTRY_STATUS_INVALID_ARGUMENT};
+#endif
   if(config.print_configuration) print_configuration(config);
   return {std::move(model), CHEMISTRY_STATUS_OK};
 }

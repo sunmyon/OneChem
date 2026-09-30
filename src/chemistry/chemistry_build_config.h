@@ -471,3 +471,11 @@
 #ifndef CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT
 #define CHEMISTRY_NEWTON_RESIDUAL_GATE_LIMIT 1.0e3
 #endif
+
+/* Absolute abundance scale for subcycle selection, in units of n_H.
+ * Bounds the linearized abundance increment by safety_factor * max(y, scale),
+ * including production from y=0. This does not change the chemical state and
+ * is not a bound on the accumulated integration error. */
+#ifndef CHEMISTRY_TIMESTEP_ABUNDANCE_SCALE
+#define CHEMISTRY_TIMESTEP_ABUNDANCE_SCALE 1.e-12
+#endif

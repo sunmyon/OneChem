@@ -5,11 +5,18 @@
 #include <cmath>
 #include <climits>
 #include <numeric>
+#include <limits>
 #include <type_traits>
 
 namespace chemistry {
 static_assert(std::is_trivially_copyable<ArepoNgCell>::value, "NG stores cells by value");
 static_assert(std::is_trivially_copyable<ArepoNgWork>::value, "MPI wire packet must be a value");
+
+double ArepoNgCell::number_density(int species, double density_cgs) const {
+  if(species<0 || species>=TGCHEM_NUM_ABUNDANCES || !std::isfinite(density_cgs) || density_cgs<0)
+    return std::numeric_limits<double>::quiet_NaN();
+  return abundance[species] * (density_cgs/PROTONMASS);
+}
 
 void ArepoNgCell::store_conserved(double mass) {
   for(int i=0; i<TGCHEM_NUM_ABUNDANCES; ++i) species_mass[i] = mass * abundance[i];

@@ -422,28 +422,31 @@ to ICs without chemistry fields. Complete chemical snapshots carry
 signature as well. Binary restarts require the same particle layout and species
 network; use snapshots for supported changes in host storage layout.
 
-Example macOS build, using a separate build directory and executable:
+Current host integration is in `/Users/j/Desktop/codex/arepo2-onechem`.
+Build and run its sink + H/He chemistry fixture on macOS:
 
 ```sh
-make -C /Users/j/Desktop/codex/arepo2_ng/arepo -j6 build check check_docs \
-  CONFIG=/tmp/arepo_ng_chemistry_config.sh \
-  BUILD_DIR=/tmp/arepo_ng_chemistry_build EXEC=/tmp/Arepo2_chemistry \
-  CHEMISTRY_ROOT=/Users/j/Desktop/codex/1ZONE/src/chemistry \
-  CHEMISTRY_LAPACK_LIBS='-framework Accelerate'
+bash /Users/j/Desktop/codex/arepo2-onechem/tools/build_sink_macos.sh chemistry
+python3 /Users/j/Desktop/codex/arepo2-onechem/examples/sink_accretion/run_main_loop.py \
+  /Users/j/Desktop/codex/arepo2-onechem/Arepo2-sink-chemistry \
+  /tmp/new_sink_chemistry_validation chemistry
 ```
 
-Use `-llapack -lblas` (the default) or the appropriate vendor libraries on Linux.
-Validation commands (MPI must be allowed to open local sockets):
+The host includes `/Users/j/Desktop/codex/1ZONE/src/chemistry/mk/arepo_ng.mk`.
+`CHEMISTRY_ROOT` defaults to the adjacent chemistry source tree; LAPACK/BLAS
+libraries can be overridden with `CHEMISTRY_LAPACK_LIBS`.
+The standalone MPI adapter test can use the generated host configuration:
 
 ```sh
 make -C /Users/j/Desktop/codex/1ZONE/src/chemistry arepo-ng-mpi-check \
-  NG_BUILD_DIR=/tmp/arepo_ng_chemistry_build \
-  NG_GSL_LIBS='-L/opt/homebrew/opt/gsl/lib -lgsl -lgslcblas' \
-  NG_LINALG_LIBS='-framework Accelerate'
-python3 /Users/j/Desktop/codex/1ZONE/src/chemistry/tests/run_arepo_ng_smoke.py \
-  /tmp/Arepo2_chemistry /tmp/arepo_ng_chemistry_validation
+  NG_BUILD_DIR=/Users/j/Desktop/codex/arepo2-onechem/.build-sink-chemistry \
+  NG_GSL_LIBS='-L/opt/homebrew/lib -lgsl -lgslcblas' \
+  NG_LINALG_LIBS='-llapack -lblas'
 ```
 
+The independent chemistry-only fixture in
+`/Users/j/Desktop/codex/1ZONE/src/chemistry/tests/run_arepo_ng_smoke.py`
+requires a host binary without sink options (its parameter file has no sink parameters).
 The smoke output directory must not exist. The fixture requires numpy/h5py and
 an H/He build. It compares uninterrupted, binary-restarted and snapshot-restarted
 runs, checks pressure/gamma consistency, composition-dependent temperature floors,
@@ -454,10 +457,19 @@ numerical equality, 64-bit IDs and transactional failure. These are integration
 checks, not an accuracy/convergence study of multi-species hydrodynamics.
 
 
-Validation on 2026-09-29: the NG hydro build passed the normal build, option and
+Earlier prototype validation on 2026-09-29 (before the current sink integration): the NG hydro build passed the normal build, option and
 documentation checks; the HLLD/MHD variant linked successfully. The MPI adapter
 passed all three rank counts. The one-rank integration fixture passed, including
 bit-identical final fields across uninterrupted/binary-restarted/snapshot-restarted
 uniform runs. Twelve changed NG translation units also passed syntax checks with
 chemistry disabled. End-to-end multi-rank NG and refinement evolution remain
 unverified here; NG rejects multi-rank runs on macOS before chemistry starts.
+
+Current sink-host validation on 2026-09-29: H/He chemistry with sink formation,
+full/partial accretion and merger passed single-rank hydro/gravity evolution,
+binary restart versus continuous comparison, and snapshot reservoir conservation.
+Sink reservoirs store material transferred from gas; unspecified pre-existing sink
+composition is not inferred. See
+`/Users/j/Desktop/codex/arepo2-onechem/SINK_ACCRETION_TEST_REPORT.md` for inputs,
+limitations and output locations. Sink-enabled MHD and multi-rank end-to-end runs
+are not covered by these results.
