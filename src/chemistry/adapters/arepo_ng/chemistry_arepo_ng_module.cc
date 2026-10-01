@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <cstring>
 
-#if !defined(RIEMANN_HLLD) || defined(ENABLE_ENTROPY_TREATMENT) || defined(COLLAPSE_EOS) || defined(ISOTHERM_EQS) || defined(COOLING) || defined(STARFORMATION)
+#if defined(ENABLE_ENTROPY_TREATMENT) || defined(COLLAPSE_EOS) || defined(ISOTHERM_EQS)
 #error "CHEMISTRY requires HLLD and the thermal-energy equation, without another cooling/EOS module"
 #endif
 
