@@ -1115,10 +1115,8 @@ double ChemistryContinuumOpacityTables::metal_cooling_rate(double T_gas) const{
   if(i_T_left < 0) i_T_left = 0;
   if(i_T == nT_SD93 - 1) i_T_left = nT_SD93-1;
 
-  double c_T   = (SD93_Tgas[i_T]-T_gas)    / (SD93_Tgas[i_T] -SD93_Tgas[i_T_left]);
-
-  if(i_T == i_T_left)
-    c_T = 0.;
+  // See the identical guard in get_opacities()/get_opacities_log() above.
+  double c_T = (i_T == i_T_left) ? 0. : (SD93_Tgas[i_T]-T_gas) / (SD93_Tgas[i_T] -SD93_Tgas[i_T_left]);
 
   double cool_rate = c_T * SD93_CoolRate[i_T_left] + (1 - c_T) * SD93_CoolRate[i_T];
 
@@ -1595,14 +1593,12 @@ void ChemistryContinuumOpacityTables::get_opacities(double T_gas,
   double c_T, c_rho;
   double kappa_r, kappa_p;
 
-  c_T   = (Kappa_Tgas[i_T]-T_gas)    / (Kappa_Tgas[i_T] -Kappa_Tgas[i_T_left]);
-  c_rho = (Kappa_rho[i_rho]-rho_cgs) / (Kappa_rho[i_rho] -Kappa_rho[i_rho_left]);
-
-  if(i_T == i_T_left)
-    c_T = 0.;
-
-  if(i_rho == i_rho_left)
-    c_rho = 0.;
+  // i_T==i_T_left (and likewise for rho) at a table boundary makes the denominator
+  // exactly zero; guard before dividing, not after (dividing first and then
+  // overwriting the result with 0 still evaluates the division and SIGFPEs when FPE
+  // traps are enabled).
+  c_T   = (i_T == i_T_left)     ? 0. : (Kappa_Tgas[i_T]-T_gas)    / (Kappa_Tgas[i_T] -Kappa_Tgas[i_T_left]);
+  c_rho = (i_rho == i_rho_left) ? 0. : (Kappa_rho[i_rho]-rho_cgs) / (Kappa_rho[i_rho] -Kappa_rho[i_rho_left]);
 
   kappa_r =
     c_T       * c_rho       * Kappa_Rossland[i_T_left * n_rho + i_rho_left] +
@@ -1652,14 +1648,10 @@ void ChemistryContinuumOpacityTables::get_opacities_log(double T_gas,
   double c_T, c_rho;
   double kappa_r, kappa_p;
 
-  c_T   = (log10(Kappa_Tgas[i_T])-log10(T_gas))    / (log10(Kappa_Tgas[i_T])  - log10(Kappa_Tgas[i_T_left]));
-  c_rho = (log10(Kappa_rho[i_rho])-log10(rho_cgs)) / (log10(Kappa_rho[i_rho]) - log10(Kappa_rho[i_rho_left]));
-
-  if(i_T == i_T_left)
-    c_T = 0.;
-
-  if(i_rho == i_rho_left)
-    c_rho = 0.;
+  // See the identical guard in get_opacities() above: divide-then-overwrite-with-0
+  // still evaluates the 0/0 division and SIGFPEs when FPE traps are enabled.
+  c_T   = (i_T == i_T_left)     ? 0. : (log10(Kappa_Tgas[i_T])-log10(T_gas))    / (log10(Kappa_Tgas[i_T])  - log10(Kappa_Tgas[i_T_left]));
+  c_rho = (i_rho == i_rho_left) ? 0. : (log10(Kappa_rho[i_rho])-log10(rho_cgs)) / (log10(Kappa_rho[i_rho]) - log10(Kappa_rho[i_rho_left]));
 
   kappa_r = pow(10,
 		c_T       * c_rho       * log10(Kappa_Rossland[i_T_left * n_rho + i_rho_left]) +
