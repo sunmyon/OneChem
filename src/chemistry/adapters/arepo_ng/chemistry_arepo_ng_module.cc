@@ -136,6 +136,7 @@ public:
   }
   void onCalculateNonStandardPhysicsEndOfTimestep(simparticles *particles) override {
     TIMER_START(CPU_CHEM);
+    TIMER_START(CPU_CHEM_COLLECT);
     std::vector<sph_particle_data *> owners;
     std::vector<chemistry::ArepoNgWork> work;
     for(gas_iterator_up_to_timebin p(particles,All.HighestSynchronizedTimeBin);p();p++) {
@@ -156,10 +157,14 @@ public:
       w.id=p->ID.get();
       owners.push_back(p()); work.push_back(w);
     }
+    TIMER_STOP(CPU_CHEM_COLLECT);
+    TIMER_START(CPU_CHEM_SOLVE);
     ChemistryGlobalEnvironment env{};
     env.scale_factor=1; env.cmb_temperature=cmb_temperature; env.simulation_time=All.Time;
     const auto status=adapter.advance(env,work,distribute!=0);
+    TIMER_STOP(CPU_CHEM_SOLVE);
     if(status!=CHEMISTRY_STATUS_OK) Terminate("CHEMISTRY: advance failed (%d)",int(status));
+    TIMER_START(CPU_CHEM_WRITEBACK);
     for(size_t i=0;i<work.size();++i) {
       auto *p=owners[i]; const auto &w=work[i];
       std::copy(std::begin(w.abundance),std::end(w.abundance),p->Chemistry.abundance);
@@ -182,6 +187,7 @@ public:
       p->Chemistry.gamma=w.gamma;
       p->Pressure=p->get_pressure(); p->Csnd=p->get_sound_speed();
     }
+    TIMER_STOP(CPU_CHEM_WRITEBACK);
     TIMER_STOP(CPU_CHEM);
   }
 };
