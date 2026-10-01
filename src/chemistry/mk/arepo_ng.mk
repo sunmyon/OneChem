@@ -12,7 +12,14 @@ LIBS += $(CHEMISTRY_LAPACK_LIBS)
 CHEMISTRY_HEADER_DIRS = $(addprefix $(CHEMISTRY_ROOT)/, . include/chemistry cooling reaction_network solver thermodynamics tables adapters/arepo_ng)
 CHEMISTRY_HEADERS = $(wildcard $(addsuffix /*.h,$(CHEMISTRY_HEADER_DIRS)) $(addsuffix /*.hpp,$(CHEMISTRY_HEADER_DIRS)))
 CHEMISTRY_CONFIG_CHECK = $(BUILD_DIR)/chemistry.options.check
-$(BUILD_DIR)/chemistry/%.o: $(CHEMISTRY_ROOT)/%.cc $(BUILD_DIR)/arepoconfig.h $(CHEMISTRY_HEADERS)
+# NG-side headers the adapter includes (e.g. logs/timer.h for TIMER_START/
+# TIMER_CREATE) live outside CHEMISTRY_ROOT and so aren't covered by
+# $(CHEMISTRY_HEADERS); without this, an incremental build can relink stale
+# chemistry .o files against a changed logs::timers enum layout. This is included
+# before the Makefile's own $(INCL) := $(addprefix $(SRC_DIR)/,$(INCL)) ... rewrite,
+# so apply the same prefix here rather than relying on the (still-unprefixed,
+# nonexistent-as-named) bare $(INCL).
+$(BUILD_DIR)/chemistry/%.o: $(CHEMISTRY_ROOT)/%.cc $(BUILD_DIR)/arepoconfig.h $(CHEMISTRY_HEADERS) $(addprefix $(SRC_DIR)/,$(INCL)) $(AREPO_MAKEFILES)
 	@mkdir -p $(dir $@)
 	$(CPP) $(CFLAGS) -include $(BUILD_DIR)/arepoconfig.h -c $< -o $@
 # Core owns its internal option checks; expose used options to NG's Config check.
