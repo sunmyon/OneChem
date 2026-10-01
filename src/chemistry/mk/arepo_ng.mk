@@ -3,7 +3,11 @@ include $(CHEMISTRY_ROOT)/mk/core.mk
 CHEMISTRY_SOURCES = $(CHEMISTRY_PORTABLE_CORE_SOURCES) $(wildcard $(CHEMISTRY_ROOT)/adapters/arepo_ng/*.cc)
 CHEMISTRY_OBJECTS = $(patsubst $(CHEMISTRY_ROOT)/%.cc,$(BUILD_DIR)/chemistry/%.o,$(CHEMISTRY_SOURCES))
 OPT += -I$(CHEMISTRY_ROOT)/.. $(addprefix -I$(CHEMISTRY_ROOT)/, . include cooling reaction_network solver thermodynamics tables adapters/arepo_ng)
-CHEMISTRY_LAPACK_LIBS ?= -llapack -lblas
+# No default: plain reference LAPACK/BLAS is often not what's wanted (MKL, qMKL,
+# etc. are common instead), and every other third-party lib here (GSL_LIBS,
+# HDF5_LIBS, FFTW_LIBS) is likewise supplied by the caller, not defaulted in this
+# Makefile. Pass CHEMISTRY_LAPACK_LIBS explicitly (command line or a systype file).
+CHEMISTRY_LAPACK_LIBS ?=
 LIBS += $(CHEMISTRY_LAPACK_LIBS)
 CHEMISTRY_HEADER_DIRS = $(addprefix $(CHEMISTRY_ROOT)/, . include/chemistry cooling reaction_network solver thermodynamics tables adapters/arepo_ng)
 CHEMISTRY_HEADERS = $(wildcard $(addsuffix /*.h,$(CHEMISTRY_HEADER_DIRS)) $(addsuffix /*.hpp,$(CHEMISTRY_HEADER_DIRS)))
