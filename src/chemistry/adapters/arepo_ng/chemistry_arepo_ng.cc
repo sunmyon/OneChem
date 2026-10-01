@@ -1,12 +1,15 @@
 #include "chemistry_arepo_ng.h"
 #include "chemistry_model.hpp"
+#include "chemistry_table_io.h"
 #include "thermodynamics/thermodynamics.h"
 #include <algorithm>
 #include <cmath>
 #include <climits>
 #include <numeric>
 #include <limits>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 namespace chemistry {
 static_assert(std::is_trivially_copyable<ArepoNgCell>::value, "NG stores cells by value");
@@ -94,13 +97,68 @@ struct ArepoNgAdapter::Implementation {
 };
 ArepoNgAdapter::ArepoNgAdapter(): implementation_(new Implementation) {}
 ArepoNgAdapter::~ArepoNgAdapter() = default;
+
+namespace {
+// Broadcasts a TableIoCache built on rank 0 to every other rank. Collective on comm;
+// every rank must call this (rank 0 sends what it recorded, everyone else receives).
+void broadcast_table_cache(TableIoCache &cache, int rank, MPI_Comm comm) {
+  int count = (rank==0) ? static_cast<int>(cache.size()) : 0;
+  MPI_Bcast(&count,1,MPI_INT,0,comm);
+
+  std::vector<std::pair<std::string,std::vector<char>>> items;
+  if(rank==0) items.assign(cache.begin(),cache.end());
+
+  for(int i=0;i<count;++i) {
+    int name_len = (rank==0) ? static_cast<int>(items[i].first.size()) : 0;
+    MPI_Bcast(&name_len,1,MPI_INT,0,comm);
+    std::string name(name_len,'\0');
+    if(rank==0) name=items[i].first;
+    MPI_Bcast(name.data(),name_len,MPI_CHAR,0,comm);
+
+    int data_len = (rank==0) ? static_cast<int>(items[i].second.size()) : 0;
+    MPI_Bcast(&data_len,1,MPI_INT,0,comm);
+    std::vector<char> data(data_len);
+    if(rank==0) data=items[i].second;
+    if(data_len>0) MPI_Bcast(data.data(),data_len,MPI_CHAR,0,comm);
+
+    if(rank!=0) cache[name]=std::move(data);
+  }
+}
+} // namespace
+
 ChemistryStatus ArepoNgAdapter::initialize(const ChemistryConfig &config, MPI_Comm comm) {
   auto &p=*implementation_;
   p.comm=comm;
   MPI_Comm_rank(comm,&p.rank); MPI_Comm_size(comm,&p.size);
   ChemistryConfig local=config; local.print_configuration=config.print_configuration && p.rank==0;
-  auto created=Model::create(local);
-  int status=created.status, global=0;
+
+  // Rank 0 does the real disk I/O for every chemistry table file and records the raw
+  // bytes; every other rank replays from the broadcast copy below instead of each
+  // independently re-opening (and contending for) the same files on a shared
+  // filesystem -- the same reason parameter files are read by rank 0 and broadcast.
+  TableIoCache cache;
+  Model::Creation created{};
+  int status=CHEMISTRY_STATUS_OK;
+
+  if(p.rank==0) {
+    chemistry_table_io_begin_record(&cache);
+    created=Model::create(local);
+    chemistry_table_io_end();
+    status=created.status;
+  }
+  MPI_Bcast(&status,1,MPI_INT,0,comm);
+
+  if(status==CHEMISTRY_STATUS_OK) {
+    broadcast_table_cache(cache,p.rank,comm);
+    if(p.rank!=0) {
+      chemistry_table_io_begin_replay(&cache);
+      created=Model::create(local);
+      chemistry_table_io_end();
+      status=created.status;
+    }
+  }
+
+  int global=0;
   MPI_Allreduce(&status,&global,1,MPI_INT,MPI_MAX,comm);
   if(global) return static_cast<ChemistryStatus>(global);
   p.model=std::move(created.model);

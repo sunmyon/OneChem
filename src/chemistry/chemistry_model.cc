@@ -9,6 +9,7 @@
 #include "forward_rates.h"
 #include "molecular_cooling.h"
 #include "chemistry_tables.h"
+#include "chemistry_table_io.h"
 
 #include <cmath>
 #include <new>
@@ -365,16 +366,64 @@ Model::~Model() noexcept = default;
 } // namespace chemistry
 
 
+namespace {
+enum class TableIoMode { Normal, Record, Replay };
+TableIoMode g_table_io_mode = TableIoMode::Normal;
+TableIoCache *g_table_io_record_cache = nullptr;
+const TableIoCache *g_table_io_replay_cache = nullptr;
+} // namespace
+
+void chemistry_table_io_begin_record(TableIoCache *cache)
+{
+  g_table_io_mode = TableIoMode::Record;
+  g_table_io_record_cache = cache;
+  g_table_io_replay_cache = nullptr;
+}
+
+void chemistry_table_io_begin_replay(const TableIoCache *cache)
+{
+  g_table_io_mode = TableIoMode::Replay;
+  g_table_io_replay_cache = cache;
+  g_table_io_record_cache = nullptr;
+}
+
+void chemistry_table_io_end(void)
+{
+  g_table_io_mode = TableIoMode::Normal;
+  g_table_io_record_cache = nullptr;
+  g_table_io_replay_cache = nullptr;
+}
+
 FILE *open_chemistry_table(const char *table_root, const char *filename)
 {
-  char path[2048];
-
-  if(table_root == NULL || table_root[0] == '\0' || filename == NULL ||
-     filename[0] == '\0') {
+  if(filename == NULL || filename[0] == '\0') {
     fprintf(stderr, "Chemistry table root and filename must be provided.\n");
     return NULL;
   }
 
+  if(g_table_io_mode == TableIoMode::Replay) {
+    if(!g_table_io_replay_cache) {
+      fprintf(stderr, "Chemistry table replay requested but no cache was set (%s).\n", filename);
+      return NULL;
+    }
+    const auto it = g_table_io_replay_cache->find(filename);
+    if(it == g_table_io_replay_cache->end()) {
+      fprintf(stderr, "Chemistry table %s was not in the replayed cache.\n", filename);
+      return NULL;
+    }
+    // fmemopen's buffer is only read, but its signature wants a non-const pointer.
+    FILE *fp = fmemopen(const_cast<char *>(it->second.data()), it->second.size(), "r");
+    if(fp == NULL)
+      fprintf(stderr, "Can't open in-memory chemistry table %s.\n", filename);
+    return fp;
+  }
+
+  if(table_root == NULL || table_root[0] == '\0') {
+    fprintf(stderr, "Chemistry table root and filename must be provided.\n");
+    return NULL;
+  }
+
+  char path[2048];
   const int written = snprintf(path, sizeof(path), "%s/tables/%s",
                                table_root, filename);
   if(written < 0 || (size_t)written >= sizeof(path)) {
@@ -384,8 +433,25 @@ FILE *open_chemistry_table(const char *table_root, const char *filename)
   }
 
   FILE *fp = fopen(path, "r");
-  if(fp == NULL)
+  if(fp == NULL) {
     fprintf(stderr, "Can't open chemistry table %s.\n", path);
+    return NULL;
+  }
+
+  if(g_table_io_mode == TableIoMode::Record && g_table_io_record_cache) {
+    std::vector<char> bytes;
+    char chunk[65536];
+    size_t n;
+    while((n = fread(chunk, 1, sizeof(chunk), fp)) > 0)
+      bytes.insert(bytes.end(), chunk, chunk + n);
+    if(ferror(fp)) {
+      fprintf(stderr, "Error reading chemistry table %s for recording.\n", path);
+      fclose(fp);
+      return NULL;
+    }
+    rewind(fp);
+    (*g_table_io_record_cache)[filename] = std::move(bytes);
+  }
 
   return fp;
 }
