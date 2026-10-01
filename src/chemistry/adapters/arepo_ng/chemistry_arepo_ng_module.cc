@@ -14,6 +14,11 @@
 
 namespace {
 double initial_metallicity=0;
+// Bootstrap seeds for a fresh IC/no-chemistry-data particle only (see
+// hydrogen==0 below), not a physical initial condition most runs need to tune.
+// Optional parameters (see onRegisterParameters): these defaults apply unless
+// overridden in the parameter file. INITUNIFORM, when enabled, bypasses this
+// path entirely with its own per-species parameters.
 double initial_ionized_fraction=1.e-4;
 double initial_molecular_fraction=1.e-6;
 double unit_energy() { return All.UnitVelocity_in_cm_per_s * All.UnitVelocity_in_cm_per_s; }
@@ -52,8 +57,9 @@ public:
   void onRegisterParameters(tParameters *params) override {
     params->add_param("ChemistryTableRoot",table_root,PARAM_STRING,PARAM_FIXED);
     params->add_param("ChemistryInitialMetallicity",&initial_metallicity,PARAM_DOUBLE,PARAM_FIXED);
-    params->add_param("ChemistryInitialIonizedFraction",&initial_ionized_fraction,PARAM_DOUBLE,PARAM_FIXED);
-    params->add_param("ChemistryInitialMolecularFraction",&initial_molecular_fraction,PARAM_DOUBLE,PARAM_FIXED);
+    // Optional: keep the compiled-in default (see the comment above) unless overridden.
+    params->add_param("ChemistryInitialIonizedFraction",&initial_ionized_fraction,PARAM_DOUBLE,PARAM_FIXED,false);
+    params->add_param("ChemistryInitialMolecularFraction",&initial_molecular_fraction,PARAM_DOUBLE,PARAM_FIXED,false);
     params->add_param("ChemistryCMBTemperature",&cmb_temperature,PARAM_DOUBLE,PARAM_FIXED);
     params->add_param("ChemistryBalanceWork",&distribute,PARAM_INT,PARAM_FIXED);
 #ifdef STIFF_EOS
