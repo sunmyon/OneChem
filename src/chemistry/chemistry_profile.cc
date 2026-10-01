@@ -152,7 +152,7 @@ void chemistry_profile_record_residual(const ChemEnvironment *environment, const
   trace->rad_HD = work->diagnostics.edot_HD;
 #endif
   trace->rad_HI = work->diagnostics.edot_ceHI;
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   trace->rad_CI = work->diagnostics.edot_CI;
   trace->rad_CII = work->diagnostics.edot_CII;
   trace->rad_OI = work->diagnostics.edot_OI;

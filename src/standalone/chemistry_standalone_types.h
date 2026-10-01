@@ -8,6 +8,12 @@
 #include "chemistry_build_config.h"
 #include "chemistry_types.h"
 
+// The standalone host supplies the metallicity value through METALLICITY=<log10 Z/Zsun>;
+// enabling the core's metal physics without it would leave the metallicity unset.
+#if defined(CHEMISTRY_METALLICITY) && !defined(METALLICITY)
+#error "standalone: set METALLICITY=<log10 Z/Zsun> instead of CHEMISTRY_METALLICITY"
+#endif
+
 typedef struct chemdata_in
 {
   MyIDType ID;

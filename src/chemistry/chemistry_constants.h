@@ -1,5 +1,7 @@
 #pragma once
 
+#include "chemistry_build_config.h"
+
 #define N_THREEBODY 1.0e14
 #define N_EQCHEM 1.0e18
 
@@ -41,7 +43,7 @@
 #define MAX_REAL_NUMBER 1.e30
 #endif
 
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
 #define Y_C_sun 0.927e-4
 #define Y_O_sun 3.568e-4
 #define A_C_sun 3.16e-4

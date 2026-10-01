@@ -120,6 +120,8 @@ class BuildOptionsTest(unittest.TestCase):
         self.check_physics(["CHEMISTRY_DUST_COOLING == 1"], ["-DMETALLICITY=0"])
         self.check_physics(["CHEMISTRY_DUST_COOLING == 0"],
                            ["-DMETALLICITY=-4", "-DCHEMISTRY_DUST_COOLING=0"])
+        self.check_physics(["CHEMISTRY_DUST_COOLING == 1"], ["-DCHEMISTRY_METALLICITY"])
+        self.check_physics(["CHEMISTRY_DUST_COOLING == 0"])
         self.check_physics([], ["-DCHEMISTRY_SPECIES_CARBON_OXYGEN"], success=False)
         self.check_physics(["CHEMISTRY_UPDATE_CORE_LENGTH == 1", "CHEMISTRY_H2_ROTATIONAL_GAMMA == 1"])
         self.check_physics(["CHEMISTRY_UPDATE_CORE_LENGTH == 0", "CHEMISTRY_H2_ROTATIONAL_GAMMA == 0"],

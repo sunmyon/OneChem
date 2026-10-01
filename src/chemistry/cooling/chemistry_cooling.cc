@@ -48,7 +48,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   work->diagnostics.edot_HD = 0.0;
 #endif
   work->diagnostics.edot_ceHI = 0.0;
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   work->diagnostics.edot_CI = work->diagnostics.edot_CII = work->diagnostics.edot_OI = 0.0;
 #endif
 #ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN
@@ -76,7 +76,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
   const double *reHeIIIa = tables->recombination_HeIII;
   const double *brema = tables->bremsstrahlung;
   const double *H2_CIE = tables->H2_CIE;
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   const double metallicity = environment->metallicity;
 #endif
   const double tau_cont = work->continuum.tau;
@@ -240,7 +240,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
 #endif
 
   /******************************* CII & OI lines ***********************************************/
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   if(work->diagnostics_enabled)
     printf("f_metal=%g\n", metallicity);
 
@@ -340,7 +340,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
 #ifdef CHEMISTRY_SPECIES_DEUTERIUM
   edot_HD   *= exp(-tau_cont);
 #endif
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   edot_CI   *= exp(-tau_cont);
   edot_CII  *= exp(-tau_cont);
   edot_OI   *= exp(-tau_cont);
@@ -388,7 +388,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
 #ifdef CHEMISTRY_SPECIES_DEUTERIUM
     + edot_HD
 #endif
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
     + edot_CI + edot_CII + edot_OI
 #endif
 #if CHEMISTRY_MOLECULAR_LINE_COOLING
@@ -428,7 +428,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
            edot_CO, edot_OH, edot_H2O, T_gas, radiation_temperature,
            n_nuclei * state->abund[sH2I], l_core);
 #endif
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
     printf("cool_rate:tot=%g HI=%g H2=%g HD=%g comp=%g CI=%g CII=%g OI=%g dust=%g cont=%g f_reduce=%g Tdust=%g T_gas=%g radHI=%g\n",
 	   edot, edot_ceHI, edot_H2, edot_HD, edot_comp, edot_CI, edot_CII, edot_OI, edot_dust,  edot_cont,
 	   work->continuum.reduction_factor, work->continuum.dust_temperature, T_gas, edot_radHI);
@@ -443,7 +443,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
     printf("cool_rate:tot=%g HI=%g H2=%g comp=%g CI=%g CII=%g OI=%g dust=%g cont=%g f_reduce=%g Tdust=%g\n",
 	   edot, edot_ceHI, edot_H2, edot_comp, edot_CI, edot_CII, edot_OI, edot_dust,  edot_cont, continuum_reduction_factor, work->continuum.dust_temperature);
 #else
-#if defined(THERMAL_FEEDBACK) && defined(METALLICITY)
+#if defined(THERMAL_FEEDBACK) && defined(CHEMISTRY_METALLICITY)
   if(work->diagnostics_enabled)
     printf("cool_rate:T_gas=%g n=%g tot=%g rad=%g HI=%g H2=%g comp=%g CI=%g CII=%g OI=%g dust=%g cont=%g f_reduce=%g f_line=%g tau=%g Tdust=%g Trad=%g\n",
 	   T_gas, n_nuclei, edot, edot_radHI, edot_ceHI, edot_H2, edot_comp, edot_CI, edot_CII, edot_OI, edot_dust, edot_cont,
@@ -480,7 +480,7 @@ ChemistryStatus chemistry::CoolingEvaluator::radiative(const ChemStepData &step_
 #ifdef CHEMISTRY_SPECIES_DEUTERIUM
   work->diagnostics.edot_HD = edot_HD;
 #endif
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   work->diagnostics.edot_CI  = edot_CI;
   work->diagnostics.edot_CII = edot_CII;
   work->diagnostics.edot_OI  = edot_OI;

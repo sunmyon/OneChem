@@ -31,7 +31,7 @@ make -C /Users/j/Desktop/codex/1ZONE BUILDDIR=build-custom EXEC=1ZONE_custom EXT
 | `ENZO` | 0 |
 | `O05` | HIRANO |
 | `HIRANO` | 0 |
-| `DUST_COOLING` | 1 when METALLICITY is defined, otherwise 0 |
+| `DUST_COOLING` | 1 when CHEMISTRY_METALLICITY is defined, otherwise 0 |
 | `MOLECULAR_LINE_COOLING` | 1 with carbon/oxygen species, otherwise 0 |
 | `METAL_LINE_COOLING_SD93` | 0 |
 | `HELIUM_EQ_COOLING` | 0 |
@@ -241,7 +241,7 @@ as reference material; they are not linked into the current portable build.
 
 DEUTERIUM enables D, D+ and HD; it does not select only the HD molecule. HD_PLUS
 and D_MINUS require DEUTERIUM. Carbon/oxygen high ionization requires the
-carbon/oxygen network, which requires METALLICITY. These are presence-based
+carbon/oxygen network, which requires CHEMISTRY_METALLICITY. These are presence-based
 compiler options: omit an option to disable it, rather than defining it as 0.
 
 Implementation conditionals and reaction-table requirements use canonical names.
@@ -266,10 +266,15 @@ host-supplied length. The optional Make variable `CHEMISTRY_UPDATE_CORE_LENGTH=0
 `CHEMISTRY_H2_ROTATIONAL_GAMMA` defaults to `1` and accounts for the low-temperature
 H2 rotational transition in the heat capacity. `=0` selects the former alternative;
 `GAMMA_NEW` remains an accepted presence-only input alias.
-Dust cooling defaults on only when `METALLICITY` is defined. Explicit dust
-settings still override this default. Carbon/oxygen chemistry requires
-`METALLICITY`; it does not invent a metallicity value. In standalone,
-`METALLICITY=0` means solar metallicity, not disabled metal physics.
+Metal physics is enabled by `CHEMISTRY_METALLICITY`. Hosts that historically
+spell it `METALLICITY` (old AREPO, standalone) keep that spelling; it is mapped to
+`CHEMISTRY_METALLICITY` at the build-config boundary. Dust cooling defaults on only
+when `CHEMISTRY_METALLICITY` is defined. Explicit dust settings still override this
+default. Carbon/oxygen chemistry requires `CHEMISTRY_METALLICITY`; it does not
+invent a metallicity value. In standalone, the value comes from
+`METALLICITY=<log10 Z/Zsun>` (`METALLICITY=0` means solar metallicity, not disabled
+metal physics), so standalone must set `METALLICITY` rather than
+`CHEMISTRY_METALLICITY`.
 
 Metallicity storage and communication are host concerns. Core always reads the
 solar-unit value in `ChemistryCellEnvironment::metallicity`. AREPO uses advected
@@ -304,7 +309,7 @@ a per-cell value or runtime radiation temperature is not invented at Model creat
 Chemistry-owned solver, reaction and thermodynamic settings now use CHEMISTRY_
 names; old compiler names remain input aliases at the build-config boundary.
 Make controls likewise accept their former names as aliases. Host options such
-as METALLICITY, LW_RADIATION_LOCAL, IONIZING_PHOTON, RYTR_*, METAL_ADVECTION_SC,
+as METALLICITY (mapped to CHEMISTRY_METALLICITY), LW_RADIATION_LOCAL, IONIZING_PHOTON, RYTR_*, METAL_ADVECTION_SC,
 CONSTANT_METALLICITY, CHEM_BALANCE and refinement settings keep their names.
 
 ### Chemistry option renames

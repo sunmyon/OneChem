@@ -136,7 +136,7 @@ void chemistry::ReactionRateEvaluator::evaluate(const ChemStepData &step_data) {
 #else
   const double l_core = step->jeans_length;
 #endif
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   const double metallicity = environment->metallicity;
 #endif
 

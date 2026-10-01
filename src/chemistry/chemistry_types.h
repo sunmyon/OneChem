@@ -23,7 +23,7 @@ typedef struct {
 #ifdef CHEMISTRY_SPECIES_DEUTERIUM
   double edot_HD;
 #endif
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   double edot_CI, edot_CII, edot_OI;
 #endif
 #ifdef CHEMISTRY_SPECIES_CARBON_OXYGEN

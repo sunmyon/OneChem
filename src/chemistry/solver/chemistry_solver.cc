@@ -93,7 +93,7 @@ void chemistry_print_rerun_line(const ChemEnvironment *environment,
   printf("background_rate_HD_diss=%.17g;",
          environment->global->background_rate_HD_diss);
 #endif
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   printf("background_G0=%.17g;", environment->global->background_G0);
 #endif
 #endif

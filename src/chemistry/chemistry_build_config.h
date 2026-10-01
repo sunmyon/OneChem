@@ -93,6 +93,12 @@
 #error "CHEMISTRY_DEBUG must be 0 or 1"
 #endif
 
+// Metal physics: legacy hosts (old AREPO, standalone where METALLICITY=<log10 Z/Zsun>)
+// keep their METALLICITY spelling; the core itself only tests CHEMISTRY_METALLICITY.
+#if defined(METALLICITY) && !defined(CHEMISTRY_METALLICITY)
+#define CHEMISTRY_METALLICITY
+#endif
+
 // Species-option compatibility for existing host configurations.
 #if defined(HELIUM) && !defined(CHEMISTRY_SPECIES_HELIUM)
 #define CHEMISTRY_SPECIES_HELIUM
@@ -137,8 +143,8 @@
 #endif
 
 
-#if defined(CHEMISTRY_SPECIES_CARBON_OXYGEN) && !defined(METALLICITY)
-#error "CHEMISTRY_SPECIES_CARBON_OXYGEN requires METALLICITY"
+#if defined(CHEMISTRY_SPECIES_CARBON_OXYGEN) && !defined(CHEMISTRY_METALLICITY)
+#error "CHEMISTRY_SPECIES_CARBON_OXYGEN requires CHEMISTRY_METALLICITY"
 #endif
 
 /* The implicit energy residual evaluates chemistry implicitly at every trial
@@ -252,7 +258,7 @@
 #define CHEMISTRY_MARTIN97 1
 #endif
 #ifndef CHEMISTRY_DUST_COOLING
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
 #define CHEMISTRY_DUST_COOLING 1
 #else
 #define CHEMISTRY_DUST_COOLING 0

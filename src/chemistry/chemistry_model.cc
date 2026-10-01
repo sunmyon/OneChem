@@ -33,7 +33,7 @@ void print_configuration(const ChemistryConfig &config) noexcept {
   printf("Chemistry configuration\n[model inputs]\n");
   entry("table directory", config.table_root);
   number("timestep safety factor", config.timescale_safety_factor);
-#ifdef METALLICITY
+#ifdef CHEMISTRY_METALLICITY
   entry("metallicity", "host input (solar units)");
 #else
   entry("metal-dependent processes", "off");
