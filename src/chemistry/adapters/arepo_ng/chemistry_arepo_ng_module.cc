@@ -135,6 +135,7 @@ public:
       [](sph_particle_data *p,FileFloatOrDouble *b) { p->Chemistry.gamma=*b; });
   }
   void onCalculateNonStandardPhysicsEndOfTimestep(simparticles *particles) override {
+    TIMER_START(CPU_CHEM);
     std::vector<sph_particle_data *> owners;
     std::vector<chemistry::ArepoNgWork> work;
     for(gas_iterator_up_to_timebin p(particles,All.HighestSynchronizedTimeBin);p();p++) {
@@ -181,6 +182,7 @@ public:
       p->Chemistry.gamma=w.gamma;
       p->Pressure=p->get_pressure(); p->Csnd=p->get_sound_speed();
     }
+    TIMER_STOP(CPU_CHEM);
   }
 };
 } // namespace
