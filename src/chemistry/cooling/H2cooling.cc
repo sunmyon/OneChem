@@ -143,7 +143,14 @@ double fesc_fit(double T_K, double xNc_H2){
   b5 = 2.54997e-19;
   beta=b0+b1*T_K+b2*T_K2+b3*T_K3+b4*T_K4+b5*T_K5;
 
-  xlnf=-alpha*log10(1.+xNc_H2/pow(10.,beta));
+  // Below double precision, 1 + xNc_H2 / 10^beta rounds to 1.
+  if(xNc_H2 == 0. || beta > log10(xNc_H2) + 16.)
+    xlnf=0.;
+  else if(beta > 300.)
+    // Scale the denominator for exceptionally large column densities.
+    xlnf=-alpha*log10(1.+(xNc_H2/1.e300)/pow(10.,beta-300.));
+  else
+    xlnf=-alpha*log10(1.+xNc_H2/pow(10.,beta));
   fesc=pow(10., xlnf);
 
   return fesc;
