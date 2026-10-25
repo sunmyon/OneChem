@@ -259,7 +259,7 @@ double pf_z_H(double T_K){
   double pf;
   double dE;
   const int level=10;
-  double g[level],E[level],f_l[level];
+  double g[level+1],E[level+1],f_l[level+1];
   int i;
 
   for(i=1;i<=level;i++){
