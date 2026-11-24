@@ -106,7 +106,7 @@ public:
   static void prepare_cell(const ChemEnvironment &environment, const ChemState &state,
                            double temperature, double duration_s, ChemStepData &step);
 private:
-  static void set_high_temperature_hydrogen_state(ChemState &state);
+  static void set_high_temperature_ionization_state(ChemState &state);
   static void evaluate_high_temperature_cooling(const ChemEnvironment &environment,
       const ChemStepData &step, const ChemState &state, double temperature, ChemWorkspace &workspace);
   static int evolve_high_temperature(const ChemEnvironment &environment, const ChemStepData &step,

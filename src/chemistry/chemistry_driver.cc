@@ -90,13 +90,19 @@ void chemistry::Driver::prepare_cell(const ChemEnvironment &env, const ChemState
 #endif
 }
 
-void chemistry::Driver::set_high_temperature_hydrogen_state(ChemState &state)
+void chemistry::Driver::set_high_temperature_ionization_state(ChemState &state)
 {
   state.abund[sHI] = 1.e-10 * XH;
   state.abund[sHII] = XH;
   state.abund[sH2I] = 1.e-10 * XH;
   state.abund[sHM] = 1.e-12 * XH;
   state.abund[sELEC] = XH;
+#ifdef CHEMISTRY_SPECIES_HELIUM
+  state.abund[sHeI] = 1.e-10 * XHe;
+  state.abund[sHeII] = 1.e-10 * XHe;
+  state.abund[sHeIII] = XHe - state.abund[sHeI] - state.abund[sHeII];
+  state.abund[sELEC] += state.abund[sHeII] + 2.0 * state.abund[sHeIII];
+#endif
   state.gamma = 5.0 / 3.0;
 }
 
@@ -123,10 +129,7 @@ void chemistry::Driver::evaluate_high_temperature_cooling(const ChemEnvironment 
                  n_nuclei * n_nuclei;
 #endif
   energy_rate += step->piHI * state->abund[sHI] * n_nuclei;
-#ifdef CHEMISTRY_SPECIES_HELIUM
-  energy_rate += step->photoheating_rate_HeI * state->abund[sHeI] * n_nuclei;
-  energy_rate += step->photoheating_rate_HeII * state->abund[sHeII] * n_nuclei;
-#endif
+  // Fully ionized helium has no photoheating. Its trace abundances are numerical floors.
 
   workspace->evaluation.rhoU_dot_rad = energy_rate;
   if(fabs(energy_rate) < 1.e-40) {
@@ -145,7 +148,7 @@ int chemistry::Driver::evolve_high_temperature(const ChemEnvironment &env, const
   auto *workspace = &output;
   auto *remaining_time_s = &remaining;
 
-  set_high_temperature_hydrogen_state(*state);
+  set_high_temperature_ionization_state(*state);
 
   while(*remaining_time_s > 0.0) {
     update_thermodynamic_state(state, &workspace->thermodynamics);
